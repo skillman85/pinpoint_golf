@@ -364,6 +364,7 @@ struct AppTheme {
     static let ink = Color(red: 0.07, green: 0.13, blue: 0.10)
     static let softText = Color(red: 0.37, green: 0.45, blue: 0.40)
     static let mint = Color(red: 0.02, green: 0.43, blue: 0.24)
+    static let mintWash = Color(red: 0.93, green: 0.97, blue: 0.95)
     static let gold = Color(red: 0.72, green: 0.50, blue: 0.11)
     static let border = Color(red: 0.88, green: 0.895, blue: 0.89)
     static let shadow = Color.black.opacity(0.055)
@@ -1577,10 +1578,11 @@ struct NewRoundSetupView: View {
                             .minimumScaleFactor(0.75)
                     }
                     .font(.system(.subheadline, design: .rounded).weight(.bold))
-                    .foregroundStyle(entryMode == mode ? .black : AppTheme.ink)
+                    .foregroundStyle(entryMode == mode ? AppTheme.mint : AppTheme.ink)
                     .frame(maxWidth: .infinity)
                     .frame(height: 46)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(entryMode == mode ? AppTheme.mint : AppTheme.panel))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(entryMode == mode ? AppTheme.mintWash : AppTheme.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(entryMode == mode ? AppTheme.mint.opacity(0.45) : Color.clear))
                 }
             }
         }
@@ -1727,7 +1729,7 @@ struct NewRoundSetupView: View {
                 .font(.system(.headline, design: .rounded).weight(.bold))
                 .foregroundStyle(Color.white)
                 .padding(17)
-                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mint))
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.ink))
             }
             .disabled(manualCourseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .opacity(manualCourseName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
@@ -1899,11 +1901,11 @@ struct CourseSetupCard: View {
                                 Text("Slope \(tee.slope)")
                             }
                             .font(.system(.caption, design: .rounded).weight(.medium))
-                            .foregroundStyle(isSelected(tee) ? .white : AppTheme.ink)
+                            .foregroundStyle(AppTheme.ink)
                             .padding(14)
                             .frame(maxWidth: .infinity, minHeight: 118, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(isSelected(tee) ? AppTheme.mint : AppTheme.subtleFill))
-                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected(tee) ? AppTheme.mint : AppTheme.border))
+                            .background(RoundedRectangle(cornerRadius: 8).fill(isSelected(tee) ? AppTheme.mintWash : AppTheme.subtleFill))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected(tee) ? AppTheme.mint.opacity(0.55) : AppTheme.border, lineWidth: isSelected(tee) ? 1.5 : 1))
                         }
                     }
                 }
@@ -1957,7 +1959,7 @@ struct CourseSetupCard: View {
                 .font(.system(.headline, design: .rounded).weight(.bold))
                 .foregroundStyle(Color.white)
                 .padding(14)
-                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mint))
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.ink))
             }
         }
         .padding(18)
@@ -2011,10 +2013,11 @@ struct CourseScorecardEditorView: View {
                                     } label: {
                                         Text(override.tees[index].name)
                                             .font(.system(.subheadline, design: .rounded).weight(.bold))
-                                            .foregroundStyle(selectedTeeIndex == index ? .white : AppTheme.ink)
+                                            .foregroundStyle(selectedTeeIndex == index ? AppTheme.mint : AppTheme.ink)
                                             .padding(.horizontal, 14)
                                             .frame(height: 40)
-                                            .background(RoundedRectangle(cornerRadius: 8).fill(selectedTeeIndex == index ? AppTheme.mint : AppTheme.subtleFill))
+                                            .background(RoundedRectangle(cornerRadius: 8).fill(selectedTeeIndex == index ? AppTheme.mintWash : AppTheme.subtleFill))
+                                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(selectedTeeIndex == index ? AppTheme.mint.opacity(0.45) : Color.clear))
                                     }
                                 }
                             }
