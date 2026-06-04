@@ -45,7 +45,8 @@ struct GolfCourseAPIClient {
     }
 
     func courseDetails(id: Int) async throws -> GolfCourseAPIResponseCourse {
-        try await request(path: "/v1/courses/\(id)", queryItems: [])
+        let response: GolfCourseAPIDetailResponse = try await request(path: "/v1/courses/\(id)", queryItems: [])
+        return response.course
     }
 
     private func request<T: Decodable>(path: String, queryItems: [URLQueryItem]) async throws -> T {
@@ -81,6 +82,10 @@ struct GolfCourseAPIClient {
 
 struct GolfCourseAPISearchResponse: Decodable {
     let courses: [GolfCourseAPIResponseCourse]
+}
+
+struct GolfCourseAPIDetailResponse: Decodable {
+    let course: GolfCourseAPIResponseCourse
 }
 
 struct GolfCourseAPIResponseCourse: Decodable {
@@ -207,4 +212,40 @@ struct GolfCourseAPIHole: Decodable {
     let par: Int?
     let yardage: Int?
     let handicap: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case par
+        case yardage
+        case yards
+        case handicap
+        case strokeIndex = "stroke_index"
+        case strokeIndexCamel = "strokeIndex"
+        case si
+        case stroke
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        par = container.decodeFlexibleIntIfPresent(forKeys: [.par])
+        yardage = container.decodeFlexibleIntIfPresent(forKeys: [.yardage, .yards])
+        handicap = container.decodeFlexibleIntIfPresent(forKeys: [.handicap, .strokeIndex, .strokeIndexCamel, .si, .stroke])
+    }
+}
+
+private extension KeyedDecodingContainer where Key == GolfCourseAPIHole.CodingKeys {
+    func decodeFlexibleIntIfPresent(forKeys keys: [Key]) -> Int? {
+        for key in keys {
+            if let intValue = try? decodeIfPresent(Int.self, forKey: key) {
+                return intValue
+            }
+            if let doubleValue = try? decodeIfPresent(Double.self, forKey: key) {
+                return Int(doubleValue.rounded())
+            }
+            if let stringValue = try? decodeIfPresent(String.self, forKey: key),
+               let value = Double(stringValue.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return Int(value.rounded())
+            }
+        }
+        return nil
+    }
 }

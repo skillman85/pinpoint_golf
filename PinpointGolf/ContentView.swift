@@ -1903,6 +1903,20 @@ struct CourseSetupCard: View {
                         }
                     }
                 }
+
+                if selectedGolfCourseAPITeeNeedsStrokeIndexes {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(AppTheme.gold)
+                        Text("GolfCourseAPI has not supplied SI for this tee. Add the stroke indexes in Edit Scorecard before using Stableford.")
+                            .font(.system(.caption, design: .rounded).weight(.semibold))
+                            .foregroundStyle(AppTheme.softText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                    }
+                    .padding(14)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                }
             } else {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -1962,6 +1976,12 @@ struct CourseSetupCard: View {
 
     private var isCourseSelected: Bool {
         selectedCourse == course && course.tees.contains(selectedTee)
+    }
+
+    private var selectedGolfCourseAPITeeNeedsStrokeIndexes: Bool {
+        isCourseSelected
+            && course.distance == "GolfCourseAPI"
+            && selectedTee.holes.map(\.strokeIndex) == Array(1...selectedTee.holes.count)
     }
 
     private var primaryButtonTitle: String {
