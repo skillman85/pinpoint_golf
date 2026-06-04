@@ -310,7 +310,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				UK_GOLF_API_KEY = "";
+				UK_GOLF_API_KEY = 2b1d33d97amshd453a280f2546d7p1705c7jsnca4c3c02a679;
 			};
 			name = Debug;
 		};
@@ -337,7 +337,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				UK_GOLF_API_KEY = "";
+				UK_GOLF_API_KEY = 2b1d33d97amshd453a280f2546d7p1705c7jsnca4c3c02a679;
 			};
 			name = Release;
 		};

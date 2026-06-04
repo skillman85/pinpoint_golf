@@ -18,7 +18,7 @@ enum UKGolfAPIError: LocalizedError {
 }
 
 struct UKGolfAPIClient {
-    private let baseURL = URL(string: "https://uk-golf-api.vercel.app")!
+    private let baseURL = URL(string: "https://uk-golf-course-data-api.p.rapidapi.com")!
     private let apiKey: String
     private let session: URLSession
 
@@ -56,7 +56,7 @@ struct UKGolfAPIClient {
 
     func scorecard(courseID: String) async throws -> UKGolfScorecard {
         let response: UKGolfScorecardResponse = try await request(
-            path: "/courses/\(courseID)/scorecard",
+            path: "/courses/\(courseID)",
             queryItems: []
         )
         return response.scorecard
@@ -68,7 +68,8 @@ struct UKGolfAPIClient {
             throw UKGolfAPIError.missingAPIKey
         }
 
-        var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        components?.path = path
         components?.queryItems = queryItems.isEmpty ? nil : queryItems
         guard let url = components?.url else {
             throw UKGolfAPIError.invalidResponse

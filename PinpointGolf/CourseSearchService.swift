@@ -24,6 +24,20 @@ final class CourseSearchViewModel: ObservableObject {
         defer { isSearching = false }
 
         do {
+            let courses = try await ukGolfAPI.searchCourses(query: trimmedQuery)
+            if !courses.isEmpty {
+                results = courses
+                return
+            }
+        } catch UKGolfAPIError.missingAPIKey {
+            errorMessage = "RapidAPI key is missing. Trying GolfCourseAPI."
+        } catch UKGolfAPIError.unauthorized {
+            errorMessage = "RapidAPI rejected the key. Trying GolfCourseAPI."
+        } catch {
+            errorMessage = "RapidAPI course search failed. Trying GolfCourseAPI."
+        }
+
+        do {
             let courses = try await golfCourseAPI.searchCourses(query: trimmedQuery)
             if !courses.isEmpty {
                 results = courses
@@ -45,23 +59,8 @@ final class CourseSearchViewModel: ObservableObject {
             return
         }
 
-        do {
-            let courses = try await ukGolfAPI.searchCourses(query: trimmedQuery)
-            results = courses
-            if courses.isEmpty {
-                errorMessage = "No UK scorecards found. Try the club name, course name or a nearby town."
-            }
-            return
-        } catch UKGolfAPIError.missingAPIKey {
-            results = []
-            errorMessage = "No GolfCourseAPI or saved course matches found. Try course name, town, city or county."
-        } catch UKGolfAPIError.unauthorized {
-            results = []
-            errorMessage = "No GolfCourseAPI results found, and UK Golf API rejected the RapidAPI key."
-        } catch {
-            results = []
-            errorMessage = "No verified scorecards found. Try course name, town, city or county."
-        }
+        results = []
+        errorMessage = "No verified scorecards found. Try course name, town, city or county."
     }
 
     func searchNearCurrentLocation() async {
