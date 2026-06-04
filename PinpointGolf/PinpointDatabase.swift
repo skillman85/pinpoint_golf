@@ -60,6 +60,32 @@ final class PinpointDatabase {
         )
     }
 
+    func loadHandicapHistory() -> [HandicapRecord] {
+        guard let json = querySingleString("SELECT value FROM settings WHERE key = ?;", bindings: [.text("handicap_history")]),
+              let data = json.data(using: .utf8),
+              let records = try? JSONDecoder().decode([HandicapRecord].self, from: data) else {
+            return []
+        }
+        return records
+    }
+
+    func saveHandicapHistory(_ records: [HandicapRecord]) {
+        saveJSON(records, key: "handicap_history")
+    }
+
+    func loadCourseScorecardOverrides() -> [CourseScorecardOverride] {
+        guard let json = querySingleString("SELECT value FROM settings WHERE key = ?;", bindings: [.text("course_scorecard_overrides")]),
+              let data = json.data(using: .utf8),
+              let overrides = try? JSONDecoder().decode([CourseScorecardOverride].self, from: data) else {
+            return []
+        }
+        return overrides
+    }
+
+    func saveCourseScorecardOverrides(_ overrides: [CourseScorecardOverride]) {
+        saveJSON(overrides, key: "course_scorecard_overrides")
+    }
+
     func isMigrationComplete(_ name: String) -> Bool {
         querySingleString("SELECT value FROM settings WHERE key = ?;", bindings: [.text("migration_\(name)")]) == "complete"
     }
@@ -205,6 +231,75 @@ final class PinpointDatabase {
         }
     }
 
+    func replaceRounds(_ rounds: [SavedRound]) {
+        do {
+            try transaction {
+                try execute("DELETE FROM round_holes;")
+                try execute("DELETE FROM rounds;")
+                for round in rounds {
+                    try saveRoundWithoutTransaction(round)
+                }
+            }
+        } catch {
+            assertionFailure("Failed replacing rounds: \(error)")
+        }
+    }
+
+    private func saveRoundWithoutTransaction(_ round: SavedRound) throws {
+        try execute("DELETE FROM round_holes WHERE round_id = ?;", bindings: [.text(round.id.uuidString)])
+        try execute(
+            """
+            INSERT OR REPLACE INTO rounds
+            (id, date, course_name, location, tee_name, tee_marker_color, tee_yards, tee_rating, tee_slope, handicap)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            bindings: [
+                .text(round.id.uuidString),
+                .double(round.date.timeIntervalSince1970),
+                .text(round.courseName),
+                .text(round.location),
+                .text(round.teeName),
+                .nullableText(round.teeMarkerColor?.rawValue),
+                .int(round.teeYards),
+                .double(round.teeRating),
+                .int(round.teeSlope),
+                .nullableDouble(round.handicap)
+            ]
+        )
+
+        for hole in round.holes {
+            try execute(
+                """
+                INSERT INTO round_holes
+                (id, round_id, hole_number, par, yards, stroke_index, score, putts, fairway, green, tee_club, approach_range, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                bindings: [
+                    .text(hole.id.uuidString),
+                    .text(round.id.uuidString),
+                    .int(hole.holeNumber),
+                    .int(hole.par),
+                    .int(hole.yards),
+                    .int(hole.strokeIndex),
+                    .int(hole.score),
+                    .int(hole.putts),
+                    .text(hole.fairway.rawValue),
+                    .text(hole.green.rawValue),
+                    .nullableText(hole.teeClub?.rawValue),
+                    .nullableText(hole.approachRange?.rawValue),
+                    .nullableText(hole.firstPuttDistance?.rawValue),
+                    .int(hole.penalties),
+                    .nullableText(hole.penaltyType?.rawValue),
+                    .nullableBool(hole.bunker),
+                    .nullableBool(hole.upAndDown),
+                    .nullableBool(hole.sandSave),
+                    .nullableBool(hole.recovery),
+                    .text(hole.note)
+                ]
+            )
+        }
+    }
+
     func deleteRound(id: UUID) {
         try? execute("DELETE FROM rounds WHERE id = ?;", bindings: [.text(id.uuidString)])
     }
@@ -238,6 +333,30 @@ final class PinpointDatabase {
                 .double(goal.createdAt.timeIntervalSince1970)
             ]
         )
+    }
+
+    func replaceCustomGoals(_ goals: [CustomGoal]) {
+        do {
+            try transaction {
+                try execute("DELETE FROM custom_goals;")
+                for goal in goals {
+                    try execute(
+                        """
+                        INSERT OR REPLACE INTO custom_goals (id, title, is_complete, created_at)
+                        VALUES (?, ?, ?, ?);
+                        """,
+                        bindings: [
+                            .text(goal.id.uuidString),
+                            .text(goal.title),
+                            .int(goal.isComplete ? 1 : 0),
+                            .double(goal.createdAt.timeIntervalSince1970)
+                        ]
+                    )
+                }
+            }
+        } catch {
+            assertionFailure("Failed replacing goals: \(error)")
+        }
     }
 
     func deleteCustomGoal(id: UUID) {
@@ -419,6 +538,15 @@ final class PinpointDatabase {
             value = columnText(statement, 0)
         }
         return value
+    }
+
+    private func saveJSON<Value: Encodable>(_ value: Value, key: String) {
+        guard let data = try? JSONEncoder().encode(value),
+              let json = String(data: data, encoding: .utf8) else { return }
+        try? execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?);",
+            bindings: [.text(key), .text(json)]
+        )
     }
 
     private func bind(_ values: [SQLiteValue], to statement: OpaquePointer?) {

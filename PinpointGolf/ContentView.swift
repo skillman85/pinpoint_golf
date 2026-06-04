@@ -8,6 +8,8 @@ struct ContentView: View {
     @StateObject private var courseFavorites = CourseFavorites()
     @StateObject private var goalArchive = GoalArchive()
     @StateObject private var clubYardages = ClubYardageStore()
+    @StateObject private var handicapHistory = HandicapHistoryStore()
+    @StateObject private var scorecardStore = CourseScorecardStore()
     @State private var selectedTab: Tab = .home
     @State private var selectedCourse = CourseDatabase.courses[0]
     @State private var selectedTee = CourseDatabase.courses[0].tees[0]
@@ -66,6 +68,9 @@ struct ContentView: View {
                     discardRound: discardCurrentRound,
                     deleteRound: { round in
                         roundArchive.delete(roundID: round.id)
+                    },
+                    updateRound: { round in
+                        roundArchive.update(round)
                     }
                 )
         case .yardages:
@@ -78,9 +83,12 @@ struct ContentView: View {
             SettingsView(
                 playerSettings: playerSettings,
                 savedRounds: roundArchive.rounds,
+                roundArchive: roundArchive,
                 courseFavorites: courseFavorites,
                 goalArchive: goalArchive,
-                clubYardages: clubYardages
+                clubYardages: clubYardages,
+                handicapHistory: handicapHistory,
+                scorecardStore: scorecardStore
             )
         }
     }
@@ -101,6 +109,7 @@ struct ContentView: View {
 
     private func saveReviewedRound() {
         roundArchive.save(course: selectedCourse, tee: selectedTee, handicap: roundHandicap, entries: entries)
+        handicapHistory.record(roundHandicap)
         isRoundActive = false
         isRoundFlowPresented = false
         isRoundReviewPresented = false
@@ -171,7 +180,7 @@ struct ContentView: View {
         guard !isRoundActive,
               let data = UserDefaults.standard.data(forKey: activeRoundDraftKey),
               let draft = try? JSONDecoder().decode(ActiveRoundDraft.self, from: data),
-              let course = CourseDatabase.courses.first(where: { $0.favoriteKey == draft.courseKey }),
+              let course = availableCourses.first(where: { $0.favoriteKey == draft.courseKey }),
               let tee = course.tees.first(where: { $0.name == draft.teeName })
         else {
             return
@@ -193,6 +202,20 @@ struct ContentView: View {
 
     private func clearActiveRoundDraft() {
         UserDefaults.standard.removeObject(forKey: activeRoundDraftKey)
+    }
+
+    private var availableCourses: [GolfCourse] {
+        scorecardStore.courses(from: CourseDatabase.courses)
+    }
+
+    private func refreshSelectedCourseFromOverrides() {
+        guard let updatedCourse = availableCourses.first(where: { $0.favoriteKey == selectedCourse.favoriteKey }) else { return }
+        selectedCourse = updatedCourse
+        if let updatedTee = updatedCourse.tees.first(where: { $0.name == selectedTee.name }) {
+            selectedTee = updatedTee
+        } else if let firstTee = updatedCourse.tees.first {
+            selectedTee = firstTee
+        }
     }
 }
 
@@ -280,7 +303,10 @@ extension ContentView {
                         selectedCourse: $selectedCourse,
                         selectedTee: $selectedTee,
                         roundHandicap: $roundHandicap,
-                        courseFavorites: courseFavorites
+                        courseFavorites: courseFavorites,
+                        scorecardStore: scorecardStore,
+                        courses: availableCourses,
+                        refreshSelectedCourse: refreshSelectedCourseFromOverrides
                     ) {
                         beginRound()
                     }
@@ -350,6 +376,7 @@ struct HomeView: View {
     let startRound: () -> Void
     let discardRound: () -> Void
     let deleteRound: (SavedRound) -> Void
+    let updateRound: (SavedRound) -> Void
     @State private var selectedRound: SavedRound?
     @State private var showDiscardRoundAlert = false
 
@@ -395,7 +422,7 @@ struct HomeView: View {
             .padding(.bottom, 20)
         }
         .sheet(item: $selectedRound) { round in
-            SavedRoundDetailView(round: round, currentHandicap: currentHandicap)
+            SavedRoundDetailView(round: round, currentHandicap: currentHandicap, updateRound: updateRound)
         }
         .alert("Delete current round?", isPresented: $showDiscardRoundAlert) {
             Button("Keep Round", role: .cancel) { }
@@ -928,8 +955,10 @@ struct SavedRoundRow: View {
 struct SavedRoundDetailView: View {
     let round: SavedRound
     let currentHandicap: Double
+    let updateRound: (SavedRound) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var showHoleBreakdown = false
+    @State private var isEditingRound = false
 
     var body: some View {
         NavigationStack {
@@ -1019,6 +1048,10 @@ struct SavedRoundDetailView: View {
             }
             .background(AppTheme.background.ignoresSafeArea())
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Edit") { isEditingRound = true }
+                        .foregroundStyle(AppTheme.mint)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
                         .foregroundStyle(AppTheme.mint)
@@ -1026,6 +1059,13 @@ struct SavedRoundDetailView: View {
             }
         }
         .preferredColorScheme(.light)
+        .sheet(isPresented: $isEditingRound) {
+            SavedRoundEditorView(round: round) { updatedRound in
+                updateRound(updatedRound)
+                isEditingRound = false
+                dismiss()
+            }
+        }
     }
 
     private var penalties: Int {
@@ -1071,6 +1111,250 @@ struct SavedRoundDetailView: View {
             return "No birdies recorded, with \(round.doublesOrWorse) double\(round.doublesOrWorse == 1 ? "" : "s") or worse. Reducing those big numbers is the quickest scoring gain."
         }
         return "You avoided big numbers and made \(round.pars) par\(round.pars == 1 ? "" : "s")."
+    }
+}
+
+struct SavedRoundEditorView: View {
+    let round: SavedRound
+    let saveRound: (SavedRound) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var handicapText: String
+    @State private var holes: [EditableSavedHole]
+
+    init(round: SavedRound, saveRound: @escaping (SavedRound) -> Void) {
+        self.round = round
+        self.saveRound = saveRound
+        _handicapText = State(initialValue: round.handicap.map { String(format: "%.1f", $0) } ?? "")
+        _holes = State(initialValue: round.holes.map(EditableSavedHole.init))
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    HeaderBlock(title: "Edit Round", subtitle: "\(round.courseName) - \(round.teeName) tees")
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Handicap Used")
+                            .font(.system(.caption, design: .rounded).weight(.heavy))
+                            .foregroundStyle(AppTheme.softText)
+                        TextField("No handicap", text: $handicapText)
+                            .keyboardType(.decimalPad)
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.ink)
+                            .padding(14)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                    }
+                    .padding(16)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+
+                    VStack(spacing: 8) {
+                        ForEach($holes) { $hole in
+                            EditableHoleRow(hole: $hole)
+                        }
+                    }
+                }
+                .padding(20)
+                .padding(.bottom, 20)
+            }
+            .background(AppTheme.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(AppTheme.mint)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        saveRound(editedRound)
+                    }
+                    .fontWeight(.bold)
+                    .foregroundStyle(AppTheme.mint)
+                }
+            }
+        }
+        .preferredColorScheme(.light)
+    }
+
+    private var editedRound: SavedRound {
+        SavedRound(
+            id: round.id,
+            date: round.date,
+            courseName: round.courseName,
+            location: round.location,
+            teeName: round.teeName,
+            teeMarkerColor: round.teeMarkerColor,
+            teeYards: round.teeYards,
+            teeRating: round.teeRating,
+            teeSlope: round.teeSlope,
+            handicap: Double(handicapText.replacingOccurrences(of: ",", with: ".")),
+            holes: holes.map { $0.savedHole }
+        )
+    }
+}
+
+struct EditableSavedHole: Identifiable {
+    let id: UUID
+    let holeNumber: Int
+    let par: Int
+    let yards: Int
+    let strokeIndex: Int
+    var score: Int
+    var putts: Int
+    var fairway: MissDirection
+    var green: MissDirection
+    let teeClub: TeeClub?
+    let approachRange: ApproachRange?
+    let firstPuttDistance: FirstPuttDistance?
+    var penalties: Int
+    let penaltyType: PenaltyType?
+    let bunker: Bool?
+    let upAndDown: Bool?
+    let sandSave: Bool?
+    let recovery: Bool?
+    let note: String
+
+    init(hole: SavedHoleEntry) {
+        id = hole.id
+        holeNumber = hole.holeNumber
+        par = hole.par
+        yards = hole.yards
+        strokeIndex = hole.strokeIndex
+        score = hole.score
+        putts = hole.putts
+        fairway = hole.fairway
+        green = hole.green
+        teeClub = hole.teeClub
+        approachRange = hole.approachRange
+        firstPuttDistance = hole.firstPuttDistance
+        penalties = hole.penalties
+        penaltyType = hole.penaltyType
+        bunker = hole.bunker
+        upAndDown = hole.upAndDown
+        sandSave = hole.sandSave
+        recovery = hole.recovery
+        note = hole.note
+    }
+
+    var savedHole: SavedHoleEntry {
+        SavedHoleEntry(
+            id: id,
+            holeNumber: holeNumber,
+            par: par,
+            yards: yards,
+            strokeIndex: strokeIndex,
+            score: score,
+            putts: putts,
+            fairway: fairway,
+            green: green,
+            teeClub: teeClub,
+            approachRange: approachRange,
+            firstPuttDistance: firstPuttDistance,
+            penalties: penalties,
+            penaltyType: penaltyType,
+            bunker: bunker,
+            upAndDown: upAndDown,
+            sandSave: sandSave,
+            recovery: recovery,
+            note: note
+        )
+    }
+}
+
+struct EditableHoleRow: View {
+    @Binding var hole: EditableSavedHole
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Hole \(hole.holeNumber)")
+                    .font(.system(.headline, design: .rounded).weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text("Par \(hole.par) - SI \(hole.strokeIndex)")
+                    .font(.system(.caption, design: .rounded).weight(.bold))
+                    .foregroundStyle(AppTheme.softText)
+            }
+
+            HStack(spacing: 8) {
+                StepperMini(title: "Score", value: $hole.score, range: 1...12, accent: AppTheme.gold)
+                StepperMini(title: "Putts", value: $hole.putts, range: 0...6, accent: AppTheme.mint)
+                StepperMini(title: "Pen", value: $hole.penalties, range: 0...4, accent: AppTheme.gold)
+            }
+
+            HStack(spacing: 8) {
+                StatMenu(title: "Fairway", selection: $hole.fairway, choices: [.notTracked, .hit, .left, .right])
+                StatMenu(title: "GIR", selection: $hole.green, choices: [.notTracked, .hit, .left, .right, .short, .long])
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+    }
+}
+
+struct StepperMini: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    let accent: Color
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+            HStack(spacing: 8) {
+                Button { value = max(range.lowerBound, value - 1) } label: {
+                    Image(systemName: "minus")
+                }
+                Text("\(value)")
+                    .font(.system(.headline, design: .rounded).weight(.bold))
+                    .foregroundStyle(accent)
+                    .frame(width: 26)
+                Button { value = min(range.upperBound, value + 1) } label: {
+                    Image(systemName: "plus")
+                }
+            }
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(AppTheme.ink)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+    }
+}
+
+struct StatMenu: View {
+    let title: String
+    @Binding var selection: MissDirection
+    let choices: [MissDirection]
+
+    var body: some View {
+        Menu {
+            ForEach(choices) { choice in
+                Button(choice.rawValue) {
+                    selection = choice
+                }
+            }
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.softText)
+                    Text(selection.rawValue)
+                        .font(.system(.caption, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                }
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AppTheme.softText)
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+        }
     }
 }
 
@@ -1167,9 +1451,13 @@ struct NewRoundSetupView: View {
     @Binding var selectedTee: TeeBox
     @Binding var roundHandicap: Double
     @ObservedObject var courseFavorites: CourseFavorites
+    @ObservedObject var scorecardStore: CourseScorecardStore
+    let courses: [GolfCourse]
+    let refreshSelectedCourse: () -> Void
     let startRound: () -> Void
 
     @StateObject private var courseSearch = CourseSearchViewModel()
+    @State private var editingCourse: GolfCourse?
     @State private var entryMode: NewRoundEntryMode = .database
     @State private var roundHandicapText = ""
     @State private var searchText = ""
@@ -1209,6 +1497,15 @@ struct NewRoundSetupView: View {
         }
         .onAppear {
             syncRoundHandicapText()
+        }
+        .sheet(item: $editingCourse) { course in
+            CourseScorecardEditorView(
+                course: course,
+                existingOverride: scorecardStore.override(for: course)
+            ) { override in
+                scorecardStore.save(override)
+                refreshSelectedCourse()
+            }
         }
     }
 
@@ -1337,6 +1634,7 @@ struct NewRoundSetupView: View {
                     isFavorite: courseFavorites.isFavorite(course),
                     toggleFavorite: { courseFavorites.toggle(course) },
                     startRound: startRound,
+                    editScorecard: { editingCourse = course },
                     setupScorecard: prefillManualScorecard
                 )
             }
@@ -1414,7 +1712,7 @@ struct NewRoundSetupView: View {
     }
 
     private var filteredCourses: [GolfCourse] {
-        let sourceCourses = courseSearch.results.isEmpty ? CourseDatabase.courses : courseSearch.results
+        let sourceCourses = courseSearch.results.isEmpty ? courses : courseSearch.results
         let term = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let filtered = term.isEmpty ? sourceCourses : sourceCourses.filter {
             $0.name.lowercased().contains(term) || $0.location.lowercased().contains(term)
@@ -1509,6 +1807,7 @@ struct CourseSetupCard: View {
     let isFavorite: Bool
     let toggleFavorite: () -> Void
     let startRound: () -> Void
+    let editScorecard: () -> Void
     let setupScorecard: (GolfCourse) -> Void
 
     var body: some View {
@@ -1599,6 +1898,19 @@ struct CourseSetupCard: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
             }
 
+            Button(action: editScorecard) {
+                HStack {
+                    Image(systemName: "slider.horizontal.3")
+                    Text("Edit Scorecard")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                }
+                .font(.system(.subheadline, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                .padding(13)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+            }
+
             Button {
                 if course.hasVerifiedScorecard {
                     if !isCourseSelected {
@@ -1646,6 +1958,171 @@ struct CourseSetupCard: View {
 
     private func isSelected(_ tee: TeeBox) -> Bool {
         isCourseSelected && selectedTee == tee
+    }
+}
+
+struct CourseScorecardEditorView: View {
+    let saveOverride: (CourseScorecardOverride) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var override: CourseScorecardOverride
+    @State private var selectedTeeIndex = 0
+
+    init(course: GolfCourse, existingOverride: CourseScorecardOverride?, saveOverride: @escaping (CourseScorecardOverride) -> Void) {
+        self.saveOverride = saveOverride
+        _override = State(initialValue: existingOverride ?? CourseScorecardOverride(course: course))
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    HeaderBlock(title: "Edit Scorecard", subtitle: override.name)
+
+                    if !override.tees.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(override.tees.indices, id: \.self) { index in
+                                    Button {
+                                        selectedTeeIndex = index
+                                    } label: {
+                                        Text(override.tees[index].name)
+                                            .font(.system(.subheadline, design: .rounded).weight(.bold))
+                                            .foregroundStyle(selectedTeeIndex == index ? .white : AppTheme.ink)
+                                            .padding(.horizontal, 14)
+                                            .frame(height: 40)
+                                            .background(RoundedRectangle(cornerRadius: 8).fill(selectedTeeIndex == index ? AppTheme.mint : AppTheme.subtleFill))
+                                    }
+                                }
+                            }
+                        }
+
+                        teeEditor
+                    }
+                }
+                .padding(20)
+                .padding(.bottom, 20)
+            }
+            .background(AppTheme.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(AppTheme.mint)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        recalculateSelectedTeeTotals()
+                        saveOverride(override)
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                    .foregroundStyle(AppTheme.mint)
+                }
+            }
+        }
+        .preferredColorScheme(.light)
+    }
+
+    private var teeEditor: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                IntEditField(title: "Slope", value: $override.tees[selectedTeeIndex].slope)
+                DoubleEditField(title: "Rating", value: $override.tees[selectedTeeIndex].rating)
+                IntEditField(title: "Par", value: $override.tees[selectedTeeIndex].par)
+            }
+
+            VStack(spacing: 8) {
+                HStack {
+                    Text("Hole").frame(width: 42, alignment: .leading)
+                    Text("Par").frame(width: 54, alignment: .leading)
+                    Text("Yards").frame(width: 76, alignment: .leading)
+                    Text("SI").frame(width: 54, alignment: .leading)
+                    Spacer()
+                }
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+
+                ForEach($override.tees[selectedTeeIndex].holes) { $hole in
+                    HStack(spacing: 9) {
+                        Text("\(hole.number)")
+                            .font(.system(.caption, design: .rounded).weight(.bold))
+                            .foregroundStyle(AppTheme.ink)
+                            .frame(width: 42, alignment: .leading)
+                        IntEditField(title: "", value: $hole.par)
+                            .frame(width: 54)
+                        IntEditField(title: "", value: $hole.yards)
+                            .frame(width: 76)
+                        IntEditField(title: "", value: $hole.strokeIndex)
+                            .frame(width: 54)
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        }
+    }
+
+    private func recalculateSelectedTeeTotals() {
+        guard override.tees.indices.contains(selectedTeeIndex) else { return }
+        override.tees[selectedTeeIndex].par = override.tees[selectedTeeIndex].holes.reduce(0) { $0 + $1.par }
+        override.tees[selectedTeeIndex].yards = override.tees[selectedTeeIndex].holes.reduce(0) { $0 + $1.yards }
+    }
+}
+
+struct IntEditField: View {
+    let title: String
+    @Binding var value: Int
+
+    private var text: Binding<String> {
+        Binding(
+            get: { "\(value)" },
+            set: { value = Int($0.filter(\.isNumber)) ?? 0 }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: title.isEmpty ? 0 : 6) {
+            if !title.isEmpty {
+                Text(title)
+                    .font(.system(.caption2, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+            }
+            TextField("0", text: text)
+                .keyboardType(.numberPad)
+                .multilineTextAlignment(.center)
+                .font(.system(.caption, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                .padding(.vertical, 9)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+        }
+    }
+}
+
+struct DoubleEditField: View {
+    let title: String
+    @Binding var value: Double
+
+    private var text: Binding<String> {
+        Binding(
+            get: { String(format: "%.1f", value) },
+            set: { value = Double($0.replacingOccurrences(of: ",", with: ".")) ?? value }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+            TextField("0.0", text: text)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.center)
+                .font(.system(.caption, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                .padding(.vertical, 9)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+        }
     }
 }
 
@@ -2446,6 +2923,8 @@ struct InsightsView: View {
 
                 InsightHero(snapshot: snapshot)
 
+                RoundTrendSection(rounds: savedRounds)
+
                 VStack(spacing: 12) {
                     InsightRow(icon: "flag.fill", title: "Scoring", value: snapshot.scoreToParLabel, detail: scoringDetail(for: snapshot))
                     InsightRow(icon: "scope", title: "Approach Play", value: "\(snapshot.girPercent)% GIR", detail: greenDetail(for: snapshot))
@@ -2703,7 +3182,9 @@ struct PinpointBackupDocument: FileDocument {
         guard let data = configuration.file.regularFileContents else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        backup = try JSONDecoder().decode(PinpointBackup.self, from: data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        backup = try decoder.decode(PinpointBackup.self, from: data)
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
@@ -2717,12 +3198,19 @@ struct PinpointBackupDocument: FileDocument {
 struct SettingsView: View {
     @ObservedObject var playerSettings: PlayerSettings
     let savedRounds: [SavedRound]
+    @ObservedObject var roundArchive: RoundArchive
     @ObservedObject var courseFavorites: CourseFavorites
     @ObservedObject var goalArchive: GoalArchive
     @ObservedObject var clubYardages: ClubYardageStore
+    @ObservedObject var handicapHistory: HandicapHistoryStore
+    @ObservedObject var scorecardStore: CourseScorecardStore
     @State private var handicapText = ""
     @State private var backupDocument: PinpointBackupDocument?
     @State private var isExportingBackup = false
+    @State private var isImportingBackup = false
+    @State private var pendingBackup: PinpointBackup?
+    @State private var showRestoreConfirmation = false
+    @State private var restoreMessage: String?
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -2768,9 +3256,48 @@ struct SettingsView: View {
                         .font(.system(.caption, design: .rounded).weight(.medium))
                         .foregroundStyle(AppTheme.softText)
                         .lineSpacing(3)
+
+                    Button {
+                        handicapHistory.record(playerSettings.handicap)
+                    } label: {
+                        Label("Record Handicap Change", systemImage: "clock.badge.checkmark")
+                            .font(.system(.subheadline, design: .rounded).weight(.bold))
+                            .foregroundStyle(AppTheme.ink)
+                            .frame(maxWidth: .infinity)
+                            .padding(13)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                    }
                 }
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    SectionHeader(title: "Handicap History", actionTitle: handicapHistory.records.isEmpty ? nil : "\(handicapHistory.records.count) records")
+                    if handicapHistory.records.isEmpty {
+                        Text("Record a handicap change to start tracking movement over time.")
+                            .font(.system(.subheadline, design: .rounded).weight(.medium))
+                            .foregroundStyle(AppTheme.softText)
+                    } else {
+                        TrendLineChart(points: handicapHistory.records.reversed().map { TrendPoint(label: Self.shortDateFormatter.string(from: $0.date), value: $0.handicap) }, accent: AppTheme.gold)
+                            .frame(height: 92)
+                        ForEach(handicapHistory.records.prefix(4)) { record in
+                            HStack {
+                                Text(Self.longDateFormatter.string(from: record.date))
+                                    .font(.system(.caption, design: .rounded).weight(.bold))
+                                    .foregroundStyle(AppTheme.softText)
+                                Spacer()
+                                Text(String(format: "%.1f", record.handicap))
+                                    .font(.system(.headline, design: .rounded).weight(.bold))
+                                    .foregroundStyle(AppTheme.ink)
+                            }
+                            .padding(12)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                        }
+                    }
+                }
+                .padding(18)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
 
                 SectionHeader(title: "Stableford", actionTitle: savedRounds.isEmpty ? nil : "Saved rounds")
 
@@ -2843,6 +3370,27 @@ struct SettingsView: View {
                         .padding(15)
                         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mint))
                     }
+
+                    Button {
+                        isImportingBackup = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "square.and.arrow.down.fill")
+                            Text("Restore Backup")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                        }
+                        .font(.system(.headline, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                        .padding(15)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                    }
+
+                    if let restoreMessage {
+                        Text(restoreMessage)
+                            .font(.system(.caption, design: .rounded).weight(.semibold))
+                            .foregroundStyle(AppTheme.softText)
+                    }
                 }
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
@@ -2860,6 +3408,19 @@ struct SettingsView: View {
             contentType: .json,
             defaultFilename: "PinpointGolf-Backup"
         ) { _ in }
+        .fileImporter(isPresented: $isImportingBackup, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
+            importBackup(result)
+        }
+        .alert("Restore backup?", isPresented: $showRestoreConfirmation) {
+            Button("Cancel", role: .cancel) {
+                pendingBackup = nil
+            }
+            Button("Restore", role: .destructive) {
+                restorePendingBackup()
+            }
+        } message: {
+            Text("This will replace the local app data with the selected backup. Export your current data first if you want to keep a separate copy.")
+        }
     }
 
     private var bestStableford: String {
@@ -2902,9 +3463,55 @@ struct SettingsView: View {
             rounds: savedRounds,
             favoriteCourseKeys: Array(courseFavorites.favoriteKeys).sorted(),
             customGoals: goalArchive.customGoals,
-            clubYardages: clubYardages.clubs
+            clubYardages: clubYardages.clubs,
+            handicapHistory: handicapHistory.records,
+            courseScorecards: scorecardStore.overrides
         )
     }
+
+    private func importBackup(_ result: Result<[URL], Error>) {
+        do {
+            guard let url = try result.get().first else { return }
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if accessing { url.stopAccessingSecurityScopedResource() }
+            }
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            pendingBackup = try decoder.decode(PinpointBackup.self, from: data)
+            showRestoreConfirmation = true
+        } catch {
+            restoreMessage = "Backup import failed. Choose a Pinpoint Golf JSON backup."
+        }
+    }
+
+    private func restorePendingBackup() {
+        guard let backup = pendingBackup else { return }
+        playerSettings.replaceHandicap(backup.handicap)
+        syncHandicapText()
+        roundArchive.replace(with: backup.rounds)
+        courseFavorites.replace(with: Set(backup.favoriteCourseKeys))
+        goalArchive.replace(with: backup.customGoals)
+        clubYardages.replace(with: backup.clubYardages)
+        handicapHistory.replace(with: backup.handicapHistory ?? [])
+        scorecardStore.replace(with: backup.courseScorecards ?? [])
+        restoreMessage = "Backup restored: \(backup.rounds.count) rounds imported."
+        pendingBackup = nil
+    }
+
+    private static let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd MMM"
+        return formatter
+    }()
+
+    private static let longDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
 }
 
 struct GoalTemplate: Identifiable {
@@ -3688,6 +4295,121 @@ struct InsightRow: View {
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+    }
+}
+
+struct TrendPoint: Identifiable {
+    let id = UUID()
+    let label: String
+    let value: Double
+}
+
+struct RoundTrendSection: View {
+    let rounds: [SavedRound]
+
+    private var orderedRounds: [SavedRound] {
+        Array(rounds.sorted { $0.date < $1.date }.suffix(8))
+    }
+
+    var body: some View {
+        if orderedRounds.count >= 2 {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionHeader(title: "Trends", actionTitle: "last \(orderedRounds.count)")
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    TrendCard(title: "Score", points: points { Double($0.totalScore) }, accent: AppTheme.ink)
+                    TrendCard(title: "Stableford", points: points { Double($0.stablefordPoints ?? 0) }, accent: AppTheme.mint)
+                    TrendCard(title: "GIR", points: points { Double($0.greensInRegulation) }, accent: AppTheme.mint)
+                    TrendCard(title: "Fairways", points: points { Double($0.fairwaysHit) }, accent: AppTheme.ink)
+                    TrendCard(title: "Putts", points: points { Double($0.totalPutts) }, accent: AppTheme.gold)
+                    TrendCard(title: "Penalties", points: points { Double($0.penalties) }, accent: AppTheme.gold)
+                }
+            }
+        }
+    }
+
+    private func points(_ value: (SavedRound) -> Double) -> [TrendPoint] {
+        orderedRounds.map { round in
+            TrendPoint(label: Self.dateFormatter.string(from: round.date), value: value(round))
+        }
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd MMM"
+        return formatter
+    }()
+}
+
+struct TrendCard: View {
+    let title: String
+    let points: [TrendPoint]
+    let accent: Color
+
+    private var latestValue: String {
+        guard let value = points.last?.value else { return "-" }
+        return value == value.rounded() ? "\(Int(value))" : String(format: "%.1f", value)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title)
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .textCase(.uppercase)
+                Spacer()
+                Text(latestValue)
+                    .font(.system(.headline, design: .rounded).weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+            }
+            TrendLineChart(points: points, accent: accent)
+                .frame(height: 64)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+    }
+}
+
+struct TrendLineChart: View {
+    let points: [TrendPoint]
+    let accent: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            let values = points.map(\.value)
+            let minValue = values.min() ?? 0
+            let maxValue = values.max() ?? 1
+            let range = max(maxValue - minValue, 1)
+            let width = max(proxy.size.width, 1)
+            let height = max(proxy.size.height, 1)
+
+            ZStack(alignment: .bottomLeading) {
+                Path { path in
+                    guard points.count > 1 else { return }
+                    for index in points.indices {
+                        let x = CGFloat(index) / CGFloat(max(points.count - 1, 1)) * width
+                        let y = height - CGFloat((points[index].value - minValue) / range) * height
+                        if index == points.startIndex {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+                }
+                .stroke(accent, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+
+                ForEach(Array(points.enumerated()), id: \.element.id) { index, point in
+                    let x = CGFloat(index) / CGFloat(max(points.count - 1, 1)) * width
+                    let y = height - CGFloat((point.value - minValue) / range) * height
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 7, height: 7)
+                        .overlay(Circle().stroke(accent, lineWidth: 2))
+                        .position(x: x, y: y)
+                }
+            }
+        }
     }
 }
 

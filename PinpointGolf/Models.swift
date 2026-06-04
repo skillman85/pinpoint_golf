@@ -22,6 +22,122 @@ struct GolfCourse: Identifiable, Hashable {
     }
 }
 
+struct CourseScorecardOverride: Identifiable, Codable, Hashable {
+    var id: String { courseKey }
+    let courseKey: String
+    var name: String
+    var distance: String
+    var location: String
+    var tees: [CourseTeeOverride]
+    var updatedAt: Date
+
+    init(course: GolfCourse, updatedAt: Date = Date()) {
+        courseKey = course.favoriteKey
+        name = course.name
+        distance = course.distance
+        location = course.location
+        tees = course.tees.map(CourseTeeOverride.init)
+        self.updatedAt = updatedAt
+    }
+
+    func toGolfCourse() -> GolfCourse {
+        GolfCourse(
+            name: name,
+            distance: distance,
+            location: location,
+            tees: tees.map { $0.toTeeBox() },
+            hasVerifiedScorecard: true
+        )
+    }
+}
+
+struct CourseTeeOverride: Identifiable, Codable, Hashable {
+    var id: String { name }
+    var name: String
+    var markerColor: TeeMarkerColor
+    var yards: Int
+    var par: Int
+    var slope: Int
+    var rating: Double
+    var holes: [CourseHoleOverride]
+
+    init(tee: TeeBox) {
+        name = tee.name
+        markerColor = tee.markerColor
+        yards = tee.yards
+        par = tee.par
+        slope = tee.slope
+        rating = tee.rating
+        holes = tee.holes.map(CourseHoleOverride.init)
+    }
+
+    func toTeeBox() -> TeeBox {
+        TeeBox(
+            name: name,
+            markerColor: markerColor,
+            yards: yards,
+            par: par,
+            slope: slope,
+            rating: rating,
+            holes: holes.map { $0.toHole() }
+        )
+    }
+}
+
+struct CourseHoleOverride: Identifiable, Codable, Hashable {
+    var id: Int { number }
+    var number: Int
+    var par: Int
+    var yards: Int
+    var strokeIndex: Int
+
+    init(hole: Hole) {
+        number = hole.number
+        par = hole.par
+        yards = hole.yards
+        strokeIndex = hole.strokeIndex
+    }
+
+    func toHole() -> Hole {
+        Hole(number: number, par: par, yards: yards, strokeIndex: strokeIndex)
+    }
+}
+
+final class CourseScorecardStore: ObservableObject {
+    @Published private(set) var overrides: [CourseScorecardOverride]
+
+    private let database = PinpointDatabase.shared
+
+    init() {
+        overrides = database.loadCourseScorecardOverrides()
+    }
+
+    func courses(from baseCourses: [GolfCourse]) -> [GolfCourse] {
+        let overridesByKey = Dictionary(uniqueKeysWithValues: overrides.map { ($0.courseKey, $0) })
+        return baseCourses.map { course in
+            overridesByKey[course.favoriteKey]?.toGolfCourse() ?? course
+        }
+    }
+
+    func override(for course: GolfCourse) -> CourseScorecardOverride? {
+        overrides.first { $0.courseKey == course.favoriteKey }
+    }
+
+    func save(_ override: CourseScorecardOverride) {
+        var updated = override
+        updated.updatedAt = Date()
+        overrides.removeAll { $0.courseKey == updated.courseKey }
+        overrides.append(updated)
+        overrides.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        database.saveCourseScorecardOverrides(overrides)
+    }
+
+    func replace(with restored: [CourseScorecardOverride]) {
+        overrides = restored
+        database.saveCourseScorecardOverrides(restored)
+    }
+}
+
 final class CourseFavorites: ObservableObject {
     @Published private(set) var favoriteKeys: Set<String>
 
@@ -51,6 +167,11 @@ final class CourseFavorites: ObservableObject {
         } else {
             favoriteKeys.insert(course.favoriteKey)
         }
+        persist()
+    }
+
+    func replace(with keys: Set<String>) {
+        favoriteKeys = keys
         persist()
     }
 
@@ -353,6 +474,14 @@ struct PinpointBackup: Codable {
     let favoriteCourseKeys: [String]
     let customGoals: [CustomGoal]
     let clubYardages: [ClubYardage]
+    let handicapHistory: [HandicapRecord]?
+    let courseScorecards: [CourseScorecardOverride]?
+}
+
+struct HandicapRecord: Identifiable, Codable, Hashable {
+    let id: UUID
+    let date: Date
+    let handicap: Double
 }
 
 final class GoalArchive: ObservableObject {
@@ -383,6 +512,11 @@ final class GoalArchive: ObservableObject {
         customGoals.removeAll { $0.id == goal.id }
         database.deleteCustomGoal(id: goal.id)
     }
+
+    func replace(with goals: [CustomGoal]) {
+        customGoals = goals.sorted { $0.createdAt > $1.createdAt }
+        database.replaceCustomGoals(customGoals)
+    }
 }
 
 final class PlayerSettings: ObservableObject {
@@ -404,6 +538,34 @@ final class PlayerSettings: ObservableObject {
             handicap = migratedHandicap
             database.saveHandicap(migratedHandicap)
         }
+    }
+
+    func replaceHandicap(_ handicap: Double) {
+        self.handicap = min(54, max(0, handicap))
+    }
+}
+
+final class HandicapHistoryStore: ObservableObject {
+    @Published private(set) var records: [HandicapRecord]
+
+    private let database = PinpointDatabase.shared
+
+    init() {
+        records = database.loadHandicapHistory()
+    }
+
+    func record(_ handicap: Double) {
+        let rounded = (min(54, max(0, handicap)) * 10).rounded() / 10
+        if let latest = records.first, latest.handicap == rounded {
+            return
+        }
+        records.insert(HandicapRecord(id: UUID(), date: Date(), handicap: rounded), at: 0)
+        database.saveHandicapHistory(records)
+    }
+
+    func replace(with restored: [HandicapRecord]) {
+        records = restored.sorted { $0.date > $1.date }
+        database.saveHandicapHistory(records)
     }
 }
 
@@ -457,6 +619,10 @@ final class ClubYardageStore: ObservableObject {
         let newDefaultIDs = Set(defaultClubs.map(\.id))
         merged.append(contentsOf: stored.filter { !newDefaultIDs.contains($0.id) })
         return merged
+    }
+
+    func replace(with restored: [ClubYardage]) {
+        clubs = Self.mergedDefaults(with: restored)
     }
 }
 
@@ -526,6 +692,18 @@ final class RoundArchive: ObservableObject {
 
         rounds.insert(savedRound, at: 0)
         database.saveRound(savedRound)
+    }
+
+    func update(_ round: SavedRound) {
+        guard let index = rounds.firstIndex(where: { $0.id == round.id }) else { return }
+        rounds[index] = round
+        rounds.sort { $0.date > $1.date }
+        database.saveRound(round)
+    }
+
+    func replace(with restored: [SavedRound]) {
+        rounds = restored.sorted { $0.date > $1.date }
+        database.replaceRounds(rounds)
     }
 
     func delete(roundID: UUID) {
