@@ -360,12 +360,13 @@ struct AppTheme {
     )
     static let panel = Color.white
     static let panelStrong = Color.white
-    static let subtleFill = Color(red: 0.97, green: 0.98, blue: 0.97)
+    static let subtleFill = Color(red: 0.965, green: 0.97, blue: 0.968)
     static let ink = Color(red: 0.07, green: 0.13, blue: 0.10)
     static let softText = Color(red: 0.37, green: 0.45, blue: 0.40)
     static let mint = Color(red: 0.02, green: 0.43, blue: 0.24)
     static let gold = Color(red: 0.72, green: 0.50, blue: 0.11)
-    static let border = Color(red: 0.88, green: 0.90, blue: 0.89)
+    static let border = Color(red: 0.88, green: 0.895, blue: 0.89)
+    static let shadow = Color.black.opacity(0.055)
 }
 
 struct HomeView: View {
@@ -382,7 +383,7 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 18) {
                 HomeHeader(hasSavedRounds: !savedRounds.isEmpty)
 
                 PerformanceOverview(rounds: savedRounds, currentHandicap: currentHandicap)
@@ -418,7 +419,8 @@ struct HomeView: View {
 
                 CourseFormSection(rounds: savedRounds)
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.top, 10)
             .padding(.bottom, 20)
         }
         .sheet(item: $selectedRound) { round in
@@ -459,7 +461,7 @@ struct HomeHeader: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Pinpoint Golf")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.ink)
                     Text("Good afternoon, James")
                         .font(.system(.subheadline, design: .rounded).weight(.medium))
@@ -478,7 +480,7 @@ struct HomeHeader: View {
                 .foregroundStyle(AppTheme.softText)
                 .lineSpacing(3)
         }
-        .padding(.top, 16)
+        .padding(.top, 8)
     }
 }
 
@@ -495,7 +497,7 @@ struct PerformanceOverview: View {
                         .foregroundStyle(AppTheme.mint)
                     HStack(alignment: .lastTextBaseline, spacing: 8) {
                         Text(scoringAverage)
-                            .font(.system(size: 54, weight: .bold, design: .rounded))
+                            .font(.system(size: 50, weight: .bold, design: .rounded))
                             .foregroundStyle(AppTheme.ink)
                         Text(sampleLabel)
                             .font(.system(.headline, design: .rounded).weight(.semibold))
@@ -508,7 +510,7 @@ struct PerformanceOverview: View {
                         .font(.system(.caption, design: .rounded).weight(.bold))
                         .foregroundStyle(AppTheme.softText)
                     Text(String(format: "%.1f", currentHandicap))
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.gold)
                 }
             }
@@ -525,9 +527,10 @@ struct PerformanceOverview: View {
                 MiniMetric(title: "Doubles+", value: "\(doublesOrWorse)")
             }
         }
-        .padding(20)
+        .padding(18)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelStrong))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
+        .shadow(color: AppTheme.shadow, radius: 12, x: 0, y: 6)
     }
 
     private var scoringAverage: String {
@@ -714,8 +717,6 @@ struct StartRoundPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionHeader(title: "Start", actionTitle: nil)
-
             Button(action: startRound) {
                 HStack(spacing: 14) {
                     Image(systemName: "plus")
@@ -736,9 +737,10 @@ struct StartRoundPanel: View {
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(AppTheme.softText)
                 }
-                .padding(16)
+                .padding(18)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.mint.opacity(0.3)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.mint.opacity(0.22)))
+                .shadow(color: AppTheme.shadow, radius: 12, x: 0, y: 6)
             }
 
             HStack(spacing: 10) {
@@ -754,7 +756,7 @@ struct StartRoundPanel: View {
                 }
                 .foregroundStyle(Color.red)
                 .padding(.vertical, 12)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.08)))
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.06)))
             }
         }
     }
@@ -783,7 +785,7 @@ struct QuickStartButton: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
         }
     }
 }
@@ -877,6 +879,7 @@ struct EmptyRoundsCard: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
     }
 }
 
@@ -892,13 +895,13 @@ struct SavedRoundRow: View {
                 HStack(spacing: 14) {
                     VStack(spacing: 3) {
                         Text("\(round.totalScore)")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
                             .foregroundStyle(AppTheme.ink)
                         Text(scoreToParLabel)
                             .font(.system(.caption, design: .rounded).weight(.heavy))
                             .foregroundStyle(scoreToPar <= 4 ? AppTheme.mint : AppTheme.gold)
                     }
-                    .frame(width: 60, height: 64)
+                    .frame(width: 58, height: 60)
                     .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
 
                     VStack(alignment: .leading, spacing: 5) {
@@ -936,6 +939,7 @@ struct SavedRoundRow: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
     }
 
     private var scoreToPar: Int {
@@ -2528,14 +2532,14 @@ struct LiveRoundView: View {
             set: { entries[currentHoleIndex] = $0 }
         )
 
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(selectedCourse.name)
                         .font(.system(.subheadline, design: .rounded).weight(.semibold))
                         .foregroundStyle(AppTheme.mint)
                     Text("Hole \(entry.wrappedValue.hole.number)")
-                        .font(.system(size: 38, weight: .bold, design: .rounded))
+                        .font(.system(size: 40, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.ink)
                 }
                 Spacer()
@@ -2550,13 +2554,13 @@ struct LiveRoundView: View {
                 .foregroundStyle(AppTheme.softText)
             }
             .padding(.horizontal, 20)
-            .padding(.top, 16)
+            .padding(.top, 12)
 
             RunningRoundStrip(gross: currentGross, stableford: currentStableford)
-            .padding(.horizontal, 20)
+                .padding(.horizontal, 20)
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 14) {
+                VStack(spacing: 12) {
                     StepperPanel(title: "Score", value: entry.score, range: 0...12, accent: AppTheme.gold, blankWhenZero: true)
                     StepperPanel(title: "Putts", value: entry.putts, range: 0...6, accent: AppTheme.mint)
 
@@ -2568,7 +2572,7 @@ struct LiveRoundView: View {
                     )
                 }
                 .padding(.horizontal, 20)
-                .padding(.bottom, 4)
+                .padding(.bottom, 8)
             }
 
             Spacer(minLength: 0)
@@ -2610,7 +2614,7 @@ struct LiveRoundView: View {
             }
             .foregroundStyle(Color.red)
             .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+            .padding(.bottom, 16)
         }
         .alert("Scores missing", isPresented: $showIncompleteScoreAlert) {
             Button("OK", role: .cancel) { }
@@ -3950,15 +3954,16 @@ struct StepperPanel: View {
             }
             .buttonStyle(CounterButtonStyle())
             Text(blankWhenZero && value == 0 ? "-" : "\(value)")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .font(.system(size: 34, weight: .bold, design: .rounded))
                 .foregroundStyle(blankWhenZero && value == 0 ? AppTheme.softText : accent)
-                .frame(width: 48)
+                .frame(width: 54)
             Button { value = min(range.upperBound, value + 1) } label: {
                 Image(systemName: "plus")
             }
             .buttonStyle(CounterButtonStyle())
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
     }
@@ -4106,8 +4111,9 @@ struct QuickStatsPanel: View {
                 }
             }
         }
-        .padding(16)
+        .padding(14)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
     }
 }
 
@@ -4127,7 +4133,9 @@ struct RunningRoundStrip: View {
 
             Spacer()
         }
-        .padding(.top, 2)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
     }
 }
 
@@ -4142,7 +4150,7 @@ struct RunningRoundValue: View {
                 .font(.system(.caption, design: .rounded).weight(.bold))
                 .foregroundStyle(AppTheme.softText)
             Text(value)
-                .font(.system(size: 21, weight: .bold, design: .rounded))
+                .font(.system(size: 20, weight: .bold, design: .rounded))
                 .foregroundStyle(accent)
         }
     }
@@ -4171,7 +4179,7 @@ struct ShotOutcomePanel: View {
                     .font(.system(.caption, design: .rounded).weight(.bold))
                     .foregroundStyle(selection == .hit ? .white : AppTheme.ink)
                     .padding(.horizontal, 12)
-                    .frame(height: 36)
+                    .frame(height: 34)
                     .background(RoundedRectangle(cornerRadius: 8).fill(selection == .hit ? AppTheme.mint : AppTheme.subtleFill))
                 }
             }
@@ -4188,7 +4196,7 @@ struct ShotOutcomePanel: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.8)
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 38)
+                                .frame(height: 36)
                                 .background(RoundedRectangle(cornerRadius: 8).fill(selection == choice ? AppTheme.gold.opacity(0.9) : AppTheme.subtleFill))
                         }
                     }
@@ -4710,7 +4718,7 @@ struct CounterButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(size: 16, weight: .bold))
             .foregroundStyle(AppTheme.ink)
-            .frame(width: 42, height: 42)
+            .frame(width: 40, height: 40)
             .background(Circle().fill(configuration.isPressed ? AppTheme.border : AppTheme.subtleFill))
     }
 }
@@ -4722,7 +4730,7 @@ struct RoundActionStyle: ButtonStyle {
         configuration.label
             .font(.system(.headline, design: .rounded).weight(.bold))
             .foregroundStyle(isPrimary ? Color.white : AppTheme.ink)
-            .frame(height: 54)
+            .frame(height: 52)
             .background(RoundedRectangle(cornerRadius: 8).fill(isPrimary ? AppTheme.mint : AppTheme.subtleFill))
             .opacity(configuration.isPressed ? 0.82 : 1)
     }
