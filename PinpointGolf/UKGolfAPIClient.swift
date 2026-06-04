@@ -4,6 +4,7 @@ enum UKGolfAPIError: LocalizedError {
     case missingAPIKey
     case invalidResponse
     case unauthorized
+    case rateLimited
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +14,8 @@ enum UKGolfAPIError: LocalizedError {
             "UK Golf API returned an unexpected response."
         case .unauthorized:
             "UK Golf API rejected the RapidAPI key."
+        case .rateLimited:
+            "RapidAPI rate limit reached. Try again shortly."
         }
     }
 }
@@ -43,6 +46,38 @@ struct UKGolfAPIClient {
             }
         }
 
+        return courses
+    }
+
+    func searchCourses(queries: [String], limit: Int) async throws -> [GolfCourse] {
+        var courses: [GolfCourse] = []
+        var seenKeys = Set<String>()
+        var lastError: Error?
+
+        for query in queries {
+            do {
+                let matches = try await searchCourses(query: query)
+                for course in matches where !seenKeys.contains(course.favoriteKey) {
+                    courses.append(course)
+                    seenKeys.insert(course.favoriteKey)
+                    if courses.count >= limit {
+                        return courses
+                    }
+                }
+            } catch UKGolfAPIError.rateLimited {
+                throw UKGolfAPIError.rateLimited
+            } catch UKGolfAPIError.missingAPIKey {
+                throw UKGolfAPIError.missingAPIKey
+            } catch UKGolfAPIError.unauthorized {
+                throw UKGolfAPIError.unauthorized
+            } catch {
+                lastError = error
+            }
+        }
+
+        if courses.isEmpty, let lastError {
+            throw lastError
+        }
         return courses
     }
 
@@ -85,6 +120,9 @@ struct UKGolfAPIClient {
         }
         guard httpResponse.statusCode != 401 && httpResponse.statusCode != 403 else {
             throw UKGolfAPIError.unauthorized
+        }
+        guard httpResponse.statusCode != 429 else {
+            throw UKGolfAPIError.rateLimited
         }
         guard (200...299).contains(httpResponse.statusCode) else {
             throw UKGolfAPIError.invalidResponse

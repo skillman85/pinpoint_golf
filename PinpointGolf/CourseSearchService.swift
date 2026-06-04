@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import MapKit
 
 @MainActor
 final class CourseSearchViewModel: ObservableObject {
@@ -32,6 +33,8 @@ final class CourseSearchViewModel: ObservableObject {
             errorMessage = "RapidAPI key is missing. Falling back to saved courses."
         } catch UKGolfAPIError.unauthorized {
             errorMessage = "RapidAPI rejected the key. Falling back to saved courses."
+        } catch UKGolfAPIError.rateLimited {
+            errorMessage = "RapidAPI is rate limited. Try again shortly, or search by course name."
         } catch {
             errorMessage = "RapidAPI course search failed. Falling back to saved courses."
         }
@@ -52,14 +55,32 @@ final class CourseSearchViewModel: ObservableObject {
         defer { isSearching = false }
 
         do {
-            let place = try await locationProvider.currentSearchPlace()
-            locationSearchLabel = place
-            isSearching = false
-            await search(query: place)
+            let context = try await locationProvider.currentSearchContext()
+            locationSearchLabel = context.label
+
+            let nearbyNames = try await locationProvider.nearbyGolfCourseNames(near: context.location)
+            let courses = try await ukGolfAPI.searchCourses(queries: nearbyNames, limit: 10)
+            if !courses.isEmpty {
+                results = courses
+                return
+            }
+
+            let fallbackCourses = try await ukGolfAPI.searchCourses(query: context.label)
+            if !fallbackCourses.isEmpty {
+                results = fallbackCourses
+                return
+            }
+
+            results = searchBundledCourses(query: context.label)
+            if results.isEmpty {
+                errorMessage = "No verified scorecards found nearby. Try searching by course name."
+            }
         } catch CourseLocationError.permissionDenied {
             errorMessage = "Location permission is needed to search nearby courses. You can still search by town or county."
+        } catch UKGolfAPIError.rateLimited {
+            errorMessage = "RapidAPI is rate limited. Try again shortly, or search by course name."
         } catch {
-            errorMessage = "Could not read your current location. Search by town, city or county instead."
+            errorMessage = "Could not find nearby courses. Search by course name, town, city or county instead."
         }
     }
 
@@ -72,10 +93,16 @@ final class CourseSearchViewModel: ObservableObject {
     }
 }
 
+struct CourseSearchContext {
+    let location: CLLocation
+    let label: String
+}
+
 enum CourseLocationError: Error {
     case permissionDenied
     case noLocation
     case noPlacemark
+    case noNearbyCourses
 }
 
 final class CourseLocationProvider: NSObject, CLLocationManagerDelegate {
@@ -89,7 +116,7 @@ final class CourseLocationProvider: NSObject, CLLocationManagerDelegate {
         manager.desiredAccuracy = kCLLocationAccuracyKilometer
     }
 
-    func currentSearchPlace() async throws -> String {
+    func currentSearchContext() async throws -> CourseSearchContext {
         let location = try await currentLocation()
         let placemarks = try await CLGeocoder().reverseGeocodeLocation(location)
         guard let placemark = placemarks.first else {
@@ -108,7 +135,45 @@ final class CourseLocationProvider: NSObject, CLLocationManagerDelegate {
         guard let place = parts.first else {
             throw CourseLocationError.noPlacemark
         }
-        return place
+        return CourseSearchContext(location: location, label: place)
+    }
+
+    func nearbyGolfCourseNames(near location: CLLocation) async throws -> [String] {
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = "golf course"
+        request.resultTypes = .pointOfInterest
+        request.region = MKCoordinateRegion(
+            center: location.coordinate,
+            latitudinalMeters: 45_000,
+            longitudinalMeters: 45_000
+        )
+
+        let response = try await MKLocalSearch(request: request).start()
+        let names = response.mapItems
+            .sorted { lhs, rhs in
+                let lhsDistance = lhs.placemark.location?.distance(from: location) ?? .greatestFiniteMagnitude
+                let rhsDistance = rhs.placemark.location?.distance(from: location) ?? .greatestFiniteMagnitude
+                return lhsDistance < rhsDistance
+            }
+            .compactMap { item -> String? in
+                let name = item.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard !name.isEmpty else { return nil }
+                return name
+            }
+
+        var seenNames = Set<String>()
+        let uniqueNames = names.filter { name in
+            let key = name.lowercased()
+            guard !seenNames.contains(key) else { return false }
+            seenNames.insert(key)
+            return true
+        }
+        .prefix(8)
+
+        guard !uniqueNames.isEmpty else {
+            throw CourseLocationError.noNearbyCourses
+        }
+        return Array(uniqueNames)
     }
 
     private func currentLocation() async throws -> CLLocation {
