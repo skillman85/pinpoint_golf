@@ -54,7 +54,8 @@ struct GolfCourseAPIClient {
             throw GolfCourseAPIError.missingAPIKey
         }
 
-        var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        components?.path = path
         components?.queryItems = queryItems.isEmpty ? nil : queryItems
         guard let url = components?.url else {
             throw GolfCourseAPIError.invalidResponse
@@ -125,15 +126,22 @@ struct GolfCourseAPILocation: Decodable {
     let city: String?
     let state: String?
     let country: String?
+    let latitude: Double?
+    let longitude: Double?
 
     var displayName: String {
-        let parts = [city, state, country]
+        let parts = [city, countyOrState, country]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
         if !parts.isEmpty {
             return parts.joined(separator: ", ")
         }
         return address ?? "Verified scorecard"
+    }
+
+    private var countyOrState: String? {
+        guard let state, !state.isEmpty else { return nil }
+        return state
     }
 }
 
@@ -179,13 +187,19 @@ struct GolfCourseAPITeeBox: Decodable {
         }
 
         return TeeBox(
-            name: teeName?.isEmpty == false ? teeName! : "Tee",
+            name: cleanTeeName,
+            markerColor: TeeMarkerColor.inferred(from: cleanTeeName),
             yards: totalYards ?? mappedHoles.reduce(0) { $0 + $1.yards },
             par: parTotal ?? mappedHoles.reduce(0) { $0 + $1.par },
             slope: slopeRating ?? 0,
             rating: courseRating ?? 0,
             holes: mappedHoles
         )
+    }
+
+    private var cleanTeeName: String {
+        let cleaned = teeName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return cleaned.isEmpty ? "Tee" : cleaned
     }
 }
 

@@ -1591,7 +1591,7 @@ struct NewRoundSetupView: View {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(AppTheme.softText)
                 }
-                TextField("Search course, town or county", text: $searchText)
+                TextField("Course, town, city or county", text: $searchText)
                     .textInputAutocapitalization(.words)
                     .foregroundStyle(AppTheme.ink)
                     .submitLabel(.search)
@@ -1601,6 +1601,25 @@ struct NewRoundSetupView: View {
             }
             .padding(15)
             .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+
+            Button {
+                Task { await courseSearch.searchNearCurrentLocation() }
+            } label: {
+                HStack {
+                    Image(systemName: "location.fill")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Use Current Location")
+                            .font(.system(.subheadline, design: .rounded).weight(.bold))
+                        Text(courseSearch.locationSearchLabel.map { "Last searched near \($0)" } ?? "Find courses near your town or city")
+                            .font(.system(.caption, design: .rounded).weight(.medium))
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                }
+                .foregroundStyle(AppTheme.ink)
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+            }
 
             if courseSearch.isSearching {
                 HStack(spacing: 10) {
@@ -1722,9 +1741,9 @@ struct NewRoundSetupView: View {
 
     private var sectionTitle: String {
         if !courseSearch.results.isEmpty {
-            return "Course Results"
+            return "GolfCourseAPI Results"
         }
-        return courseFavorites.favoriteKeys.isEmpty ? "West Midlands Courses" : "Favourites First"
+        return courseFavorites.favoriteKeys.isEmpty ? "Saved Courses" : "Favourites First"
     }
 
     private var courseHandicapPreview: Int {
