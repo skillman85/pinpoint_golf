@@ -9,7 +9,6 @@ final class CourseSearchViewModel: ObservableObject {
     @Published private(set) var locationSearchLabel: String?
 
     private let ukGolfAPI = UKGolfAPIClient()
-    private let golfCourseAPI = GolfCourseAPIClient()
     private let locationProvider = CourseLocationProvider()
 
     func search(query: String) async {
@@ -30,27 +29,11 @@ final class CourseSearchViewModel: ObservableObject {
                 return
             }
         } catch UKGolfAPIError.missingAPIKey {
-            errorMessage = "RapidAPI key is missing. Trying GolfCourseAPI."
+            errorMessage = "RapidAPI key is missing. Falling back to saved courses."
         } catch UKGolfAPIError.unauthorized {
-            errorMessage = "RapidAPI rejected the key. Trying GolfCourseAPI."
+            errorMessage = "RapidAPI rejected the key. Falling back to saved courses."
         } catch {
-            errorMessage = "RapidAPI course search failed. Trying GolfCourseAPI."
-        }
-
-        do {
-            let courses = try await golfCourseAPI.searchCourses(query: trimmedQuery)
-            if !courses.isEmpty {
-                results = courses
-                return
-            }
-        } catch GolfCourseAPIError.missingAPIKey {
-            errorMessage = "GolfCourseAPI key is missing. Falling back to saved courses."
-        } catch GolfCourseAPIError.unauthorized {
-            errorMessage = "GolfCourseAPI rejected the key. Falling back to saved courses."
-        } catch DecodingError.dataCorrupted, DecodingError.keyNotFound, DecodingError.typeMismatch, DecodingError.valueNotFound {
-            errorMessage = "GolfCourseAPI returned scorecard data in an unexpected shape. Falling back to saved courses."
-        } catch {
-            errorMessage = "GolfCourseAPI search failed. Falling back to saved courses."
+            errorMessage = "RapidAPI course search failed. Falling back to saved courses."
         }
 
         let localMatches = searchBundledCourses(query: trimmedQuery)

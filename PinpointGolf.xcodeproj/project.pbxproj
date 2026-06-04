@@ -11,7 +11,6 @@
 		1A2B3C4D5E6F700000000102 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000002 /* ContentView.swift */; };
 		1A2B3C4D5E6F700000000103 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000003 /* Models.swift */; };
 		1A2B3C4D5E6F700000000104 /* CourseSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000007 /* CourseSearchService.swift */; };
-		1A2B3C4D5E6F700000000105 /* GolfCourseAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000008 /* GolfCourseAPIClient.swift */; };
 		1A2B3C4D5E6F700000000106 /* UKGolfAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */; };
 		1A2B3C4D5E6F700000000107 /* CourseDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */; };
 		1A2B3C4D5E6F700000000108 /* west_midlands_courses.json in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000011 /* west_midlands_courses.json */; };
@@ -29,7 +28,6 @@
 		1A2B3C4D5E6F700000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000006 /* PinpointGolf.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PinpointGolf.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A2B3C4D5E6F700000000007 /* CourseSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseSearchService.swift; sourceTree = "<group>"; };
-		1A2B3C4D5E6F700000000008 /* GolfCourseAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GolfCourseAPIClient.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UKGolfAPIClient.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseDatabase.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000011 /* west_midlands_courses.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Data/west_midlands_courses.json; sourceTree = "<group>"; };
@@ -66,7 +64,6 @@
 				1A2B3C4D5E6F700000000014 /* PinpointDatabase.swift */,
 				1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */,
 				1A2B3C4D5E6F700000000007 /* CourseSearchService.swift */,
-				1A2B3C4D5E6F700000000008 /* GolfCourseAPIClient.swift */,
 				1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */,
 				1A2B3C4D5E6F700000000011 /* west_midlands_courses.json */,
 				1A2B3C4D5E6F700000000004 /* Assets.xcassets */,
@@ -163,7 +160,6 @@
 				1A2B3C4D5E6F70000000010C /* PinpointDatabase.swift in Sources */,
 				1A2B3C4D5E6F700000000107 /* CourseDatabase.swift in Sources */,
 				1A2B3C4D5E6F700000000104 /* CourseSearchService.swift in Sources */,
-				1A2B3C4D5E6F700000000105 /* GolfCourseAPIClient.swift in Sources */,
 				1A2B3C4D5E6F700000000106 /* UKGolfAPIClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -296,7 +292,6 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = 3SN8VLC9JN;
 				GENERATE_INFOPLIST_FILE = NO;
-				GOLFCOURSE_API_KEY = AJQLVXIES36UMJZOPAQT3ZQN5M;
 				INFOPLIST_FILE = PinpointGolf/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -323,7 +318,6 @@
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = 3SN8VLC9JN;
 				GENERATE_INFOPLIST_FILE = NO;
-				GOLFCOURSE_API_KEY = AJQLVXIES36UMJZOPAQT3ZQN5M;
 				INFOPLIST_FILE = PinpointGolf/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (

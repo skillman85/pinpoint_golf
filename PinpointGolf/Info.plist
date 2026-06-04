@@ -16,8 +16,6 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>GolfCourseAPIKey</key>
-	<string>$(GOLFCOURSE_API_KEY)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Pinpoint Golf uses your approximate location to search for nearby golf courses.</string>
 	<key>UKGolfAPIKey</key>
