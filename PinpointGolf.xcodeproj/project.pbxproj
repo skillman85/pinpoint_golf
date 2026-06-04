@@ -13,7 +13,6 @@
 		1A2B3C4D5E6F700000000104 /* CourseSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000007 /* CourseSearchService.swift */; };
 		1A2B3C4D5E6F700000000106 /* UKGolfAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */; };
 		1A2B3C4D5E6F700000000107 /* CourseDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */; };
-		1A2B3C4D5E6F700000000108 /* west_midlands_courses.json in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000011 /* west_midlands_courses.json */; };
 		1A2B3C4D5E6F700000000109 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000012 /* LaunchScreen.storyboard */; };
 		1A2B3C4D5E6F70000000010A /* LaunchScreenImage.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000013 /* LaunchScreenImage.jpg */; };
 		1A2B3C4D5E6F70000000010B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000004 /* Assets.xcassets */; };
@@ -30,7 +29,6 @@
 		1A2B3C4D5E6F700000000007 /* CourseSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseSearchService.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UKGolfAPIClient.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseDatabase.swift; sourceTree = "<group>"; };
-		1A2B3C4D5E6F700000000011 /* west_midlands_courses.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Data/west_midlands_courses.json; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000012 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000013 /* LaunchScreenImage.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = LaunchScreenImage.jpg; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000014 /* PinpointDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinpointDatabase.swift; sourceTree = "<group>"; };
@@ -65,7 +63,6 @@
 				1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */,
 				1A2B3C4D5E6F700000000007 /* CourseSearchService.swift */,
 				1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */,
-				1A2B3C4D5E6F700000000011 /* west_midlands_courses.json */,
 				1A2B3C4D5E6F700000000004 /* Assets.xcassets */,
 				1A2B3C4D5E6F700000000012 /* LaunchScreen.storyboard */,
 				1A2B3C4D5E6F700000000013 /* LaunchScreenImage.jpg */,
@@ -143,7 +140,6 @@
 				1A2B3C4D5E6F70000000010B /* Assets.xcassets in Resources */,
 				1A2B3C4D5E6F700000000109 /* LaunchScreen.storyboard in Resources */,
 				1A2B3C4D5E6F70000000010A /* LaunchScreenImage.jpg in Resources */,
-				1A2B3C4D5E6F700000000108 /* west_midlands_courses.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
