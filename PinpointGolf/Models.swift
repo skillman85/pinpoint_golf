@@ -115,8 +115,35 @@ final class CourseScorecardStore: ObservableObject {
     func courses(from baseCourses: [GolfCourse]) -> [GolfCourse] {
         let overridesByKey = Dictionary(uniqueKeysWithValues: overrides.map { ($0.courseKey, $0) })
         return baseCourses.map { course in
-            overridesByKey[course.favoriteKey]?.toGolfCourse() ?? course
+            courseWithKnownStrokeIndexes(overridesByKey[course.favoriteKey]?.toGolfCourse() ?? course)
         }
+    }
+
+    func courseWithKnownStrokeIndexes(_ course: GolfCourse) -> GolfCourse {
+        guard course.needsStrokeIndexSource else {
+            return course
+        }
+
+        let trustedCourses = overrides.map { $0.toGolfCourse() } + CourseDatabase.courses
+        guard let trustedCourse = trustedCourses.first(where: { $0.canProvideStrokeIndexes(for: course) }) else {
+            return course
+        }
+
+        let tees = course.tees.map { tee in
+            guard tee.usesGeneratedStrokeIndexes,
+                  let trustedTee = trustedCourse.teeMatching(tee) else {
+                return tee
+            }
+            return tee.withStrokeIndexes(from: trustedTee)
+        }
+
+        return GolfCourse(
+            name: course.name,
+            distance: course.distance,
+            location: course.location,
+            tees: tees,
+            hasVerifiedScorecard: course.hasVerifiedScorecard
+        )
     }
 
     func override(for course: GolfCourse) -> CourseScorecardOverride? {
@@ -135,6 +162,83 @@ final class CourseScorecardStore: ObservableObject {
     func replace(with restored: [CourseScorecardOverride]) {
         overrides = restored
         database.saveCourseScorecardOverrides(restored)
+    }
+}
+
+private extension GolfCourse {
+    var needsStrokeIndexSource: Bool {
+        tees.contains { $0.usesGeneratedStrokeIndexes }
+    }
+
+    func canProvideStrokeIndexes(for importedCourse: GolfCourse) -> Bool {
+        scorecardMatchTokens.intersection(importedCourse.scorecardMatchTokens).isEmpty == false
+            && tees.contains { trustedTee in
+                importedCourse.tees.contains { importedTee in
+                    trustedTee.canProvideStrokeIndexes(for: importedTee)
+                }
+            }
+    }
+
+    func teeMatching(_ importedTee: TeeBox) -> TeeBox? {
+        tees.first { $0.canProvideStrokeIndexes(for: importedTee) }
+    }
+
+    var scorecardMatchTokens: Set<String> {
+        let cleaned = name
+            .lowercased()
+            .replacingOccurrences(of: "\\([^)]*\\)", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "[^a-z0-9]+", with: " ", options: .regularExpression)
+
+        let ignoredWords: Set<String> = [
+            "and", "club", "course", "golf", "links", "the", "uk", "united", "kingdom"
+        ]
+
+        return Set(
+            cleaned
+                .split(separator: " ")
+                .map(String.init)
+                .filter { $0.count > 2 && ignoredWords.contains($0) == false && Int($0) == nil }
+        )
+    }
+}
+
+private extension TeeBox {
+    var usesGeneratedStrokeIndexes: Bool {
+        !holes.isEmpty && holes.map(\.strokeIndex) == Array(1...holes.count)
+    }
+
+    func canProvideStrokeIndexes(for importedTee: TeeBox) -> Bool {
+        holes.count == importedTee.holes.count
+            && usesGeneratedStrokeIndexes == false
+            && normalizedName == importedTee.normalizedName
+    }
+
+    func withStrokeIndexes(from trustedTee: TeeBox) -> TeeBox {
+        let trustedIndexesByHole = Dictionary(uniqueKeysWithValues: trustedTee.holes.map { ($0.number, $0.strokeIndex) })
+        let mergedHoles = holes.map { hole in
+            Hole(
+                number: hole.number,
+                par: hole.par,
+                yards: hole.yards,
+                strokeIndex: trustedIndexesByHole[hole.number] ?? hole.strokeIndex
+            )
+        }
+
+        return TeeBox(
+            name: name,
+            markerColor: markerColor,
+            yards: yards,
+            par: par,
+            slope: slope,
+            rating: rating,
+            holes: mergedHoles
+        )
+    }
+
+    var normalizedName: String {
+        name
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9]+", with: "", options: .regularExpression)
     }
 }
 

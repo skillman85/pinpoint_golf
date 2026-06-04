@@ -1731,7 +1731,7 @@ struct NewRoundSetupView: View {
     }
 
     private var filteredCourses: [GolfCourse] {
-        let sourceCourses = courseSearch.results.isEmpty ? courses : courseSearch.results
+        let sourceCourses = courseSearch.results.isEmpty ? courses : courseSearch.results.map(scorecardStore.courseWithKnownStrokeIndexes)
         let term = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let filtered = term.isEmpty ? sourceCourses : sourceCourses.filter {
             $0.name.lowercased().contains(term) || $0.location.lowercased().contains(term)
