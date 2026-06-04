@@ -2238,6 +2238,7 @@ struct CompactManualField: View {
 
 struct YardagesView: View {
     @ObservedObject var store: ClubYardageStore
+    @State private var newClubName = ""
 
     private var activeClubs: [ClubYardage] {
         store.clubs.filter(\.isInBag)
@@ -2307,11 +2308,40 @@ struct YardagesView: View {
                 ClubGappingSection(clubs: store.clubs)
 
                 VStack(alignment: .leading, spacing: 14) {
-                    SectionHeader(title: "Bag Setup", actionTitle: nil)
+                    HStack {
+                        SectionHeader(title: "Bag Setup", actionTitle: nil)
+                        Spacer()
+                    }
+
+                    HStack(spacing: 10) {
+                        TextField("Add club, e.g. 5W", text: $newClubName)
+                            .textInputAutocapitalization(.characters)
+                            .font(.system(.subheadline, design: .rounded).weight(.bold))
+                            .foregroundStyle(AppTheme.ink)
+                            .padding(.vertical, 11)
+                            .padding(.horizontal, 13)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+
+                        Button {
+                            store.addCustomClub(named: newClubName)
+                            newClubName = ""
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 15, weight: .heavy))
+                                .foregroundStyle(Color.white)
+                                .frame(width: 44, height: 44)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.ink))
+                        }
+                        .disabled(newClubName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .opacity(newClubName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+                    }
 
                     VStack(spacing: 8) {
                         ForEach($store.clubs) { $club in
-                            YardageSetupRow(club: $club)
+                            YardageSetupRow(
+                                club: $club,
+                                removeClub: { store.removeClub(id: club.id) }
+                            )
                         }
                     }
                 }
@@ -2384,6 +2414,7 @@ struct YardageReferenceRow: View {
 
 struct YardageSetupRow: View {
     @Binding var club: ClubYardage
+    let removeClub: () -> Void
 
     private var yardageBinding: Binding<String> {
         Binding(
@@ -2408,7 +2439,8 @@ struct YardageSetupRow: View {
             }
             .accessibilityLabel(club.isInBag ? "Remove \(club.name) from bag" : "Add \(club.name) to bag")
 
-            Text(club.name)
+            TextField("Club", text: $club.name)
+                .textInputAutocapitalization(.characters)
                 .font(.system(.headline, design: .rounded).weight(.bold))
                 .foregroundStyle(AppTheme.ink)
                 .frame(width: 58, alignment: .leading)
@@ -2429,6 +2461,14 @@ struct YardageSetupRow: View {
                 .font(.system(.subheadline, design: .rounded).weight(.bold))
                 .foregroundStyle(AppTheme.softText)
                 .frame(width: 32, alignment: .trailing)
+
+            Button(action: removeClub) {
+                Image(systemName: "minus.circle")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(AppTheme.softText)
+                    .frame(width: 30, height: 30)
+            }
+            .accessibilityLabel("Remove \(club.name)")
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))

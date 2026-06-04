@@ -675,7 +675,7 @@ final class HandicapHistoryStore: ObservableObject {
 
 struct ClubYardage: Identifiable, Codable, Equatable {
     let id: String
-    let name: String
+    var name: String
     var isInBag: Bool
     var yards: Int?
 
@@ -701,8 +701,14 @@ final class ClubYardageStore: ObservableObject {
     static let defaultClubs: [ClubYardage] = [
         ClubYardage(id: "dr", name: "Dr", isInBag: true, yards: nil),
         ClubYardage(id: "3w", name: "3W", isInBag: true, yards: nil),
+        ClubYardage(id: "5w", name: "5W", isInBag: false, yards: nil),
+        ClubYardage(id: "7w", name: "7W", isInBag: false, yards: nil),
         ClubYardage(id: "hybrid", name: "Hybrid", isInBag: true, yards: nil),
+        ClubYardage(id: "2h", name: "2H", isInBag: false, yards: nil),
+        ClubYardage(id: "3h", name: "3H", isInBag: false, yards: nil),
+        ClubYardage(id: "4h", name: "4H", isInBag: false, yards: nil),
         ClubYardage(id: "di", name: "DI", isInBag: true, yards: nil),
+        ClubYardage(id: "2i", name: "2", isInBag: false, yards: nil),
         ClubYardage(id: "3", name: "3", isInBag: true, yards: nil),
         ClubYardage(id: "4", name: "4", isInBag: true, yards: nil),
         ClubYardage(id: "5", name: "5", isInBag: true, yards: nil),
@@ -712,9 +718,19 @@ final class ClubYardageStore: ObservableObject {
         ClubYardage(id: "9", name: "9", isInBag: true, yards: nil),
         ClubYardage(id: "pw", name: "PW", isInBag: true, yards: nil),
         ClubYardage(id: "gw", name: "GW", isInBag: true, yards: nil),
+        ClubYardage(id: "sw", name: "SW", isInBag: false, yards: nil),
+        ClubYardage(id: "lw", name: "LW", isInBag: false, yards: nil),
+        ClubYardage(id: "50", name: "50", isInBag: false, yards: nil),
+        ClubYardage(id: "52", name: "52", isInBag: false, yards: nil),
+        ClubYardage(id: "54", name: "54", isInBag: false, yards: nil),
         ClubYardage(id: "56", name: "56", isInBag: true, yards: nil),
+        ClubYardage(id: "58", name: "58", isInBag: false, yards: nil),
         ClubYardage(id: "60", name: "60", isInBag: true, yards: nil)
     ]
+
+    private static var defaultClubIDs: Set<String> {
+        Set(defaultClubs.map(\.id))
+    }
 
     private static func mergedDefaults(with stored: [ClubYardage]) -> [ClubYardage] {
         guard !stored.isEmpty else { return defaultClubs }
@@ -727,6 +743,29 @@ final class ClubYardageStore: ObservableObject {
 
     func replace(with restored: [ClubYardage]) {
         clubs = Self.mergedDefaults(with: restored)
+    }
+
+    func addCustomClub(named rawName: String) {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        let baseID = "custom-" + name.lowercased().filter { $0.isLetter || $0.isNumber }
+        let idRoot = baseID == "custom-" ? "custom-club" : baseID
+        var candidate = idRoot
+        var suffix = 2
+        let existingIDs = Set(clubs.map(\.id))
+        while existingIDs.contains(candidate) {
+            candidate = "\(idRoot)-\(suffix)"
+            suffix += 1
+        }
+        clubs.append(ClubYardage(id: candidate, name: name, isInBag: true, yards: nil))
+    }
+
+    func removeClub(id: String) {
+        if Self.defaultClubIDs.contains(id), let index = clubs.firstIndex(where: { $0.id == id }) {
+            clubs[index].isInBag = false
+        } else {
+            clubs.removeAll { $0.id == id }
+        }
     }
 }
 
