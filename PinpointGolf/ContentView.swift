@@ -2954,6 +2954,8 @@ struct InsightsView: View {
                     InsightRow(icon: "exclamationmark.triangle.fill", title: "Mistakes", value: "\(snapshot.penalties) penalties", detail: mistakesDetail(for: snapshot))
                 }
 
+                MissPatternSection(snapshot: snapshot)
+
                 CourseInsightsSection(rounds: savedRounds)
 
                 ClubGappingSection(clubs: clubYardages.clubs)
@@ -4315,6 +4317,148 @@ struct InsightRow: View {
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+    }
+}
+
+struct MissPatternSection: View {
+    let snapshot: InsightSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Miss Patterns", actionTitle: leakTitle)
+
+            VStack(spacing: 12) {
+                MissPatternCard(
+                    title: "Tee Game",
+                    icon: "location.north.line.fill",
+                    trackedLabel: "\(snapshot.fairwaysTotal) tracked tee shots",
+                    hitLabel: "\(snapshot.fairwayPercent)% fairways",
+                    misses: snapshot.fairwayMisses,
+                    directions: [.left, .right]
+                )
+
+                MissPatternCard(
+                    title: "Approach",
+                    icon: "scope",
+                    trackedLabel: "\(snapshot.greensTotal) tracked approaches",
+                    hitLabel: "\(snapshot.girPercent)% GIR",
+                    misses: snapshot.greenMisses,
+                    directions: [.short, .long, .left, .right]
+                )
+            }
+        }
+    }
+
+    private var leakTitle: String? {
+        guard let leak else { return nil }
+        return "\(leak.area): \(leak.direction.rawValue)"
+    }
+
+    private var leak: (area: String, direction: MissDirection, count: Int)? {
+        let fairway = topMiss(in: snapshot.fairwayMisses, directions: [.left, .right]).map { ("Tee", $0.direction, $0.count) }
+        let approach = topMiss(in: snapshot.greenMisses, directions: [.short, .long, .left, .right]).map { ("Approach", $0.direction, $0.count) }
+        return [fairway, approach]
+            .compactMap { $0 }
+            .max { $0.count < $1.count }
+    }
+
+    private func topMiss(in misses: [MissDirection], directions: [MissDirection]) -> (direction: MissDirection, count: Int)? {
+        directions
+            .map { direction in (direction, misses.filter { $0 == direction }.count) }
+            .filter { $0.1 > 0 }
+            .max { $0.1 < $1.1 }
+    }
+}
+
+struct MissPatternCard: View {
+    let title: String
+    let icon: String
+    let trackedLabel: String
+    let hitLabel: String
+    let misses: [MissDirection]
+    let directions: [MissDirection]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.mint)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(AppTheme.subtleFill))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(.headline, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("\(trackedLabel) - \(hitLabel)")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer()
+            }
+
+            if misses.isEmpty {
+                Text("No misses tracked yet. Use the miss buttons during scoring to build this view.")
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.softText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(directions, id: \.self) { direction in
+                        MissPatternBar(
+                            direction: direction,
+                            count: count(for: direction),
+                            totalMisses: max(misses.count, 1)
+                        )
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+    }
+
+    private func count(for direction: MissDirection) -> Int {
+        misses.filter { $0 == direction }.count
+    }
+}
+
+struct MissPatternBar: View {
+    let direction: MissDirection
+    let count: Int
+    let totalMisses: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(direction.rawValue)
+                    .font(.system(.caption, design: .rounded).weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text("\(count) - \(percent)%")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(count == 0 ? AppTheme.softText : AppTheme.mint)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(AppTheme.subtleFill)
+                    Capsule()
+                        .fill(count == 0 ? AppTheme.border : AppTheme.mint)
+                        .frame(width: max(6, proxy.size.width * CGFloat(percent) / 100))
+                }
+            }
+            .frame(height: 8)
+        }
+    }
+
+    private var percent: Int {
+        totalMisses == 0 ? 0 : Int((Double(count) / Double(totalMisses) * 100).rounded())
     }
 }
 
