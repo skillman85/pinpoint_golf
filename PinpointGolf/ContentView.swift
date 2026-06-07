@@ -387,7 +387,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HomeHeader(hasSavedRounds: !savedRounds.isEmpty)
 
-                PerformanceOverview(rounds: savedRounds, currentHandicap: currentHandicap)
+                PerformanceOverview(rounds: savedRounds)
 
                 PersonalBestStrip(rounds: savedRounds)
 
@@ -469,14 +469,9 @@ struct HomeHeader: View {
                         .foregroundStyle(AppTheme.softText)
                 }
                 Spacer()
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(AppTheme.gold)
-                    .frame(width: 42, height: 42)
-                    .background(Circle().fill(AppTheme.subtleFill))
             }
 
-            Text(hasSavedRounds ? "Your latest cards are saved below. Use the trend panel to spot what is actually moving." : "Start and finish a round to build your real scoring profile.")
+            Text(hasSavedRounds ? "Your latest cards are saved below. Keep the next round simple and let the stats build naturally." : "Start and finish a round to build your real scoring profile.")
                 .font(.system(.subheadline, design: .rounded))
                 .foregroundStyle(AppTheme.softText)
                 .lineSpacing(3)
@@ -487,7 +482,6 @@ struct HomeHeader: View {
 
 struct PerformanceOverview: View {
     let rounds: [SavedRound]
-    let currentHandicap: Double
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -506,14 +500,6 @@ struct PerformanceOverview: View {
                     }
                 }
                 Spacer()
-                VStack(alignment: .trailing, spacing: 6) {
-                    Text("Handicap")
-                        .font(.system(.caption, design: .rounded).weight(.bold))
-                        .foregroundStyle(AppTheme.softText)
-                    Text(String(format: "%.1f", currentHandicap))
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.gold)
-                }
             }
 
             HStack(spacing: 10) {
@@ -3004,14 +2990,6 @@ struct InsightsView: View {
                 MissPatternSection(snapshot: snapshot)
 
                 CourseInsightsSection(rounds: savedRounds)
-
-                ClubGappingSection(clubs: clubYardages.clubs)
-
-                FocusCard(
-                    title: "Recommended Practice",
-                    headline: practiceHeadline(for: snapshot),
-                    detail: practiceDetail(for: snapshot)
-                )
             }
             .padding(20)
             .padding(.bottom, 20)
@@ -4531,12 +4509,12 @@ struct RoundTrendSection: View {
             VStack(alignment: .leading, spacing: 12) {
                 SectionHeader(title: "Trends", actionTitle: "last \(orderedRounds.count)")
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    TrendCard(title: "Score", points: points { Double($0.totalScore) }, accent: AppTheme.ink)
-                    TrendCard(title: "Stableford", points: points { Double($0.stablefordPoints ?? 0) }, accent: AppTheme.mint)
-                    TrendCard(title: "GIR", points: points { Double($0.greensInRegulation) }, accent: AppTheme.mint)
-                    TrendCard(title: "Fairways", points: points { Double($0.fairwaysHit) }, accent: AppTheme.ink)
-                    TrendCard(title: "Putts", points: points { Double($0.totalPutts) }, accent: AppTheme.gold)
-                    TrendCard(title: "Penalties", points: points { Double($0.penalties) }, accent: AppTheme.gold)
+                    TrendCard(title: "Score", points: points { Double($0.totalScore) }, lowerIsBetter: true)
+                    TrendCard(title: "Stableford", points: points { Double($0.stablefordPoints ?? 0) }, lowerIsBetter: false)
+                    TrendCard(title: "GIR", points: points { Double($0.greensInRegulation) }, lowerIsBetter: false)
+                    TrendCard(title: "Fairways", points: points { Double($0.fairwaysHit) }, lowerIsBetter: false)
+                    TrendCard(title: "Putts", points: points { Double($0.totalPutts) }, lowerIsBetter: true)
+                    TrendCard(title: "Penalties", points: points { Double($0.penalties) }, lowerIsBetter: true)
                 }
             }
         }
@@ -4558,31 +4536,75 @@ struct RoundTrendSection: View {
 struct TrendCard: View {
     let title: String
     let points: [TrendPoint]
-    let accent: Color
+    let lowerIsBetter: Bool
 
     private var latestValue: String {
         guard let value = points.last?.value else { return "-" }
         return value == value.rounded() ? "\(Int(value))" : String(format: "%.1f", value)
     }
 
+    private var previousValue: Double? {
+        guard points.count >= 2 else { return nil }
+        return points[points.count - 2].value
+    }
+
+    private var averageValue: String {
+        guard !points.isEmpty else { return "-" }
+        let average = points.reduce(0) { $0 + $1.value } / Double(points.count)
+        return average == average.rounded() ? "\(Int(average))" : String(format: "%.1f", average)
+    }
+
+    private var changeText: String {
+        guard let previousValue, let latest = points.last?.value else { return "No trend yet" }
+        let change = latest - previousValue
+        guard abs(change) >= 0.1 else { return "No change" }
+        let prefix = change > 0 ? "+" : ""
+        return "\(prefix)\(format(change)) vs previous"
+    }
+
+    private var statusText: String {
+        guard let previousValue, let latest = points.last?.value else { return "Pending" }
+        let change = latest - previousValue
+        guard abs(change) >= 0.1 else { return "Flat" }
+        let improved = lowerIsBetter ? change < 0 : change > 0
+        return improved ? "Improving" : "Needs work"
+    }
+
+    private var statusColor: Color {
+        statusText == "Improving" ? AppTheme.mint : statusText == "Needs work" ? AppTheme.gold : AppTheme.softText
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(title)
                     .font(.system(.caption, design: .rounded).weight(.heavy))
                     .foregroundStyle(AppTheme.softText)
                     .textCase(.uppercase)
                 Spacer()
-                Text(latestValue)
-                    .font(.system(.headline, design: .rounded).weight(.bold))
-                    .foregroundStyle(AppTheme.ink)
+                Text(statusText)
+                    .font(.system(.caption2, design: .rounded).weight(.heavy))
+                    .foregroundStyle(statusColor)
             }
-            TrendLineChart(points: points, accent: accent)
-                .frame(height: 64)
+            Text(latestValue)
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+            HStack(spacing: 8) {
+                Text("Avg \(averageValue)")
+                Text(changeText)
+            }
+            .font(.system(.caption, design: .rounded).weight(.semibold))
+            .foregroundStyle(AppTheme.softText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+    }
+
+    private func format(_ value: Double) -> String {
+        value == value.rounded() ? "\(Int(value))" : String(format: "%.1f", value)
     }
 }
 
@@ -4660,20 +4682,6 @@ struct ClubGappingSection: View {
             .sorted { ($0.yards ?? 0) > ($1.yards ?? 0) }
     }
 
-    private var gaps: [(from: ClubYardage, to: ClubYardage, gap: Int)] {
-        zip(mappedClubs, mappedClubs.dropFirst()).map { first, second in
-            (first, second, (first.yards ?? 0) - (second.yards ?? 0))
-        }
-    }
-
-    private var biggestGap: (from: ClubYardage, to: ClubYardage, gap: Int)? {
-        gaps.max { $0.gap < $1.gap }
-    }
-
-    private var tightestGap: (from: ClubYardage, to: ClubYardage, gap: Int)? {
-        gaps.min { $0.gap < $1.gap }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "Club Gapping", actionTitle: mappedClubs.isEmpty ? nil : "\(mappedClubs.count) mapped")
@@ -4687,12 +4695,17 @@ struct ClubGappingSection: View {
                         .padding(14)
                         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
                 } else {
-                    if let biggestGap {
-                        InsightRow(icon: "arrow.up.right", title: "Biggest Gap", value: "\(biggestGap.gap) yds", detail: "\(biggestGap.from.name) to \(biggestGap.to.name). This is the yardage window most likely to need a partial shot.")
+                    VStack(spacing: 0) {
+                        ForEach(mappedClubs) { club in
+                            YardageReferenceRow(club: club, maxYardage: mappedClubs.first?.yards ?? 1)
+                            if club.id != mappedClubs.last?.id {
+                                Divider()
+                                    .background(AppTheme.border)
+                            }
+                        }
                     }
-                    if let tightestGap {
-                        InsightRow(icon: "arrow.left.and.right", title: "Tightest Gap", value: "\(tightestGap.gap) yds", detail: "\(tightestGap.from.name) to \(tightestGap.to.name). These clubs may overlap depending on strike.")
-                    }
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
                 }
             }
         }
