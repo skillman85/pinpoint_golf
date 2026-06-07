@@ -120,13 +120,13 @@ final class CourseScorecardStore: ObservableObject {
     }
 
     func courseWithKnownStrokeIndexes(_ course: GolfCourse) -> GolfCourse {
-        let correctedCourse = course.applyingWergsHole13Correction()
+        let correctedCourse = course.applyingWergsScorecardCorrection()
 
         guard correctedCourse.needsStrokeIndexSource else {
             return correctedCourse
         }
 
-        let trustedCourses = overrides.map { $0.toGolfCourse().applyingWergsHole13Correction() } + CourseDatabase.courses.map { $0.applyingWergsHole13Correction() }
+        let trustedCourses = overrides.map { $0.toGolfCourse().applyingWergsScorecardCorrection() } + CourseDatabase.courses.map { $0.applyingWergsScorecardCorrection() }
         guard let trustedCourse = trustedCourses.first(where: { $0.canProvideStrokeIndexes(for: correctedCourse) }) else {
             return correctedCourse
         }
@@ -168,11 +168,11 @@ final class CourseScorecardStore: ObservableObject {
 }
 
 private extension GolfCourse {
-    func applyingWergsHole13Correction() -> GolfCourse {
+    func applyingWergsScorecardCorrection() -> GolfCourse {
         guard scorecardMatchTokens.contains("wergs") else { return self }
 
         let correctedTees = tees.map { tee in
-            tee.applyingWergsHole13Correction()
+            tee.applyingWergsScorecardCorrection()
         }
 
         return GolfCourse(
@@ -221,12 +221,10 @@ private extension GolfCourse {
 }
 
 private extension TeeBox {
-    func applyingWergsHole13Correction() -> TeeBox {
+    func applyingWergsScorecardCorrection() -> TeeBox {
         guard normalizedName == "white" || normalizedName == "yellow" else { return self }
 
-        let correctedHoles = holes.map { hole in
-            hole.number == 13 ? Hole(number: 13, par: 5, yards: 476, strokeIndex: 8) : hole
-        }
+        let correctedHoles = normalizedName == "white" ? DemoData.wergsWhiteHoles : DemoData.wergsYellowHoles
 
         return TeeBox(
             name: name,
@@ -893,45 +891,45 @@ final class RoundArchive: ObservableObject {
 
 struct DemoData {
     static let wergsWhiteHoles: [Hole] = [
-        .init(number: 1, par: 4, yards: 291, strokeIndex: 17),
-        .init(number: 2, par: 5, yards: 521, strokeIndex: 3),
-        .init(number: 3, par: 4, yards: 309, strokeIndex: 15),
-        .init(number: 4, par: 4, yards: 334, strokeIndex: 13),
-        .init(number: 5, par: 3, yards: 220, strokeIndex: 9),
-        .init(number: 6, par: 4, yards: 393, strokeIndex: 1),
-        .init(number: 7, par: 5, yards: 573, strokeIndex: 5),
-        .init(number: 8, par: 5, yards: 455, strokeIndex: 11),
-        .init(number: 9, par: 3, yards: 195, strokeIndex: 7),
-        .init(number: 10, par: 4, yards: 407, strokeIndex: 6),
-        .init(number: 11, par: 3, yards: 162, strokeIndex: 18),
-        .init(number: 12, par: 4, yards: 299, strokeIndex: 14),
-        .init(number: 13, par: 5, yards: 476, strokeIndex: 8),
-        .init(number: 14, par: 4, yards: 366, strokeIndex: 12),
-        .init(number: 15, par: 5, yards: 511, strokeIndex: 4),
-        .init(number: 16, par: 4, yards: 417, strokeIndex: 2),
-        .init(number: 17, par: 4, yards: 402, strokeIndex: 8),
-        .init(number: 18, par: 4, yards: 423, strokeIndex: 10)
+        .init(number: 1, par: 4, yards: 292, strokeIndex: 17),
+        .init(number: 2, par: 5, yards: 525, strokeIndex: 3),
+        .init(number: 3, par: 4, yards: 325, strokeIndex: 15),
+        .init(number: 4, par: 4, yards: 340, strokeIndex: 13),
+        .init(number: 5, par: 3, yards: 197, strokeIndex: 9),
+        .init(number: 6, par: 4, yards: 396, strokeIndex: 5),
+        .init(number: 7, par: 5, yards: 569, strokeIndex: 1),
+        .init(number: 8, par: 5, yards: 457, strokeIndex: 7),
+        .init(number: 9, par: 3, yards: 191, strokeIndex: 11),
+        .init(number: 10, par: 4, yards: 408, strokeIndex: 6),
+        .init(number: 11, par: 3, yards: 157, strokeIndex: 18),
+        .init(number: 12, par: 4, yards: 297, strokeIndex: 12),
+        .init(number: 13, par: 5, yards: 499, strokeIndex: 8),
+        .init(number: 14, par: 4, yards: 418, strokeIndex: 2),
+        .init(number: 15, par: 4, yards: 406, strokeIndex: 4),
+        .init(number: 16, par: 4, yards: 388, strokeIndex: 16),
+        .init(number: 17, par: 4, yards: 355, strokeIndex: 14),
+        .init(number: 18, par: 4, yards: 412, strokeIndex: 10)
     ]
 
     static let wergsYellowHoles: [Hole] = [
-        .init(number: 1, par: 4, yards: 273, strokeIndex: 17),
-        .init(number: 2, par: 5, yards: 484, strokeIndex: 3),
-        .init(number: 3, par: 4, yards: 301, strokeIndex: 15),
+        .init(number: 1, par: 4, yards: 277, strokeIndex: 17),
+        .init(number: 2, par: 5, yards: 499, strokeIndex: 3),
+        .init(number: 3, par: 4, yards: 315, strokeIndex: 15),
         .init(number: 4, par: 4, yards: 318, strokeIndex: 13),
         .init(number: 5, par: 3, yards: 175, strokeIndex: 9),
-        .init(number: 6, par: 4, yards: 372, strokeIndex: 1),
-        .init(number: 7, par: 5, yards: 478, strokeIndex: 5),
-        .init(number: 8, par: 5, yards: 429, strokeIndex: 11),
-        .init(number: 9, par: 3, yards: 195, strokeIndex: 7),
-        .init(number: 10, par: 4, yards: 379, strokeIndex: 6),
-        .init(number: 11, par: 3, yards: 145, strokeIndex: 18),
-        .init(number: 12, par: 4, yards: 281, strokeIndex: 14),
+        .init(number: 6, par: 4, yards: 383, strokeIndex: 5),
+        .init(number: 7, par: 5, yards: 502, strokeIndex: 1),
+        .init(number: 8, par: 5, yards: 431, strokeIndex: 7),
+        .init(number: 9, par: 3, yards: 173, strokeIndex: 11),
+        .init(number: 10, par: 4, yards: 384, strokeIndex: 6),
+        .init(number: 11, par: 3, yards: 144, strokeIndex: 18),
+        .init(number: 12, par: 4, yards: 287, strokeIndex: 12),
         .init(number: 13, par: 5, yards: 476, strokeIndex: 8),
-        .init(number: 14, par: 4, yards: 358, strokeIndex: 12),
-        .init(number: 15, par: 5, yards: 496, strokeIndex: 4),
-        .init(number: 16, par: 4, yards: 379, strokeIndex: 2),
-        .init(number: 17, par: 4, yards: 397, strokeIndex: 8),
-        .init(number: 18, par: 4, yards: 412, strokeIndex: 10)
+        .init(number: 14, par: 4, yards: 377, strokeIndex: 2),
+        .init(number: 15, par: 4, yards: 398, strokeIndex: 4),
+        .init(number: 16, par: 4, yards: 359, strokeIndex: 16),
+        .init(number: 17, par: 4, yards: 288, strokeIndex: 14),
+        .init(number: 18, par: 4, yards: 405, strokeIndex: 10)
     ]
 
     static let holes: [Hole] = [
@@ -961,8 +959,8 @@ struct DemoData {
             distance: "Verified local",
             location: "Tettenhall, Staffordshire",
             tees: [
-                TeeBox(name: "White", yards: 6754, par: 74, slope: 124, rating: 71.5, holes: wergsWhiteHoles),
-                TeeBox(name: "Yellow", markerColor: .yellow, yards: 6348, par: 74, slope: 119, rating: 69.2, holes: wergsYellowHoles)
+                TeeBox(name: "White", yards: 6632, par: 73, slope: 124, rating: 71.5, holes: wergsWhiteHoles),
+                TeeBox(name: "Yellow", markerColor: .yellow, yards: 6191, par: 73, slope: 119, rating: 69.2, holes: wergsYellowHoles)
             ]
         ),
         GolfCourse(
