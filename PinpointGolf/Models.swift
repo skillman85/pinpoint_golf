@@ -120,16 +120,18 @@ final class CourseScorecardStore: ObservableObject {
     }
 
     func courseWithKnownStrokeIndexes(_ course: GolfCourse) -> GolfCourse {
-        guard course.needsStrokeIndexSource else {
-            return course
+        let correctedCourse = course.applyingWergsHole13Correction()
+
+        guard correctedCourse.needsStrokeIndexSource else {
+            return correctedCourse
         }
 
-        let trustedCourses = overrides.map { $0.toGolfCourse() } + CourseDatabase.courses
-        guard let trustedCourse = trustedCourses.first(where: { $0.canProvideStrokeIndexes(for: course) }) else {
-            return course
+        let trustedCourses = overrides.map { $0.toGolfCourse().applyingWergsHole13Correction() } + CourseDatabase.courses.map { $0.applyingWergsHole13Correction() }
+        guard let trustedCourse = trustedCourses.first(where: { $0.canProvideStrokeIndexes(for: correctedCourse) }) else {
+            return correctedCourse
         }
 
-        let tees = course.tees.map { tee in
+        let tees = correctedCourse.tees.map { tee in
             guard tee.usesGeneratedStrokeIndexes,
                   let trustedTee = trustedCourse.teeMatching(tee) else {
                 return tee
@@ -138,11 +140,11 @@ final class CourseScorecardStore: ObservableObject {
         }
 
         return GolfCourse(
-            name: course.name,
-            distance: course.distance,
-            location: course.location,
+            name: correctedCourse.name,
+            distance: correctedCourse.distance,
+            location: correctedCourse.location,
             tees: tees,
-            hasVerifiedScorecard: course.hasVerifiedScorecard
+            hasVerifiedScorecard: correctedCourse.hasVerifiedScorecard
         )
     }
 
@@ -166,6 +168,22 @@ final class CourseScorecardStore: ObservableObject {
 }
 
 private extension GolfCourse {
+    func applyingWergsHole13Correction() -> GolfCourse {
+        guard scorecardMatchTokens.contains("wergs") else { return self }
+
+        let correctedTees = tees.map { tee in
+            tee.applyingWergsHole13Correction()
+        }
+
+        return GolfCourse(
+            name: name,
+            distance: distance,
+            location: location,
+            tees: correctedTees,
+            hasVerifiedScorecard: hasVerifiedScorecard
+        )
+    }
+
     var needsStrokeIndexSource: Bool {
         tees.contains { $0.usesGeneratedStrokeIndexes }
     }
@@ -203,6 +221,24 @@ private extension GolfCourse {
 }
 
 private extension TeeBox {
+    func applyingWergsHole13Correction() -> TeeBox {
+        guard normalizedName == "white" || normalizedName == "yellow" else { return self }
+
+        let correctedHoles = holes.map { hole in
+            hole.number == 13 ? Hole(number: 13, par: 5, yards: 476, strokeIndex: 8) : hole
+        }
+
+        return TeeBox(
+            name: name,
+            markerColor: markerColor,
+            yards: correctedHoles.reduce(0) { $0 + $1.yards },
+            par: correctedHoles.reduce(0) { $0 + $1.par },
+            slope: slope,
+            rating: rating,
+            holes: correctedHoles
+        )
+    }
+
     var usesGeneratedStrokeIndexes: Bool {
         !holes.isEmpty && holes.map(\.strokeIndex) == Array(1...holes.count)
     }
@@ -869,7 +905,7 @@ struct DemoData {
         .init(number: 10, par: 4, yards: 407, strokeIndex: 6),
         .init(number: 11, par: 3, yards: 162, strokeIndex: 18),
         .init(number: 12, par: 4, yards: 299, strokeIndex: 14),
-        .init(number: 13, par: 4, yards: 366, strokeIndex: 16),
+        .init(number: 13, par: 5, yards: 476, strokeIndex: 8),
         .init(number: 14, par: 4, yards: 366, strokeIndex: 12),
         .init(number: 15, par: 5, yards: 511, strokeIndex: 4),
         .init(number: 16, par: 4, yards: 417, strokeIndex: 2),
@@ -890,7 +926,7 @@ struct DemoData {
         .init(number: 10, par: 4, yards: 379, strokeIndex: 6),
         .init(number: 11, par: 3, yards: 145, strokeIndex: 18),
         .init(number: 12, par: 4, yards: 281, strokeIndex: 14),
-        .init(number: 13, par: 4, yards: 305, strokeIndex: 16),
+        .init(number: 13, par: 5, yards: 476, strokeIndex: 8),
         .init(number: 14, par: 4, yards: 358, strokeIndex: 12),
         .init(number: 15, par: 5, yards: 496, strokeIndex: 4),
         .init(number: 16, par: 4, yards: 379, strokeIndex: 2),
@@ -925,8 +961,8 @@ struct DemoData {
             distance: "Verified local",
             location: "Tettenhall, Staffordshire",
             tees: [
-                TeeBox(name: "White", yards: 6644, par: 73, slope: 124, rating: 71.5, holes: wergsWhiteHoles),
-                TeeBox(name: "Yellow", markerColor: .yellow, yards: 6177, par: 73, slope: 119, rating: 69.2, holes: wergsYellowHoles)
+                TeeBox(name: "White", yards: 6754, par: 74, slope: 124, rating: 71.5, holes: wergsWhiteHoles),
+                TeeBox(name: "Yellow", markerColor: .yellow, yards: 6348, par: 74, slope: 119, rating: 69.2, holes: wergsYellowHoles)
             ]
         ),
         GolfCourse(
