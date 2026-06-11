@@ -2917,11 +2917,25 @@ struct InsightSnapshot {
     var averageScore: Double { roundCount == 0 ? 0 : Double(score) / Double(roundCount) }
     var puttsPerRound: Double { roundCount == 0 ? 0 : Double(putts) / Double(roundCount) }
     var puttsPerHole: Double { holeCount == 0 ? 0 : Double(putts) / Double(holeCount) }
+    var birdiesPerRound: Double { averagePerRound(birdies) }
+    var parsPerRound: Double { averagePerRound(pars) }
+    var bogeysPerRound: Double { averagePerRound(bogeys) }
+    var doublesOrWorsePerRound: Double { averagePerRound(doublesOrWorse) }
+    var threePuttsPerRound: Double { averagePerRound(threePutts) }
     var girPercent: Int { greensTotal == 0 ? 0 : percent(greensHit, greensTotal) }
     var fairwayPercent: Int { fairwaysTotal == 0 ? 0 : percent(fairwaysHit, fairwaysTotal) }
+    var fairwayMissLeftPercent: Int { missPercent(.left, in: fairwayMisses, total: fairwaysTotal) }
+    var fairwayMissRightPercent: Int { missPercent(.right, in: fairwayMisses, total: fairwaysTotal) }
+    var greenMissShortPercent: Int { missPercent(.short, in: greenMisses, total: greensTotal) }
+    var greenMissLeftPercent: Int { missPercent(.left, in: greenMisses, total: greensTotal) }
+    var greenMissRightPercent: Int { missPercent(.right, in: greenMisses, total: greensTotal) }
+    var greenMissLongPercent: Int { missPercent(.long, in: greenMisses, total: greensTotal) }
     var scramblePercent: Int { scrambleOpportunities == 0 ? 0 : percent(scrambles, scrambleOpportunities) }
     var upAndDownPercent: Int { upAndDownOpportunities == 0 ? 0 : percent(upAndDowns, upAndDownOpportunities) }
     var sandSavePercent: Int { bunkerHoles == 0 ? 0 : percent(sandSaves, bunkerHoles) }
+    var par3Average: Double? { averageScore(par3Score, par3Count) }
+    var par4Average: Double? { averageScore(par4Score, par4Count) }
+    var par5Average: Double? { averageScore(par5Score, par5Count) }
 
     var scoreToParLabel: String {
         scoreToPar == 0 ? "E" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
@@ -2929,6 +2943,20 @@ struct InsightSnapshot {
 
     private func percent(_ value: Int, _ total: Int) -> Int {
         Int((Double(value) / Double(total) * 100).rounded())
+    }
+
+    private func averagePerRound(_ value: Int) -> Double {
+        roundCount == 0 ? 0 : Double(value) / Double(roundCount)
+    }
+
+    private func averageScore(_ score: Int, _ count: Int) -> Double? {
+        count == 0 ? nil : Double(score) / Double(count)
+    }
+
+    private func missPercent(_ direction: MissDirection, in misses: [MissDirection], total: Int) -> Int {
+        guard total > 0 else { return 0 }
+        let count = misses.filter { $0 == direction }.count
+        return percent(count, total)
     }
 }
 
@@ -2940,27 +2968,53 @@ struct InsightsView: View {
 
     var body: some View {
         let snapshot = insightSnapshot
+        let yearSnapshot = currentYearSnapshot
 
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
-                HeaderBlock(title: "Insights", subtitle: savedRounds.isEmpty && !isRoundActive ? "Finish a round to unlock personalised patterns." : "Patterns from your real scorecards.")
+                HeaderBlock(title: "Insights", subtitle: savedRounds.isEmpty && !isRoundActive ? "Finish a round to unlock personalised patterns." : "Clear patterns from your completed cards.")
 
-                InsightHero(snapshot: snapshot)
-
-                RoundTrendSection(rounds: savedRounds)
-
-                VStack(spacing: 12) {
-                    InsightRow(icon: "flag.fill", title: "Scoring", value: snapshot.scoreToParLabel, detail: scoringDetail(for: snapshot))
-                    InsightRow(icon: "scope", title: "Approach Play", value: "\(snapshot.girPercent)% GIR", detail: greenDetail(for: snapshot))
-                    InsightRow(icon: "location.north.line.fill", title: "Tee Game", value: "\(snapshot.fairwayPercent)% fairways", detail: teeDetail(for: snapshot))
-                    InsightRow(icon: "circle.grid.cross", title: "Short Game", value: "\(snapshot.scramblePercent)% scrambling", detail: shortGameDetail(for: snapshot))
-                    InsightRow(icon: "circle.dotted.circle", title: "Putting", value: String(format: "%.1f putts", snapshot.puttsPerRound), detail: puttingDetail(for: snapshot))
-                    InsightRow(icon: "exclamationmark.triangle.fill", title: "Mistakes", value: "\(snapshot.penalties) penalties", detail: mistakesDetail(for: snapshot))
+                InsightMetricSection(title: "Scoring Mix") {
+                    InsightStatGrid {
+                        StatTile(title: "Birdies", value: formatAverage(snapshot.birdiesPerRound), caption: "\(yearSnapshot.birdies) this year")
+                        StatTile(title: "Pars", value: formatAverage(snapshot.parsPerRound), caption: "\(yearSnapshot.pars) this year")
+                        StatTile(title: "Bogeys", value: formatAverage(snapshot.bogeysPerRound), caption: "\(yearSnapshot.bogeys) this year")
+                        StatTile(title: "Worse", value: formatAverage(snapshot.doublesOrWorsePerRound), caption: "\(yearSnapshot.doublesOrWorse) this year")
+                    }
                 }
 
-                MissPatternSection(snapshot: snapshot)
+                InsightMetricSection(title: "Par Averages") {
+                    InsightStatGrid {
+                        StatTile(title: "Par 3", value: formatOptionalAverage(snapshot.par3Average), caption: "\(snapshot.par3Count) holes")
+                        StatTile(title: "Par 4", value: formatOptionalAverage(snapshot.par4Average), caption: "\(snapshot.par4Count) holes")
+                        StatTile(title: "Par 5", value: formatOptionalAverage(snapshot.par5Average), caption: "\(snapshot.par5Count) holes")
+                    }
+                }
 
-                CourseInsightsSection(rounds: savedRounds)
+                InsightMetricSection(title: "Tee Game") {
+                    InsightStatGrid {
+                        StatTile(title: "Fairways", value: "\(snapshot.fairwayPercent)%", caption: "\(snapshot.fairwaysHit)/\(snapshot.fairwaysTotal) tracked")
+                        StatTile(title: "Miss Left", value: "\(snapshot.fairwayMissLeftPercent)%", caption: "\(missCount(.left, in: snapshot.fairwayMisses)) tee shots")
+                        StatTile(title: "Miss Right", value: "\(snapshot.fairwayMissRightPercent)%", caption: "\(missCount(.right, in: snapshot.fairwayMisses)) tee shots")
+                    }
+                }
+
+                InsightMetricSection(title: "Approach") {
+                    InsightStatGrid {
+                        StatTile(title: "GIR", value: "\(snapshot.girPercent)%", caption: "\(snapshot.greensHit)/\(snapshot.greensTotal) tracked")
+                        StatTile(title: "Short", value: "\(snapshot.greenMissShortPercent)%", caption: "\(missCount(.short, in: snapshot.greenMisses)) approaches")
+                        StatTile(title: "Left", value: "\(snapshot.greenMissLeftPercent)%", caption: "\(missCount(.left, in: snapshot.greenMisses)) approaches")
+                        StatTile(title: "Right", value: "\(snapshot.greenMissRightPercent)%", caption: "\(missCount(.right, in: snapshot.greenMisses)) approaches")
+                        StatTile(title: "Long", value: "\(snapshot.greenMissLongPercent)%", caption: "\(missCount(.long, in: snapshot.greenMisses)) approaches")
+                    }
+                }
+
+                InsightMetricSection(title: "Putting") {
+                    InsightStatGrid {
+                        StatTile(title: "Putts / Round", value: formatAverage(snapshot.puttsPerRound), caption: "\(snapshot.putts) total")
+                        StatTile(title: "3-Putts", value: formatAverage(snapshot.threePuttsPerRound), caption: "\(yearSnapshot.threePutts) this year")
+                    }
+                }
             }
             .padding(20)
             .padding(.bottom, 20)
@@ -2968,6 +3022,24 @@ struct InsightsView: View {
     }
 
     private var insightSnapshot: InsightSnapshot {
+        if !savedRounds.isEmpty {
+            return snapshot(from: savedRounds)
+        }
+
+        return activeRoundSnapshot
+    }
+
+    private var currentYearSnapshot: InsightSnapshot {
+        let currentYear = Calendar.current.component(.year, from: Date())
+        let yearRounds = savedRounds.filter { Calendar.current.component(.year, from: $0.date) == currentYear }
+        if !yearRounds.isEmpty {
+            return snapshot(from: yearRounds)
+        }
+
+        return savedRounds.isEmpty && isRoundActive ? activeRoundSnapshot : emptySnapshot
+    }
+
+    private func snapshot(from savedRounds: [SavedRound]) -> InsightSnapshot {
         if !savedRounds.isEmpty {
             let holes = savedRounds.flatMap(\.holes)
             let drivingHoles = holes.filter { $0.par > 3 }
@@ -2999,7 +3071,7 @@ struct InsightsView: View {
                 sandSaves: holes.filter { $0.sandSave == true }.count,
                 bunkerHoles: holes.filter { $0.bunker == true }.count,
                 recoveryShots: holes.filter { $0.recovery == true }.count,
-                birdies: holes.filter { $0.score < $0.par }.count,
+                birdies: holes.filter { $0.score - $0.par == -1 }.count,
                 pars: holes.filter { $0.score == $0.par }.count,
                 bogeys: holes.filter { $0.score == $0.par + 1 }.count,
                 doublesOrWorse: holes.filter { $0.score >= $0.par + 2 }.count,
@@ -3014,6 +3086,10 @@ struct InsightsView: View {
             )
         }
 
+        return emptySnapshot
+    }
+
+    private var activeRoundSnapshot: InsightSnapshot {
         let drivingEntries = entries.filter { $0.hole.par > 3 }
         let trackedDrivingEntries = drivingEntries.filter { $0.fairway != .notTracked }
         let trackedGreenEntries = entries.filter { $0.green != .notTracked }
@@ -3043,7 +3119,7 @@ struct InsightsView: View {
             sandSaves: entries.filter(\.sandSave).count,
             bunkerHoles: entries.filter(\.bunker).count,
             recoveryShots: entries.filter(\.recovery).count,
-            birdies: entries.filter { $0.score < $0.hole.par }.count,
+            birdies: entries.filter { $0.score - $0.hole.par == -1 }.count,
             pars: entries.filter { $0.score == $0.hole.par }.count,
             bogeys: entries.filter { $0.score == $0.hole.par + 1 }.count,
             doublesOrWorse: entries.filter { $0.score >= $0.hole.par + 2 }.count,
@@ -3056,6 +3132,58 @@ struct InsightsView: View {
             penaltyTypes: entries.filter { $0.penalties > 0 }.map(\.penaltyType),
             teeClubInsights: teeClubInsights(from: drivingEntries)
         )
+    }
+
+    private var emptySnapshot: InsightSnapshot {
+        InsightSnapshot(
+            score: 0,
+            par: 0,
+            roundCount: 0,
+            holeCount: 0,
+            putts: 0,
+            fairwaysHit: 0,
+            fairwaysTotal: 0,
+            greensHit: 0,
+            greensTotal: 0,
+            penalties: 0,
+            fairwayMisses: [],
+            greenMisses: [],
+            threePutts: 0,
+            onePutts: 0,
+            twoPutts: 0,
+            scrambles: 0,
+            scrambleOpportunities: 0,
+            upAndDowns: 0,
+            upAndDownOpportunities: 0,
+            sandSaves: 0,
+            bunkerHoles: 0,
+            recoveryShots: 0,
+            birdies: 0,
+            pars: 0,
+            bogeys: 0,
+            doublesOrWorse: 0,
+            par3Score: 0,
+            par3Count: 0,
+            par4Score: 0,
+            par4Count: 0,
+            par5Score: 0,
+            par5Count: 0,
+            penaltyTypes: [],
+            teeClubInsights: [:]
+        )
+    }
+
+    private func formatAverage(_ value: Double) -> String {
+        String(format: "%.1f", value)
+    }
+
+    private func formatOptionalAverage(_ value: Double?) -> String {
+        guard let value else { return "-" }
+        return String(format: "%.1f", value)
+    }
+
+    private func missCount(_ direction: MissDirection, in misses: [MissDirection]) -> Int {
+        misses.filter { $0 == direction }.count
     }
 
     private func scoringDetail(for snapshot: InsightSnapshot) -> String {
@@ -4247,6 +4375,33 @@ struct PenaltyPanel: View {
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+    }
+}
+
+struct InsightMetricSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: title, actionTitle: nil)
+            content
+        }
+    }
+}
+
+struct InsightStatGrid<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+            content
+        }
     }
 }
 
