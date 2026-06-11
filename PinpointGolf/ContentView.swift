@@ -2230,10 +2230,6 @@ struct YardagesView: View {
         store.clubs.filter(\.isInBag)
     }
 
-    private var maxYardage: Int {
-        max(activeClubs.compactMap(\.yards).max() ?? 1, 1)
-    }
-
     private var longestClubText: String {
         guard let club = activeClubs.compactMap({ club -> (String, Int)? in
             guard let yards = club.yards else { return nil }
@@ -2255,7 +2251,7 @@ struct YardagesView: View {
                     Text("Yardages")
                         .font(.system(size: 40, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.ink)
-                    Text("Your on-course carry reference.")
+                    Text("Your bag gaps at a glance.")
                         .font(.system(.subheadline, design: .rounded).weight(.medium))
                         .foregroundStyle(AppTheme.softText)
                 }
@@ -2264,31 +2260,6 @@ struct YardagesView: View {
                     YardageSummaryMetric(title: "In Bag", value: "\(activeClubs.count)")
                     YardageSummaryMetric(title: "Longest", value: longestClubText)
                     YardageSummaryMetric(title: "Mapped", value: "\(mappedCount)/\(activeClubs.count)")
-                }
-
-                VStack(alignment: .leading, spacing: 14) {
-                    SectionHeader(title: "Carry Reference", actionTitle: nil)
-
-                    if activeClubs.isEmpty {
-                        Text("Select clubs below to build your yardage card.")
-                            .font(.system(.subheadline, design: .rounded).weight(.medium))
-                            .foregroundStyle(AppTheme.softText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(16)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(activeClubs) { club in
-                                YardageReferenceRow(club: club, maxYardage: maxYardage)
-                                if club.id != activeClubs.last?.id {
-                                    Divider()
-                                        .background(AppTheme.border)
-                                }
-                            }
-                        }
-                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
-                    }
                 }
 
                 ClubGappingSection(clubs: store.clubs)
