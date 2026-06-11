@@ -406,7 +406,6 @@ struct HomeView: View {
                         ForEach(savedRounds.prefix(6)) { round in
                             SavedRoundRow(
                                 round: round,
-                                currentHandicap: currentHandicap,
                                 viewRound: { selectedRound = round },
                                 deleteRound: { deleteRound(round) }
                             )
@@ -872,7 +871,6 @@ struct EmptyRoundsCard: View {
 
 struct SavedRoundRow: View {
     let round: SavedRound
-    let currentHandicap: Double
     let viewRound: () -> Void
     let deleteRound: () -> Void
 
@@ -897,9 +895,17 @@ struct SavedRoundRow: View {
                                 .font(.system(.headline, design: .rounded).weight(.bold))
                                 .foregroundStyle(AppTheme.ink)
                             Spacer()
-                            Text(round.summary.dateLabel)
-                                .font(.system(.caption, design: .rounded).weight(.bold))
-                                .foregroundStyle(AppTheme.softText)
+                            VStack(alignment: .trailing, spacing: 5) {
+                                Text(round.summary.dateLabel)
+                                    .font(.system(.caption, design: .rounded).weight(.bold))
+                                    .foregroundStyle(AppTheme.softText)
+                                Text(handicapText)
+                                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                                    .foregroundStyle(AppTheme.ink)
+                                    .padding(.vertical, 5)
+                                    .padding(.horizontal, 8)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mintWash))
+                            }
                         }
                         HStack(spacing: 6) {
                             TeeMarkerSwatch(marker: round.teeMarkerColor ?? TeeMarkerColor.inferred(from: round.teeName), size: 10)
@@ -940,6 +946,11 @@ struct SavedRoundRow: View {
     private var stablefordText: String {
         guard let points = round.stablefordPoints else { return "" }
         return " - \(points) pts"
+    }
+
+    private var handicapText: String {
+        guard let handicap = round.handicap else { return "HI -" }
+        return "HI \(String(format: "%.1f", handicap))"
     }
 }
 
