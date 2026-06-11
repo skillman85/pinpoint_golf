@@ -2974,45 +2974,53 @@ struct InsightsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HeaderBlock(title: "Insights", subtitle: savedRounds.isEmpty && !isRoundActive ? "Finish a round to unlock personalised patterns." : "Clear patterns from your completed cards.")
 
-                InsightMetricSection(title: "Scoring Mix") {
+                InsightScorecardHero(
+                    title: strongestArea(snapshot),
+                    primaryValue: formatAverage(snapshot.parsPerRound),
+                    primaryLabel: "Pars / round",
+                    secondaryValue: "\(snapshot.girPercent)%",
+                    secondaryLabel: "GIR"
+                )
+
+                InsightMetricSection(title: "Scoring Mix", icon: "flag.fill", accent: AppTheme.mint) {
                     InsightStatGrid {
-                        StatTile(title: "Birdies", value: formatAverage(snapshot.birdiesPerRound), caption: "\(yearSnapshot.birdies) this year")
-                        StatTile(title: "Pars", value: formatAverage(snapshot.parsPerRound), caption: "\(yearSnapshot.pars) this year")
-                        StatTile(title: "Bogeys", value: formatAverage(snapshot.bogeysPerRound), caption: "\(yearSnapshot.bogeys) this year")
-                        StatTile(title: "Worse", value: formatAverage(snapshot.doublesOrWorsePerRound), caption: "\(yearSnapshot.doublesOrWorse) this year")
+                        InsightStatTile(title: "Birdies", value: formatAverage(snapshot.birdiesPerRound), caption: "\(yearSnapshot.birdies) this year", accent: AppTheme.mint)
+                        InsightStatTile(title: "Pars", value: formatAverage(snapshot.parsPerRound), caption: "\(yearSnapshot.pars) this year", accent: AppTheme.mint)
+                        InsightStatTile(title: "Bogeys", value: formatAverage(snapshot.bogeysPerRound), caption: "\(yearSnapshot.bogeys) this year", accent: AppTheme.gold)
+                        InsightStatTile(title: "Worse", value: formatAverage(snapshot.doublesOrWorsePerRound), caption: "\(yearSnapshot.doublesOrWorse) this year", accent: AppTheme.gold)
                     }
                 }
 
-                InsightMetricSection(title: "Par Averages") {
+                InsightMetricSection(title: "Par Averages", icon: "number.circle.fill", accent: AppTheme.gold) {
                     InsightStatGrid {
-                        StatTile(title: "Par 3", value: formatOptionalAverage(snapshot.par3Average), caption: "\(snapshot.par3Count) holes")
-                        StatTile(title: "Par 4", value: formatOptionalAverage(snapshot.par4Average), caption: "\(snapshot.par4Count) holes")
-                        StatTile(title: "Par 5", value: formatOptionalAverage(snapshot.par5Average), caption: "\(snapshot.par5Count) holes")
+                        InsightStatTile(title: "Par 3", value: formatOptionalAverage(snapshot.par3Average), caption: "\(snapshot.par3Count) holes", accent: AppTheme.gold)
+                        InsightStatTile(title: "Par 4", value: formatOptionalAverage(snapshot.par4Average), caption: "\(snapshot.par4Count) holes", accent: AppTheme.mint)
+                        InsightStatTile(title: "Par 5", value: formatOptionalAverage(snapshot.par5Average), caption: "\(snapshot.par5Count) holes", accent: AppTheme.mint)
                     }
                 }
 
-                InsightMetricSection(title: "Tee Game") {
+                InsightMetricSection(title: "Tee Game", icon: "location.north.line.fill", accent: AppTheme.mint) {
                     InsightStatGrid {
-                        StatTile(title: "Fairways", value: "\(snapshot.fairwayPercent)%", caption: "\(snapshot.fairwaysHit)/\(snapshot.fairwaysTotal) tracked")
-                        StatTile(title: "Miss Left", value: "\(snapshot.fairwayMissLeftPercent)%", caption: "\(missCount(.left, in: snapshot.fairwayMisses)) tee shots")
-                        StatTile(title: "Miss Right", value: "\(snapshot.fairwayMissRightPercent)%", caption: "\(missCount(.right, in: snapshot.fairwayMisses)) tee shots")
+                        InsightStatTile(title: "Fairways", value: "\(snapshot.fairwayPercent)%", caption: "\(snapshot.fairwaysHit)/\(snapshot.fairwaysTotal) tracked", accent: AppTheme.mint)
+                        InsightStatTile(title: "Miss Left", value: "\(snapshot.fairwayMissLeftPercent)%", caption: "\(missCount(.left, in: snapshot.fairwayMisses)) tee shots", accent: AppTheme.gold)
+                        InsightStatTile(title: "Miss Right", value: "\(snapshot.fairwayMissRightPercent)%", caption: "\(missCount(.right, in: snapshot.fairwayMisses)) tee shots", accent: AppTheme.gold)
                     }
                 }
 
-                InsightMetricSection(title: "Approach") {
+                InsightMetricSection(title: "Approach", icon: "scope", accent: AppTheme.mint) {
                     InsightStatGrid {
-                        StatTile(title: "GIR", value: "\(snapshot.girPercent)%", caption: "\(snapshot.greensHit)/\(snapshot.greensTotal) tracked")
-                        StatTile(title: "Short", value: "\(snapshot.greenMissShortPercent)%", caption: "\(missCount(.short, in: snapshot.greenMisses)) approaches")
-                        StatTile(title: "Left", value: "\(snapshot.greenMissLeftPercent)%", caption: "\(missCount(.left, in: snapshot.greenMisses)) approaches")
-                        StatTile(title: "Right", value: "\(snapshot.greenMissRightPercent)%", caption: "\(missCount(.right, in: snapshot.greenMisses)) approaches")
-                        StatTile(title: "Long", value: "\(snapshot.greenMissLongPercent)%", caption: "\(missCount(.long, in: snapshot.greenMisses)) approaches")
+                        InsightStatTile(title: "GIR", value: "\(snapshot.girPercent)%", caption: "\(snapshot.greensHit)/\(snapshot.greensTotal) tracked", accent: AppTheme.mint)
+                        InsightStatTile(title: "Short", value: "\(snapshot.greenMissShortPercent)%", caption: "\(missCount(.short, in: snapshot.greenMisses)) approaches", accent: AppTheme.gold)
+                        InsightStatTile(title: "Left", value: "\(snapshot.greenMissLeftPercent)%", caption: "\(missCount(.left, in: snapshot.greenMisses)) approaches", accent: AppTheme.gold)
+                        InsightStatTile(title: "Right", value: "\(snapshot.greenMissRightPercent)%", caption: "\(missCount(.right, in: snapshot.greenMisses)) approaches", accent: AppTheme.gold)
+                        InsightStatTile(title: "Long", value: "\(snapshot.greenMissLongPercent)%", caption: "\(missCount(.long, in: snapshot.greenMisses)) approaches", accent: AppTheme.gold)
                     }
                 }
 
-                InsightMetricSection(title: "Putting") {
+                InsightMetricSection(title: "Putting", icon: "circle.dotted.circle", accent: AppTheme.gold) {
                     InsightStatGrid {
-                        StatTile(title: "Putts / Round", value: formatAverage(snapshot.puttsPerRound), caption: "\(snapshot.putts) total")
-                        StatTile(title: "3-Putts", value: formatAverage(snapshot.threePuttsPerRound), caption: "\(yearSnapshot.threePutts) this year")
+                        InsightStatTile(title: "Putts / Round", value: formatAverage(snapshot.puttsPerRound), caption: "\(snapshot.putts) total", accent: AppTheme.mint)
+                        InsightStatTile(title: "3-Putts", value: formatAverage(snapshot.threePuttsPerRound), caption: "\(yearSnapshot.threePutts) this year", accent: AppTheme.gold)
                     }
                 }
             }
@@ -3184,6 +3192,25 @@ struct InsightsView: View {
 
     private func missCount(_ direction: MissDirection, in misses: [MissDirection]) -> Int {
         misses.filter { $0 == direction }.count
+    }
+
+    private func strongestArea(_ snapshot: InsightSnapshot) -> String {
+        if snapshot.roundCount == 0 {
+            return "Round data will build here"
+        }
+        if snapshot.doublesOrWorsePerRound >= 3 {
+            return "Big numbers are the main leak"
+        }
+        if snapshot.threePuttsPerRound >= 2 {
+            return "Putting pace needs attention"
+        }
+        if snapshot.girPercent < 30 && snapshot.greensTotal > 0 {
+            return "Approach play is the next gain"
+        }
+        if snapshot.fairwayPercent < 35 && snapshot.fairwaysTotal > 0 {
+            return "Tee accuracy is costing shots"
+        }
+        return "Scoring mix is building nicely"
     }
 
     private func scoringDetail(for snapshot: InsightSnapshot) -> String {
@@ -4378,15 +4405,103 @@ struct PenaltyPanel: View {
     }
 }
 
+struct InsightScorecardHero: View {
+    let title: String
+    let primaryValue: String
+    let primaryLabel: String
+    let secondaryValue: String
+    let secondaryLabel: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                Image(systemName: "chart.bar.xaxis")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(AppTheme.mint)
+                    .frame(width: 42, height: 42)
+                    .background(Circle().fill(AppTheme.mintWash))
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Current Read")
+                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.softText)
+                        .textCase(.uppercase)
+                    Text(title)
+                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 12) {
+                InsightHeroValue(value: primaryValue, label: primaryLabel, accent: AppTheme.mint)
+                InsightHeroValue(value: secondaryValue, label: secondaryLabel, accent: AppTheme.gold)
+            }
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AppTheme.panel)
+                .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 10)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+    }
+}
+
+struct InsightHeroValue: View {
+    let value: String
+    let label: String
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+                .minimumScaleFactor(0.72)
+                .lineLimit(1)
+            Text(label)
+                .font(.system(.caption, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.softText)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(accent.opacity(0.09))
+        )
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(accent)
+                .frame(width: 4)
+        }
+    }
+}
+
 struct InsightMetricSection<Content: View>: View {
     let title: String
+    let icon: String
+    let accent: Color
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: title, actionTitle: nil)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundStyle(accent)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(accent.opacity(0.1)))
+                Text(title)
+                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+            }
             content
         }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill.opacity(0.55)))
     }
 }
 
@@ -4402,6 +4517,54 @@ struct InsightStatGrid<Content: View>: View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
             content
         }
+    }
+}
+
+struct InsightStatTile: View {
+    let title: String
+    let value: String
+    let caption: String
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .top) {
+                Text(title)
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineLimit(2)
+                Spacer(minLength: 8)
+                Circle()
+                    .fill(accent)
+                    .frame(width: 8, height: 8)
+                    .padding(.top, 4)
+            }
+
+            Text(value)
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+                .minimumScaleFactor(0.68)
+                .lineLimit(1)
+
+            Text(caption)
+                .font(.system(.caption2, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.softText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.76)
+
+            Capsule()
+                .fill(accent.opacity(0.16))
+                .frame(height: 5)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(accent)
+                        .frame(width: 36)
+                }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 132, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
     }
 }
 
