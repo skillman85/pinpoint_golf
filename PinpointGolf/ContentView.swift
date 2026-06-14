@@ -381,6 +381,15 @@ struct HomeView: View {
     let updateRound: (SavedRound) -> Void
     @State private var selectedRound: SavedRound?
     @State private var showDiscardRoundAlert = false
+    @State private var visibleRecentRoundCount = 4
+
+    private var visibleRecentRounds: ArraySlice<SavedRound> {
+        savedRounds.prefix(visibleRecentRoundCount)
+    }
+
+    private var canLoadMoreRounds: Bool {
+        visibleRecentRoundCount < savedRounds.count
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -403,12 +412,30 @@ struct HomeView: View {
                     if savedRounds.isEmpty {
                         EmptyRoundsCard(startRound: startRound)
                     } else {
-                        ForEach(savedRounds.prefix(6)) { round in
+                        ForEach(visibleRecentRounds) { round in
                             SavedRoundRow(
                                 round: round,
                                 viewRound: { selectedRound = round },
                                 deleteRound: { deleteRound(round) }
                             )
+                        }
+
+                        if canLoadMoreRounds {
+                            Button {
+                                visibleRecentRoundCount = min(visibleRecentRoundCount + 4, savedRounds.count)
+                            } label: {
+                                HStack {
+                                    Text("Load More Rounds")
+                                    Spacer()
+                                    Text("\(min(savedRounds.count - visibleRecentRoundCount, 4)) more")
+                                    Image(systemName: "chevron.down")
+                                }
+                                .font(.system(.subheadline, design: .rounded).weight(.bold))
+                                .foregroundStyle(AppTheme.mint)
+                                .padding(14)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
