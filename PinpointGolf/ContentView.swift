@@ -451,11 +451,6 @@ struct HomeView: View {
                         FocusCard(title: "Next Edge", headline: focus.headline, detail: focus.detail)
                     }
 
-                    RoundTimelineSection(
-                        rounds: Array(savedRounds.prefix(12)),
-                        viewRound: { selectedRound = $0 }
-                    )
-
                     CourseFormSection(rounds: savedRounds)
                 }
                 .padding(.horizontal, 20)
@@ -880,89 +875,169 @@ struct PerformanceOverview: View {
     let rounds: [SavedRound]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("\(seasonYear) Season")
+                            .font(.system(.caption, design: .rounded).weight(.heavy))
+                    }
+                    .foregroundStyle(AppTheme.mint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(AppTheme.mint.opacity(0.1)))
+
                     Text("Scoring Average")
-                        .font(.system(.caption, design: .rounded).weight(.heavy))
-                        .foregroundStyle(AppTheme.mint)
+                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+
                     HStack(alignment: .lastTextBaseline, spacing: 8) {
                         Text(scoringAverage)
-                            .font(.system(size: 50, weight: .bold, design: .rounded))
+                            .font(.system(size: 58, weight: .heavy, design: .rounded))
                             .foregroundStyle(AppTheme.ink)
-                        Text(sampleLabel)
-                            .font(.system(.headline, design: .rounded).weight(.semibold))
+                        Text(roundCountLabel)
+                            .font(.system(.subheadline, design: .rounded).weight(.heavy))
                             .foregroundStyle(AppTheme.softText)
                     }
                 }
                 Spacer()
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.gold.opacity(0.14))
+                        .frame(width: 70, height: 70)
+                    Image(systemName: "flag.checkered")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(AppTheme.gold)
+                }
             }
 
-            HStack(spacing: 10) {
-                MiniMetric(title: "Fairways", value: "\(fairwayPercent)%")
-                MiniMetric(title: "GIR", value: "\(girPercent)%")
-                MiniMetric(title: "Putts", value: averagePutts)
-            }
-
-            HStack(spacing: 10) {
-                MiniMetric(title: "Stableford", value: averageStableford)
-                MiniMetric(title: "Penalties", value: averagePenalties)
-                MiniMetric(title: "Doubles+", value: "\(doublesOrWorse)")
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                DesignedMetric(title: "Fairways", value: "\(fairwayPercent)%", icon: "arrow.up.forward", tint: AppTheme.mint)
+                DesignedMetric(title: "GIR", value: "\(girPercent)%", icon: "target", tint: Color(red: 0.11, green: 0.42, blue: 0.74))
+                DesignedMetric(title: "Putts", value: averagePutts, icon: "circle.grid.cross", tint: AppTheme.gold)
+                DesignedMetric(title: "Stableford", value: averageStableford, icon: "plus.circle.fill", tint: Color(red: 0.12, green: 0.56, blue: 0.32))
+                DesignedMetric(title: "Penalties", value: averagePenalties, icon: "exclamationmark.triangle.fill", tint: Color(red: 0.82, green: 0.34, blue: 0.20))
+                DesignedMetric(title: "Doubles+", value: "\(doublesOrWorse)", icon: "xmark.octagon.fill", tint: Color(red: 0.42, green: 0.22, blue: 0.58))
             }
         }
-        .padding(18)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelStrong))
+        .padding(20)
+        .background(
+            ZStack(alignment: .bottomTrailing) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.98, green: 0.99, blue: 0.97),
+                                Color.white,
+                                Color(red: 0.95, green: 0.98, blue: 1.00)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Circle()
+                    .fill(AppTheme.mint.opacity(0.10))
+                    .frame(width: 132, height: 132)
+                    .offset(x: 52, y: 50)
+            }
+        )
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
-        .shadow(color: AppTheme.shadow, radius: 12, x: 0, y: 6)
+        .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 8)
+    }
+
+    private var seasonRounds: [SavedRound] {
+        rounds.filter { Calendar.current.component(.year, from: $0.date) == seasonYear }
+    }
+
+    private var seasonYear: Int {
+        Calendar.current.component(.year, from: Date())
     }
 
     private var scoringAverage: String {
-        guard !rounds.isEmpty else { return "-" }
-        let sample = rounds.prefix(3)
-        let average = Double(sample.reduce(0) { $0 + $1.totalScore }) / Double(sample.count)
+        guard !seasonRounds.isEmpty else { return "-" }
+        let average = Double(seasonRounds.reduce(0) { $0 + $1.totalScore }) / Double(seasonRounds.count)
         return String(format: "%.1f", average)
     }
 
-    private var sampleLabel: String {
-        rounds.isEmpty ? "no rounds" : "last \(min(rounds.count, 3))"
+    private var roundCountLabel: String {
+        seasonRounds.isEmpty ? "no rounds" : "\(seasonRounds.count) \(seasonRounds.count == 1 ? "round" : "rounds")"
     }
 
     private var fairwayPercent: Int {
-        let hit = rounds.reduce(0) { $0 + $1.fairwaysHit }
-        let total = rounds.reduce(0) { $0 + $1.fairwaysTotal }
+        let hit = seasonRounds.reduce(0) { $0 + $1.fairwaysHit }
+        let total = seasonRounds.reduce(0) { $0 + $1.fairwaysTotal }
         guard total > 0 else { return 0 }
         return Int((Double(hit) / Double(total)) * 100)
     }
 
     private var girPercent: Int {
-        let hit = rounds.reduce(0) { $0 + $1.greensInRegulation }
-        let total = rounds.reduce(0) { $0 + $1.holes.count }
+        let hit = seasonRounds.reduce(0) { $0 + $1.greensInRegulation }
+        let total = seasonRounds.reduce(0) { $0 + $1.holes.count }
         guard total > 0 else { return 0 }
         return Int((Double(hit) / Double(total)) * 100)
     }
 
     private var averagePutts: String {
-        guard !rounds.isEmpty else { return "-" }
-        let average = Double(rounds.reduce(0) { $0 + $1.totalPutts }) / Double(rounds.count)
+        guard !seasonRounds.isEmpty else { return "-" }
+        let average = Double(seasonRounds.reduce(0) { $0 + $1.totalPutts }) / Double(seasonRounds.count)
         return String(format: "%.1f", average)
     }
 
     private var averageStableford: String {
-        guard !rounds.isEmpty else { return "-" }
-        let points = rounds.compactMap(\.stablefordPoints)
+        guard !seasonRounds.isEmpty else { return "-" }
+        let points = seasonRounds.compactMap(\.stablefordPoints)
         guard !points.isEmpty else { return "-" }
         let average = Double(points.reduce(0, +)) / Double(points.count)
         return String(format: "%.1f", average)
     }
 
     private var averagePenalties: String {
-        guard !rounds.isEmpty else { return "-" }
-        let average = Double(rounds.reduce(0) { $0 + $1.penalties }) / Double(rounds.count)
+        guard !seasonRounds.isEmpty else { return "-" }
+        let average = Double(seasonRounds.reduce(0) { $0 + $1.penalties }) / Double(seasonRounds.count)
         return String(format: "%.1f", average)
     }
 
     private var doublesOrWorse: Int {
-        rounds.flatMap(\.holes).filter { $0.score >= $0.par + 2 }.count
+        seasonRounds.flatMap(\.holes).filter { $0.score >= $0.par + 2 }.count
+    }
+}
+
+struct DesignedMetric: View {
+    let title: String
+    let value: String
+    let icon: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(tint)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(tint.opacity(0.12)))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(value)
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Text(title)
+                    .font(.system(.caption2, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(0.82))
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.16)))
     }
 }
 
