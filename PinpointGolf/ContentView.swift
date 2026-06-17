@@ -1727,21 +1727,37 @@ struct VisualScorecard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Scorecard", actionTitle: "\(round.totalScore) gross")
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Digital Scorecard")
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("\(round.teeName) tees - \(round.summary.dateLabel)")
+                        .font(.system(.caption, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer()
+                Text("\(round.totalScore)")
+                    .font(.system(.title2, design: .rounded).weight(.bold))
+                    .foregroundStyle(AppTheme.mint)
+            }
 
             ScrollView(.horizontal, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 12) {
                     ScorecardTable(title: "Out", holes: frontNine)
                     ScorecardTable(title: "In", holes: backNine)
                     ScorecardTotalRow(round: round)
                 }
-                .padding(1)
             }
         }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AppTheme.panel)
+                .shadow(color: AppTheme.shadow, radius: 16, x: 0, y: 8)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
     }
 }
 
@@ -1750,17 +1766,16 @@ struct ScorecardTable: View {
     let holes: [SavedHoleEntry]
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScorecardRow(label: "Hole", values: holes.map { "\($0.holeNumber)" }, total: title, isHeader: true)
-            ScorecardRow(label: "Par", values: holes.map { "\($0.par)" }, total: "\(holes.reduce(0) { $0 + $1.par })")
-            ScorecardRow(label: "SI", values: holes.map { "\($0.strokeIndex)" }, total: "")
-            ScorecardRow(label: "Yds", values: holes.map { "\($0.yards)" }, total: "\(holes.reduce(0) { $0 + $1.yards })")
-            ScorecardRow(label: "Score", values: holes.map { "\($0.score)" }, total: "\(holes.reduce(0) { $0 + $1.score })", accentRow: true)
-            ScorecardRow(label: "Putts", values: holes.map { "\($0.putts)" }, total: "\(holes.reduce(0) { $0 + $1.putts })")
+        VStack(spacing: 4) {
+            ScorecardHoleHeader(holes: holes, total: title)
+            ScorecardInfoRow(label: "SI", values: holes.map { "\($0.strokeIndex)" }, total: "")
+            ScorecardInfoRow(label: "Par", values: holes.map { "\($0.par)" }, total: "\(holes.reduce(0) { $0 + $1.par })")
+            ScorecardInfoRow(label: "Yds", values: holes.map { "\($0.yards)" }, total: "\(holes.reduce(0) { $0 + $1.yards })")
+            ScorecardScoreRow(holes: holes, total: "\(holes.reduce(0) { $0 + $1.score })")
+            ScorecardInfoRow(label: "Putts", values: holes.map { "\($0.putts)" }, total: "\(holes.reduce(0) { $0 + $1.putts })")
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
-        .padding(.bottom, 10)
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill.opacity(0.7)))
     }
 }
 
@@ -1769,15 +1784,14 @@ struct ScorecardTotalRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ScorecardCell(text: "Total", width: 58, isHeader: true)
-            ScorecardCell(text: "\(round.totalPar)", width: 56)
-            ScorecardCell(text: "\(round.teeYards)", width: 62)
-            ScorecardCell(text: "\(round.totalScore)", width: 62, accent: AppTheme.mint)
-            ScorecardCell(text: "\(round.totalPutts) putts", width: 82)
-            ScorecardCell(text: stablefordText, width: 72, accent: AppTheme.gold)
+            ScorecardFooterCell(title: "CR", value: String(format: "%.1f", round.teeRating), width: 76)
+            ScorecardFooterCell(title: "Score", value: "\(round.totalScore)/\(round.totalPar)", width: 100, accent: AppTheme.mint)
+            ScorecardFooterCell(title: "Slope", value: "\(round.teeSlope)", width: 84)
+            ScorecardFooterCell(title: "Putts", value: "\(round.totalPutts)", width: 84)
+            ScorecardFooterCell(title: "Points", value: stablefordText, width: 92, accent: AppTheme.gold)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mintWash))
     }
 
     private var stablefordText: String {
@@ -1785,39 +1799,150 @@ struct ScorecardTotalRow: View {
     }
 }
 
-struct ScorecardRow: View {
-    let label: String
-    let values: [String]
+struct ScorecardHoleHeader: View {
+    let holes: [SavedHoleEntry]
     let total: String
-    var isHeader = false
-    var accentRow = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            ScorecardCell(text: label, width: 58, isHeader: true)
-            ForEach(Array(values.enumerated()), id: \.offset) { _, value in
-                ScorecardCell(text: value, width: 48, isHeader: isHeader, accent: accentRow ? AppTheme.mint : nil)
+        HStack(spacing: 4) {
+            ScorecardBandCell(text: "Hole", width: 58, isTotal: false)
+            ForEach(holes) { hole in
+                ScorecardBandCell(text: "\(hole.holeNumber)", width: 38, isTotal: false)
             }
-            ScorecardCell(text: total, width: 56, isHeader: isHeader, accent: accentRow ? AppTheme.mint : nil)
+            ScorecardBandCell(text: total, width: 48, isTotal: true)
         }
     }
 }
 
-struct ScorecardCell: View {
+struct ScorecardInfoRow: View {
+    let label: String
+    let values: [String]
+    let total: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ScorecardPlainCell(text: label, width: 58, isLabel: true)
+            ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+                ScorecardPlainCell(text: value, width: 38)
+            }
+            ScorecardPlainCell(text: total, width: 48, isLabel: true)
+        }
+    }
+}
+
+struct ScorecardScoreRow: View {
+    let holes: [SavedHoleEntry]
+    let total: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ScorecardPlainCell(text: "Score", width: 58, isLabel: true)
+            ForEach(holes) { hole in
+                ScorecardResultCell(hole: hole)
+            }
+            ScorecardPlainCell(text: total, width: 48, isLabel: true, accent: AppTheme.mint)
+        }
+    }
+}
+
+struct ScorecardBandCell: View {
     let text: String
     let width: CGFloat
-    var isHeader = false
+    let isTotal: Bool
+
+    var body: some View {
+        Text(text)
+            .font(.system(.caption, design: .rounded).weight(.heavy))
+            .foregroundStyle(Color.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.65)
+            .frame(width: width, height: 30)
+            .background(
+                RoundedRectangle(cornerRadius: isTotal ? 10 : 6)
+                    .fill(AppTheme.mint)
+            )
+    }
+}
+
+struct ScorecardPlainCell: View {
+    let text: String
+    let width: CGFloat
+    var isLabel = false
     var accent: Color?
 
     var body: some View {
         Text(text)
-            .font(.system(.caption, design: .rounded).weight(isHeader || accent != nil ? .heavy : .bold))
-            .foregroundStyle(accent ?? (isHeader ? AppTheme.ink : AppTheme.softText))
+            .font(.system(.caption, design: .rounded).weight(isLabel || accent != nil ? .heavy : .bold))
+            .foregroundStyle(accent ?? (isLabel ? AppTheme.ink : AppTheme.softText))
             .lineLimit(1)
-            .minimumScaleFactor(0.65)
-            .frame(width: width, height: 34)
-            .background(isHeader ? AppTheme.mintWash : AppTheme.panel)
-            .border(AppTheme.border.opacity(0.8), width: 0.5)
+            .minimumScaleFactor(0.62)
+            .frame(width: width, height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isLabel ? Color.white : AppTheme.panel)
+            )
+    }
+}
+
+struct ScorecardResultCell: View {
+    let hole: SavedHoleEntry
+
+    var body: some View {
+        Text("\(hole.score)")
+            .font(.system(.caption, design: .rounded).weight(.heavy))
+            .foregroundStyle(foreground)
+            .frame(width: 38, height: 28)
+            .background(
+                Group {
+                    if useCircle {
+                        Circle().fill(fill)
+                    } else {
+                        RoundedRectangle(cornerRadius: 5).fill(fill)
+                    }
+                }
+            )
+    }
+
+    private var delta: Int {
+        hole.score - hole.par
+    }
+
+    private var fill: Color {
+        if delta <= -2 { return Color(red: 0.08, green: 0.40, blue: 0.78) }
+        if delta == -1 { return Color(red: 0.95, green: 0.08, blue: 0.16) }
+        if delta == 0 { return AppTheme.panel }
+        if delta == 1 { return Color(red: 0.95, green: 0.66, blue: 0.14) }
+        return Color(red: 0.06, green: 0.28, blue: 0.47)
+    }
+
+    private var foreground: Color {
+        delta == 0 ? AppTheme.ink : .white
+    }
+
+    private var useCircle: Bool {
+        delta == -1 || delta == 1
+    }
+}
+
+struct ScorecardFooterCell: View {
+    let title: String
+    let value: String
+    let width: CGFloat
+    var accent: Color?
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+            Text(value)
+                .font(.system(.caption, design: .rounded).weight(.heavy))
+                .foregroundStyle(accent ?? AppTheme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(width: width, height: 42)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
     }
 }
 
