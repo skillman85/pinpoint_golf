@@ -1215,6 +1215,8 @@ struct SavedRoundDetailView: View {
                         }
                     }
 
+                    VisualScorecard(round: round)
+
                     ShareableRoundSummaryCard(round: round)
 
                     HStack(spacing: 10) {
@@ -1259,8 +1261,6 @@ struct SavedRoundDetailView: View {
                     .padding(16)
                     .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
-
-                    VisualScorecard(round: round)
 
                     DisclosureGroup(isExpanded: $showHoleBreakdown) {
                         VStack(spacing: 8) {
@@ -1743,13 +1743,15 @@ struct VisualScorecard: View {
                     .foregroundStyle(AppTheme.mint)
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
+            GeometryReader { proxy in
+                let metrics = ScorecardMetrics(containerWidth: proxy.size.width)
                 VStack(alignment: .leading, spacing: 12) {
-                    ScorecardTable(title: "Out", holes: frontNine)
-                    ScorecardTable(title: "In", holes: backNine)
+                    ScorecardTable(title: "Out", holes: frontNine, metrics: metrics)
+                    ScorecardTable(title: "In", holes: backNine, metrics: metrics)
                     ScorecardTotalRow(round: round)
                 }
             }
+            .frame(height: 402)
         }
         .padding(18)
         .background(
@@ -1761,20 +1763,37 @@ struct VisualScorecard: View {
     }
 }
 
+struct ScorecardMetrics {
+    let labelWidth: CGFloat
+    let holeWidth: CGFloat
+    let totalWidth: CGFloat
+    let spacing: CGFloat = 4
+
+    init(containerWidth: CGFloat) {
+        let label = max(34, min(42, containerWidth * 0.12))
+        let total = max(32, min(40, containerWidth * 0.11))
+        let remaining = containerWidth - label - total - (spacing * 10)
+        labelWidth = label
+        totalWidth = total
+        holeWidth = max(22, remaining / 9)
+    }
+}
+
 struct ScorecardTable: View {
     let title: String
     let holes: [SavedHoleEntry]
+    let metrics: ScorecardMetrics
 
     var body: some View {
         VStack(spacing: 4) {
-            ScorecardHoleHeader(holes: holes, total: title)
-            ScorecardInfoRow(label: "SI", values: holes.map { "\($0.strokeIndex)" }, total: "")
-            ScorecardInfoRow(label: "Par", values: holes.map { "\($0.par)" }, total: "\(holes.reduce(0) { $0 + $1.par })")
-            ScorecardInfoRow(label: "Yds", values: holes.map { "\($0.yards)" }, total: "\(holes.reduce(0) { $0 + $1.yards })")
-            ScorecardScoreRow(holes: holes, total: "\(holes.reduce(0) { $0 + $1.score })")
-            ScorecardInfoRow(label: "Putts", values: holes.map { "\($0.putts)" }, total: "\(holes.reduce(0) { $0 + $1.putts })")
+            ScorecardHoleHeader(holes: holes, total: title, metrics: metrics)
+            ScorecardInfoRow(label: "SI", values: holes.map { "\($0.strokeIndex)" }, total: "", metrics: metrics)
+            ScorecardInfoRow(label: "Par", values: holes.map { "\($0.par)" }, total: "\(holes.reduce(0) { $0 + $1.par })", metrics: metrics)
+            ScorecardInfoRow(label: "Yds", values: holes.map { "\($0.yards)" }, total: "\(holes.reduce(0) { $0 + $1.yards })", metrics: metrics)
+            ScorecardScoreRow(holes: holes, total: "\(holes.reduce(0) { $0 + $1.score })", metrics: metrics)
+            ScorecardInfoRow(label: "Putts", values: holes.map { "\($0.putts)" }, total: "\(holes.reduce(0) { $0 + $1.putts })", metrics: metrics)
         }
-        .padding(10)
+        .padding(6)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill.opacity(0.7)))
     }
 }
@@ -1783,14 +1802,14 @@ struct ScorecardTotalRow: View {
     let round: SavedRound
 
     var body: some View {
-        HStack(spacing: 0) {
-            ScorecardFooterCell(title: "CR", value: String(format: "%.1f", round.teeRating), width: 76)
-            ScorecardFooterCell(title: "Score", value: "\(round.totalScore)/\(round.totalPar)", width: 100, accent: AppTheme.mint)
-            ScorecardFooterCell(title: "Slope", value: "\(round.teeSlope)", width: 84)
-            ScorecardFooterCell(title: "Putts", value: "\(round.totalPutts)", width: 84)
-            ScorecardFooterCell(title: "Points", value: stablefordText, width: 92, accent: AppTheme.gold)
+        HStack(spacing: 6) {
+            ScorecardFooterCell(title: "CR", value: String(format: "%.1f", round.teeRating))
+            ScorecardFooterCell(title: "Score", value: "\(round.totalScore)/\(round.totalPar)", accent: AppTheme.mint)
+            ScorecardFooterCell(title: "Slope", value: "\(round.teeSlope)")
+            ScorecardFooterCell(title: "Putts", value: "\(round.totalPutts)")
+            ScorecardFooterCell(title: "Points", value: stablefordText, accent: AppTheme.gold)
         }
-        .padding(10)
+        .padding(6)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mintWash))
     }
 
@@ -1802,14 +1821,15 @@ struct ScorecardTotalRow: View {
 struct ScorecardHoleHeader: View {
     let holes: [SavedHoleEntry]
     let total: String
+    let metrics: ScorecardMetrics
 
     var body: some View {
-        HStack(spacing: 4) {
-            ScorecardBandCell(text: "Hole", width: 58, isTotal: false)
+        HStack(spacing: metrics.spacing) {
+            ScorecardBandCell(text: "Hole", width: metrics.labelWidth, isTotal: false)
             ForEach(holes) { hole in
-                ScorecardBandCell(text: "\(hole.holeNumber)", width: 38, isTotal: false)
+                ScorecardBandCell(text: "\(hole.holeNumber)", width: metrics.holeWidth, isTotal: false)
             }
-            ScorecardBandCell(text: total, width: 48, isTotal: true)
+            ScorecardBandCell(text: total, width: metrics.totalWidth, isTotal: true)
         }
     }
 }
@@ -1818,14 +1838,15 @@ struct ScorecardInfoRow: View {
     let label: String
     let values: [String]
     let total: String
+    let metrics: ScorecardMetrics
 
     var body: some View {
-        HStack(spacing: 4) {
-            ScorecardPlainCell(text: label, width: 58, isLabel: true)
+        HStack(spacing: metrics.spacing) {
+            ScorecardPlainCell(text: label, width: metrics.labelWidth, isLabel: true)
             ForEach(Array(values.enumerated()), id: \.offset) { _, value in
-                ScorecardPlainCell(text: value, width: 38)
+                ScorecardPlainCell(text: value, width: metrics.holeWidth)
             }
-            ScorecardPlainCell(text: total, width: 48, isLabel: true)
+            ScorecardPlainCell(text: total, width: metrics.totalWidth, isLabel: true)
         }
     }
 }
@@ -1833,14 +1854,15 @@ struct ScorecardInfoRow: View {
 struct ScorecardScoreRow: View {
     let holes: [SavedHoleEntry]
     let total: String
+    let metrics: ScorecardMetrics
 
     var body: some View {
-        HStack(spacing: 4) {
-            ScorecardPlainCell(text: "Score", width: 58, isLabel: true)
+        HStack(spacing: metrics.spacing) {
+            ScorecardPlainCell(text: "Score", width: metrics.labelWidth, isLabel: true)
             ForEach(holes) { hole in
-                ScorecardResultCell(hole: hole)
+                ScorecardResultCell(hole: hole, width: metrics.holeWidth)
             }
-            ScorecardPlainCell(text: total, width: 48, isLabel: true, accent: AppTheme.mint)
+            ScorecardPlainCell(text: total, width: metrics.totalWidth, isLabel: true, accent: AppTheme.mint)
         }
     }
 }
@@ -1856,7 +1878,7 @@ struct ScorecardBandCell: View {
             .foregroundStyle(Color.white)
             .lineLimit(1)
             .minimumScaleFactor(0.65)
-            .frame(width: width, height: 30)
+            .frame(width: width, height: 24)
             .background(
                 RoundedRectangle(cornerRadius: isTotal ? 10 : 6)
                     .fill(AppTheme.mint)
@@ -1875,8 +1897,8 @@ struct ScorecardPlainCell: View {
             .font(.system(.caption, design: .rounded).weight(isLabel || accent != nil ? .heavy : .bold))
             .foregroundStyle(accent ?? (isLabel ? AppTheme.ink : AppTheme.softText))
             .lineLimit(1)
-            .minimumScaleFactor(0.62)
-            .frame(width: width, height: 28)
+            .minimumScaleFactor(0.5)
+            .frame(width: width, height: 22)
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(isLabel ? Color.white : AppTheme.panel)
@@ -1886,12 +1908,15 @@ struct ScorecardPlainCell: View {
 
 struct ScorecardResultCell: View {
     let hole: SavedHoleEntry
+    let width: CGFloat
 
     var body: some View {
         Text("\(hole.score)")
             .font(.system(.caption, design: .rounded).weight(.heavy))
             .foregroundStyle(foreground)
-            .frame(width: 38, height: 28)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .frame(width: width, height: 22)
             .background(
                 Group {
                     if useCircle {
@@ -1927,7 +1952,6 @@ struct ScorecardResultCell: View {
 struct ScorecardFooterCell: View {
     let title: String
     let value: String
-    let width: CGFloat
     var accent: Color?
 
     var body: some View {
@@ -1941,7 +1965,7 @@ struct ScorecardFooterCell: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
-        .frame(width: width, height: 42)
+        .frame(maxWidth: .infinity, minHeight: 38)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
     }
 }
