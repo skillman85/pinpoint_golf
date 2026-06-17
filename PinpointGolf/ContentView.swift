@@ -396,6 +396,8 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HomeHeader(hasSavedRounds: !savedRounds.isEmpty)
 
+                PlayerProfileCard(currentHandicap: currentHandicap, rounds: savedRounds)
+
                 PerformanceOverview(rounds: savedRounds)
 
                 PersonalBestStrip(rounds: savedRounds)
@@ -443,6 +445,11 @@ struct HomeView: View {
                 if let focus = homeFocus {
                     FocusCard(title: "Next Edge", headline: focus.headline, detail: focus.detail)
                 }
+
+                RoundTimelineSection(
+                    rounds: Array(savedRounds.prefix(12)),
+                    viewRound: { selectedRound = $0 }
+                )
 
                 CourseFormSection(rounds: savedRounds)
             }
@@ -504,6 +511,209 @@ struct HomeHeader: View {
         }
         .padding(.top, 8)
     }
+}
+
+struct PlayerProfileCard: View {
+    let currentHandicap: Double
+    let rounds: [SavedRound]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.mintWash)
+                    Text("J")
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.mint)
+                }
+                .frame(width: 58, height: 58)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("James")
+                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(homeClubText)
+                        .font(.system(.caption, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("HI")
+                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.softText)
+                    Text(String(format: "%.1f", currentHandicap))
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
+                }
+            }
+
+            HStack(spacing: 10) {
+                ProfileMiniStat(title: "Rounds", value: "\(rounds.count)")
+                ProfileMiniStat(title: "Best Gross", value: bestGross)
+                ProfileMiniStat(title: "Best Points", value: bestStableford)
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow, radius: 12, x: 0, y: 6)
+    }
+
+    private var homeClubText: String {
+        guard let mostPlayed = rounds.reduce(into: [String: Int](), { counts, round in
+            counts[round.courseName, default: 0] += 1
+        }).max(by: { $0.value < $1.value })?.key else {
+            return "Build your playing profile"
+        }
+        return mostPlayed
+    }
+
+    private var bestGross: String {
+        rounds.map(\.totalScore).min().map(String.init) ?? "-"
+    }
+
+    private var bestStableford: String {
+        rounds.compactMap(\.stablefordPoints).max().map(String.init) ?? "-"
+    }
+}
+
+struct ProfileMiniStat: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+                .textCase(.uppercase)
+            Text(value)
+                .font(.system(.headline, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+    }
+}
+
+struct RoundTimelineSection: View {
+    let rounds: [SavedRound]
+    let viewRound: (SavedRound) -> Void
+
+    private var groupedRounds: [(title: String, rounds: [SavedRound])] {
+        let grouped = Dictionary(grouping: rounds) { round in
+            Self.monthFormatter.string(from: round.date)
+        }
+        return grouped
+            .map { (title: $0.key, rounds: $0.value.sorted { $0.date > $1.date }) }
+            .sorted { ($0.rounds.first?.date ?? .distantPast) > ($1.rounds.first?.date ?? .distantPast) }
+    }
+
+    var body: some View {
+        if !rounds.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionHeader(title: "Playing History", actionTitle: "\(rounds.count) latest")
+
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(groupedRounds, id: \.title) { group in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(group.title)
+                                .font(.system(.caption, design: .rounded).weight(.heavy))
+                                .foregroundStyle(AppTheme.softText)
+                                .textCase(.uppercase)
+
+                            VStack(spacing: 8) {
+                                ForEach(group.rounds) { round in
+                                    RoundTimelineRow(round: round, viewRound: { viewRound(round) })
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+            }
+        }
+    }
+
+    private static let monthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter
+    }()
+}
+
+struct RoundTimelineRow: View {
+    let round: SavedRound
+    let viewRound: () -> Void
+
+    var body: some View {
+        Button(action: viewRound) {
+            HStack(spacing: 12) {
+                VStack(spacing: 2) {
+                    Text(Self.dayFormatter.string(from: round.date))
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(Self.weekdayFormatter.string(from: round.date))
+                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                .frame(width: 48, height: 54)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(round.courseName)
+                        .font(.system(.subheadline, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(1)
+                    Text("\(round.teeName) tees - \(stablefordText)")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.softText)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(round.totalScore)")
+                        .font(.system(.headline, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(scoreToParLabel)
+                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(scoreToPar <= 4 ? AppTheme.mint : AppTheme.gold)
+                }
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill.opacity(0.62)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var scoreToPar: Int {
+        round.totalScore - round.totalPar
+    }
+
+    private var scoreToParLabel: String {
+        scoreToPar == 0 ? "E" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
+    }
+
+    private var stablefordText: String {
+        round.stablefordPoints.map { "\($0) pts" } ?? "No Stableford"
+    }
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d"
+        return formatter
+    }()
+
+    private static let weekdayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE"
+        return formatter
+    }()
 }
 
 struct PerformanceOverview: View {
@@ -1005,6 +1215,8 @@ struct SavedRoundDetailView: View {
                         }
                     }
 
+                    ShareableRoundSummaryCard(round: round)
+
                     HStack(spacing: 10) {
                         StatTile(title: "Score", value: "\(round.totalScore)", caption: scoreToParLabel)
                         StatTile(title: "Stableford", value: stablefordValue, caption: stablefordCaption)
@@ -1047,6 +1259,8 @@ struct SavedRoundDetailView: View {
                     .padding(16)
                     .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+
+                    VisualScorecard(round: round)
 
                     DisclosureGroup(isExpanded: $showHoleBreakdown) {
                         VStack(spacing: 8) {
@@ -1405,6 +1619,205 @@ struct RoundAnalysisTile: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+    }
+}
+
+struct ShareableRoundSummaryCard: View {
+    let round: SavedRound
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Pinpoint Golf")
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.mint)
+                        .textCase(.uppercase)
+                    Text(round.courseName)
+                        .font(.system(.title2, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("\(round.teeName) tees - \(round.summary.dateLabel)")
+                        .font(.system(.caption, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer()
+                TeeMarkerSwatch(marker: round.teeMarkerColor ?? TeeMarkerColor.inferred(from: round.teeName), size: 18)
+            }
+
+            HStack(alignment: .lastTextBaseline, spacing: 10) {
+                Text("\(round.totalScore)")
+                    .font(.system(size: 58, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                Text(scoreToParLabel)
+                    .font(.system(.title3, design: .rounded).weight(.heavy))
+                    .foregroundStyle(scoreToPar <= 4 ? AppTheme.mint : AppTheme.gold)
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(stablefordText)
+                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.mint)
+                    Text(handicapText)
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.softText)
+                }
+            }
+
+            HStack(spacing: 10) {
+                SummaryPill(title: "Pars", value: "\(round.pars)")
+                SummaryPill(title: "GIR", value: "\(round.greensInRegulation)")
+                SummaryPill(title: "Putts", value: "\(round.totalPutts)")
+                SummaryPill(title: "FW", value: "\(round.fairwaysHit)")
+            }
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AppTheme.panel)
+                .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 10)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+    }
+
+    private var scoreToPar: Int {
+        round.totalScore - round.totalPar
+    }
+
+    private var scoreToParLabel: String {
+        scoreToPar == 0 ? "E" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
+    }
+
+    private var stablefordText: String {
+        round.stablefordPoints.map { "\($0) pts" } ?? "- pts"
+    }
+
+    private var handicapText: String {
+        round.handicap.map { "HI \(String(format: "%.1f", $0))" } ?? "HI -"
+    }
+}
+
+struct SummaryPill: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(.headline, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+    }
+}
+
+struct VisualScorecard: View {
+    let round: SavedRound
+
+    private var frontNine: [SavedHoleEntry] {
+        round.holes.filter { $0.holeNumber <= 9 }
+    }
+
+    private var backNine: [SavedHoleEntry] {
+        round.holes.filter { $0.holeNumber > 9 }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Scorecard", actionTitle: "\(round.totalScore) gross")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ScorecardTable(title: "Out", holes: frontNine)
+                    ScorecardTable(title: "In", holes: backNine)
+                    ScorecardTotalRow(round: round)
+                }
+                .padding(1)
+            }
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+    }
+}
+
+struct ScorecardTable: View {
+    let title: String
+    let holes: [SavedHoleEntry]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScorecardRow(label: "Hole", values: holes.map { "\($0.holeNumber)" }, total: title, isHeader: true)
+            ScorecardRow(label: "Par", values: holes.map { "\($0.par)" }, total: "\(holes.reduce(0) { $0 + $1.par })")
+            ScorecardRow(label: "SI", values: holes.map { "\($0.strokeIndex)" }, total: "")
+            ScorecardRow(label: "Yds", values: holes.map { "\($0.yards)" }, total: "\(holes.reduce(0) { $0 + $1.yards })")
+            ScorecardRow(label: "Score", values: holes.map { "\($0.score)" }, total: "\(holes.reduce(0) { $0 + $1.score })", accentRow: true)
+            ScorecardRow(label: "Putts", values: holes.map { "\($0.putts)" }, total: "\(holes.reduce(0) { $0 + $1.putts })")
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        .padding(.bottom, 10)
+    }
+}
+
+struct ScorecardTotalRow: View {
+    let round: SavedRound
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ScorecardCell(text: "Total", width: 58, isHeader: true)
+            ScorecardCell(text: "\(round.totalPar)", width: 56)
+            ScorecardCell(text: "\(round.teeYards)", width: 62)
+            ScorecardCell(text: "\(round.totalScore)", width: 62, accent: AppTheme.mint)
+            ScorecardCell(text: "\(round.totalPutts) putts", width: 82)
+            ScorecardCell(text: stablefordText, width: 72, accent: AppTheme.gold)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+    }
+
+    private var stablefordText: String {
+        round.stablefordPoints.map { "\($0) pts" } ?? "- pts"
+    }
+}
+
+struct ScorecardRow: View {
+    let label: String
+    let values: [String]
+    let total: String
+    var isHeader = false
+    var accentRow = false
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ScorecardCell(text: label, width: 58, isHeader: true)
+            ForEach(Array(values.enumerated()), id: \.offset) { _, value in
+                ScorecardCell(text: value, width: 48, isHeader: isHeader, accent: accentRow ? AppTheme.mint : nil)
+            }
+            ScorecardCell(text: total, width: 56, isHeader: isHeader, accent: accentRow ? AppTheme.mint : nil)
+        }
+    }
+}
+
+struct ScorecardCell: View {
+    let text: String
+    let width: CGFloat
+    var isHeader = false
+    var accent: Color?
+
+    var body: some View {
+        Text(text)
+            .font(.system(.caption, design: .rounded).weight(isHeader || accent != nil ? .heavy : .bold))
+            .foregroundStyle(accent ?? (isHeader ? AppTheme.ink : AppTheme.softText))
+            .lineLimit(1)
+            .minimumScaleFactor(0.65)
+            .frame(width: width, height: 34)
+            .background(isHeader ? AppTheme.mintWash : AppTheme.panel)
+            .border(AppTheme.border.opacity(0.8), width: 0.5)
     }
 }
 
