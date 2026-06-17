@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
@@ -10,6 +11,7 @@ struct ContentView: View {
     @StateObject private var clubYardages = ClubYardageStore()
     @StateObject private var handicapHistory = HandicapHistoryStore()
     @StateObject private var scorecardStore = CourseScorecardStore()
+    @AppStorage("pinpoint.profileImageData") private var profileImageData: Data = Data()
     @State private var selectedTab: Tab = .home
     @State private var selectedCourse = CourseDatabase.courses[0]
     @State private var selectedTee = CourseDatabase.courses[0].tees[0]
@@ -62,6 +64,7 @@ struct ContentView: View {
                     recentRounds: recentRounds,
                     isRoundActive: isRoundActive,
                     currentHandicap: playerSettings.handicap,
+                    profileImageData: $profileImageData,
                     startRound: {
                         openRoundFlow()
                     },
@@ -375,6 +378,7 @@ struct HomeView: View {
     let recentRounds: [RoundSummary]
     let isRoundActive: Bool
     let currentHandicap: Double
+    @Binding var profileImageData: Data
     let startRound: () -> Void
     let discardRound: () -> Void
     let deleteRound: (SavedRound) -> Void
@@ -396,7 +400,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HomeHeader(hasSavedRounds: !savedRounds.isEmpty)
 
-                PlayerProfileCard(currentHandicap: currentHandicap, rounds: savedRounds)
+                PlayerProfileCard(rounds: savedRounds, profileImageData: $profileImageData)
 
                 PerformanceOverview(rounds: savedRounds)
 
@@ -514,50 +518,81 @@ struct HomeHeader: View {
 }
 
 struct PlayerProfileCard: View {
-    let currentHandicap: Double
     let rounds: [SavedRound]
+    @Binding var profileImageData: Data
+    @State private var selectedPhoto: PhotosPickerItem?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .center, spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.mintWash)
-                    Text("J")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.mint)
-                }
-                .frame(width: 58, height: 58)
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    ZStack(alignment: .bottomTrailing) {
+                        ProfileAvatar(imageData: profileImageData)
 
-                VStack(alignment: .leading, spacing: 4) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 25, height: 25)
+                            .background(Circle().fill(AppTheme.mint))
+                            .overlay(Circle().stroke(.white, lineWidth: 2))
+                    }
+                }
+                .buttonStyle(.plain)
+
+                VStack(alignment: .leading, spacing: 7) {
                     Text("James")
-                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .font(.system(size: 25, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.ink)
                     Text(homeClubText)
                         .font(.system(.caption, design: .rounded).weight(.bold))
                         .foregroundStyle(AppTheme.softText)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text("HI")
-                        .font(.system(.caption2, design: .rounded).weight(.heavy))
-                        .foregroundStyle(AppTheme.softText)
-                    Text(String(format: "%.1f", currentHandicap))
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(2)
+                    HStack(spacing: 8) {
+                        PlayerBadge(icon: "flag.fill", text: rounds.isEmpty ? "First card waiting" : "\(rounds.count) rounds logged", color: AppTheme.mint)
+                        PlayerBadge(icon: "sparkles", text: formBadgeText, color: AppTheme.gold)
+                    }
                 }
             }
 
             HStack(spacing: 10) {
-                ProfileMiniStat(title: "Rounds", value: "\(rounds.count)")
-                ProfileMiniStat(title: "Best Gross", value: bestGross)
-                ProfileMiniStat(title: "Best Points", value: bestStableford)
+                ProfileMiniStat(title: "Best Gross", value: bestGross, tint: AppTheme.mint)
+                ProfileMiniStat(title: "Best Points", value: bestStableford, tint: AppTheme.gold)
+                ProfileMiniStat(title: "Latest", value: latestScore, tint: Color(red: 0.12, green: 0.36, blue: 0.72))
             }
         }
         .padding(18)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .background(
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.96, green: 0.99, blue: 0.97),
+                                Color.white,
+                                Color(red: 1.00, green: 0.97, blue: 0.90)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Circle()
+                    .fill(AppTheme.gold.opacity(0.16))
+                    .frame(width: 120, height: 120)
+                    .offset(x: 42, y: -58)
+                Circle()
+                    .fill(AppTheme.mint.opacity(0.12))
+                    .frame(width: 98, height: 98)
+                    .offset(x: -230, y: 112)
+            }
+        )
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-        .shadow(color: AppTheme.shadow, radius: 12, x: 0, y: 6)
+        .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 8)
+        .onChange(of: selectedPhoto) { _, newItem in
+            Task {
+                guard let data = try? await newItem?.loadTransferable(type: Data.self) else { return }
+                profileImageData = data
+            }
+        }
     }
 
     private var homeClubText: String {
@@ -576,11 +611,24 @@ struct PlayerProfileCard: View {
     private var bestStableford: String {
         rounds.compactMap(\.stablefordPoints).max().map(String.init) ?? "-"
     }
+
+    private var latestScore: String {
+        rounds.first.map { "\($0.totalScore)" } ?? "-"
+    }
+
+    private var formBadgeText: String {
+        guard let latest = rounds.first else { return "Ready to play" }
+        let scoreToPar = latest.totalScore - latest.totalPar
+        if scoreToPar <= 9 { return "Strong card" }
+        if latest.stablefordPoints ?? 0 >= 36 { return "Points day" }
+        return "Keep building"
+    }
 }
 
 struct ProfileMiniStat: View {
     let title: String
     let value: String
+    var tint: Color = AppTheme.mint
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -590,11 +638,65 @@ struct ProfileMiniStat: View {
                 .textCase(.uppercase)
             Text(value)
                 .font(.system(.headline, design: .rounded).weight(.bold))
-                .foregroundStyle(AppTheme.ink)
+                .foregroundStyle(tint)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.76)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.16)))
+    }
+}
+
+struct ProfileAvatar: View {
+    let imageData: Data
+
+    var body: some View {
+        Group {
+            if let image = UIImage(data: imageData) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [AppTheme.mint, Color(red: 0.12, green: 0.56, blue: 0.32)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Text("J")
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .frame(width: 72, height: 72)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(.white, lineWidth: 4))
+        .shadow(color: AppTheme.shadow, radius: 10, x: 0, y: 6)
+    }
+}
+
+struct PlayerBadge: View {
+    let icon: String
+    let text: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+            Text(text)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(color.opacity(0.12)))
     }
 }
 
