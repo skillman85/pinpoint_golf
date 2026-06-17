@@ -22,7 +22,32 @@
 		1A2B3C4D5E6F70000000011B /* WatchContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001B /* WatchContentView.swift */; };
 		1A2B3C4D5E6F70000000011C /* WatchRoundStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001C /* WatchRoundStore.swift */; };
 		1A2B3C4D5E6F70000000011D /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001D /* WatchModels.swift */; };
+		1A2B3C4D5E6F70000000011E /* PinpointGolfWatchApp.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000016 /* PinpointGolfWatchApp.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		1A2B3C4D5E6F700000000421 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1A2B3C4D5E6F700000000601 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1A2B3C4D5E6F700000000402;
+			remoteInfo = PinpointGolfWatchApp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		1A2B3C4D5E6F700000000505 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				1A2B3C4D5E6F70000000011E /* PinpointGolfWatchApp.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		1A2B3C4D5E6F700000000001 /* PinpointGolfApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinpointGolfApp.swift; sourceTree = "<group>"; };
@@ -121,10 +146,12 @@
 				1A2B3C4D5E6F700000000501 /* Sources */,
 				1A2B3C4D5E6F700000000201 /* Frameworks */,
 				1A2B3C4D5E6F700000000502 /* Resources */,
+				1A2B3C4D5E6F700000000505 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				1A2B3C4D5E6F700000000422 /* PBXTargetDependency */,
 			);
 			name = PinpointGolf;
 			productName = PinpointGolf;
@@ -149,6 +176,14 @@
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXTargetDependency section */
+		1A2B3C4D5E6F700000000422 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1A2B3C4D5E6F700000000402 /* PinpointGolfWatchApp */;
+			targetProxy = 1A2B3C4D5E6F700000000421 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		1A2B3C4D5E6F700000000601 /* Project object */ = {
