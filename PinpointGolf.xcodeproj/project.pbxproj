@@ -25,16 +25,6 @@
 		1A2B3C4D5E6F70000000011E /* PinpointGolfWatchApp.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000016 /* PinpointGolfWatchApp.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		1A2B3C4D5E6F700000000421 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 1A2B3C4D5E6F700000000601 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 1A2B3C4D5E6F700000000402;
-			remoteInfo = PinpointGolfWatchApp;
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXCopyFilesBuildPhase section */
 		1A2B3C4D5E6F700000000505 /* Embed Watch Content */ = {
 			isa = PBXCopyFilesBuildPhase;
@@ -68,6 +58,7 @@
 		1A2B3C4D5E6F70000000001B /* WatchContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchContentView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000001C /* WatchRoundStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRoundStore.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000001D /* WatchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModels.swift; sourceTree = "<group>"; };
+		1A2B3C4D5E6F70000000001E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -132,6 +123,7 @@
 				1A2B3C4D5E6F70000000001B /* WatchContentView.swift */,
 				1A2B3C4D5E6F70000000001C /* WatchRoundStore.swift */,
 				1A2B3C4D5E6F70000000001D /* WatchModels.swift */,
+				1A2B3C4D5E6F70000000001E /* Info.plist */,
 			);
 			path = PinpointGolfWatchApp;
 			sourceTree = "<group>";
@@ -146,12 +138,12 @@
 				1A2B3C4D5E6F700000000501 /* Sources */,
 				1A2B3C4D5E6F700000000201 /* Frameworks */,
 				1A2B3C4D5E6F700000000502 /* Resources */,
+				1A2B3C4D5E6F700000000506 /* Build Watch App */,
 				1A2B3C4D5E6F700000000505 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				1A2B3C4D5E6F700000000422 /* PBXTargetDependency */,
 			);
 			name = PinpointGolf;
 			productName = PinpointGolf;
@@ -176,14 +168,6 @@
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
-
-/* Begin PBXTargetDependency section */
-		1A2B3C4D5E6F700000000422 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 1A2B3C4D5E6F700000000402 /* PinpointGolfWatchApp */;
-			targetProxy = 1A2B3C4D5E6F700000000421 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		1A2B3C4D5E6F700000000601 /* Project object */ = {
@@ -239,6 +223,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		1A2B3C4D5E6F700000000506 /* Build Watch App */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Watch App";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(BUILD_DIR)/$(CONFIGURATION)-watchos/PinpointGolfWatchApp.app",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$PLATFORM_NAME\" = \"iphoneos\" ]; then\n  env -i \\\n    PATH=\"/usr/bin:/bin:/usr/sbin:/sbin\" \\\n    HOME=\"$HOME\" \\\n    TMPDIR=\"$TMPDIR\" \\\n    DEVELOPER_DIR=\"$DEVELOPER_DIR\" \\\n    /usr/bin/xcrun xcodebuild \\\n      -project \"$PROJECT_FILE_PATH\" \\\n      -target PinpointGolfWatchApp \\\n      -configuration \"$CONFIGURATION\" \\\n      -sdk watchos \\\n      CONFIGURATION_BUILD_DIR=\"$BUILD_DIR/$CONFIGURATION-watchos\" \\\n      OBJROOT=\"$OBJROOT/WatchProducts\" \\\n      SYMROOT=\"$SYMROOT\" \\\n      CODE_SIGNING_ALLOWED=\"${CODE_SIGNING_ALLOWED:-YES}\" \\\n      CODE_SIGN_STYLE=\"$CODE_SIGN_STYLE\" \\\n      DEVELOPMENT_TEAM=\"$DEVELOPMENT_TEAM\" \\\n      INFOPLIST_KEY_WKCompanionAppBundleIdentifier=\"com.pinpoint.golf\" \\\n      ENABLE_DEBUG_DYLIB=NO \\\n      build\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		1A2B3C4D5E6F700000000501 /* Sources */ = {
@@ -394,6 +401,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = 3SN8VLC9JN;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PinpointGolf/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -420,6 +428,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = 3SN8VLC9JN;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PinpointGolf/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -445,9 +454,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3SN8VLC9JN;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = PinpointGolf;
-				INFOPLIST_KEY_WKApplication = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PinpointGolfWatchApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -471,9 +479,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3SN8VLC9JN;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = PinpointGolf;
-				INFOPLIST_KEY_WKApplication = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PinpointGolfWatchApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

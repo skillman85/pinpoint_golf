@@ -21,20 +21,6 @@
                ReferencedContainer = "container:PinpointGolf.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "NO"
-            buildForRunning = "YES"
-            buildForProfiling = "YES"
-            buildForArchiving = "YES"
-            buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "1A2B3C4D5E6F700000000402"
-               BuildableName = "PinpointGolfWatchApp.app"
-               BlueprintName = "PinpointGolfWatchApp"
-               ReferencedContainer = "container:PinpointGolf.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
