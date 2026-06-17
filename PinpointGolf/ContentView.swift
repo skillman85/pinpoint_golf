@@ -407,12 +407,6 @@ struct HomeView: View {
 
                     PersonalBestStrip(rounds: savedRounds)
 
-                    StartRoundPanel(
-                        isRoundActive: isRoundActive,
-                        startRound: startRound,
-                        discardRound: { showDiscardRoundAlert = true }
-                    )
-
                     SectionHeader(title: "Recent Rounds", actionTitle: "View all")
 
                     VStack(spacing: 10) {
@@ -881,7 +875,7 @@ struct PerformanceOverview: View {
                     HStack(spacing: 7) {
                         Image(systemName: "calendar.badge.clock")
                             .font(.system(size: 13, weight: .bold))
-                        Text("\(seasonYear) Season")
+                        Text("\(String(seasonYear)) Season")
                             .font(.system(.caption, design: .rounded).weight(.heavy))
                     }
                     .foregroundStyle(AppTheme.mint)
