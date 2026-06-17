@@ -396,70 +396,80 @@ struct HomeView: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 18) {
-                HomeHeader(hasSavedRounds: !savedRounds.isEmpty)
+        ZStack(alignment: .bottomTrailing) {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    HomeHeader(hasSavedRounds: !savedRounds.isEmpty)
 
-                PlayerProfileCard(rounds: savedRounds, profileImageData: $profileImageData)
+                    PlayerProfileCard(rounds: savedRounds, profileImageData: $profileImageData)
 
-                PerformanceOverview(rounds: savedRounds)
+                    PerformanceOverview(rounds: savedRounds)
 
-                PersonalBestStrip(rounds: savedRounds)
+                    PersonalBestStrip(rounds: savedRounds)
 
-                StartRoundPanel(
-                    isRoundActive: isRoundActive,
-                    startRound: startRound,
-                    discardRound: { showDiscardRoundAlert = true }
-                )
+                    StartRoundPanel(
+                        isRoundActive: isRoundActive,
+                        startRound: startRound,
+                        discardRound: { showDiscardRoundAlert = true }
+                    )
 
-                SectionHeader(title: "Recent Rounds", actionTitle: "View all")
+                    SectionHeader(title: "Recent Rounds", actionTitle: "View all")
 
-                VStack(spacing: 10) {
-                    if savedRounds.isEmpty {
-                        EmptyRoundsCard(startRound: startRound)
-                    } else {
-                        ForEach(visibleRecentRounds) { round in
-                            SavedRoundRow(
-                                round: round,
-                                viewRound: { selectedRound = round },
-                                deleteRound: { deleteRound(round) }
-                            )
-                        }
-
-                        if canLoadMoreRounds {
-                            Button {
-                                visibleRecentRoundCount = min(visibleRecentRoundCount + 4, savedRounds.count)
-                            } label: {
-                                HStack {
-                                    Text("Load More Rounds")
-                                    Spacer()
-                                    Text("\(min(savedRounds.count - visibleRecentRoundCount, 4)) more")
-                                    Image(systemName: "chevron.down")
-                                }
-                                .font(.system(.subheadline, design: .rounded).weight(.bold))
-                                .foregroundStyle(AppTheme.mint)
-                                .padding(14)
-                                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                    VStack(spacing: 10) {
+                        if savedRounds.isEmpty {
+                            EmptyRoundsCard(startRound: startRound)
+                        } else {
+                            ForEach(visibleRecentRounds) { round in
+                                SavedRoundRow(
+                                    round: round,
+                                    viewRound: { selectedRound = round },
+                                    deleteRound: { deleteRound(round) }
+                                )
                             }
-                            .buttonStyle(.plain)
+
+                            if canLoadMoreRounds {
+                                Button {
+                                    visibleRecentRoundCount = min(visibleRecentRoundCount + 4, savedRounds.count)
+                                } label: {
+                                    HStack {
+                                        Text("Load More Rounds")
+                                        Spacer()
+                                        Text("\(min(savedRounds.count - visibleRecentRoundCount, 4)) more")
+                                        Image(systemName: "chevron.down")
+                                    }
+                                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                                    .foregroundStyle(AppTheme.mint)
+                                    .padding(14)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
+
+                    if let focus = homeFocus {
+                        FocusCard(title: "Next Edge", headline: focus.headline, detail: focus.detail)
+                    }
+
+                    RoundTimelineSection(
+                        rounds: Array(savedRounds.prefix(12)),
+                        viewRound: { selectedRound = $0 }
+                    )
+
+                    CourseFormSection(rounds: savedRounds)
                 }
-
-                if let focus = homeFocus {
-                    FocusCard(title: "Next Edge", headline: focus.headline, detail: focus.detail)
-                }
-
-                RoundTimelineSection(
-                    rounds: Array(savedRounds.prefix(12)),
-                    viewRound: { selectedRound = $0 }
-                )
-
-                CourseFormSection(rounds: savedRounds)
+                .padding(.horizontal, 20)
+                .padding(.top, 10)
+                .padding(.bottom, 112)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 10)
-            .padding(.bottom, 20)
+
+            HomeFloatingRoundButton(
+                isRoundActive: isRoundActive,
+                startRound: startRound,
+                discardRound: { showDiscardRoundAlert = true }
+            )
+            .padding(.trailing, 22)
+            .padding(.bottom, 18)
         }
         .sheet(item: $selectedRound) { round in
             SavedRoundDetailView(round: round, currentHandicap: currentHandicap, updateRound: updateRound)
@@ -514,6 +524,54 @@ struct HomeHeader: View {
                 .lineSpacing(3)
         }
         .padding(.top, 8)
+    }
+}
+
+struct HomeFloatingRoundButton: View {
+    let isRoundActive: Bool
+    let startRound: () -> Void
+    let discardRound: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if isRoundActive {
+                Button(action: discardRound) {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(AppTheme.gold)
+                        .frame(width: 48, height: 48)
+                        .background(Circle().fill(.white))
+                        .overlay(Circle().stroke(AppTheme.border))
+                        .shadow(color: AppTheme.shadow, radius: 12, x: 0, y: 6)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Button(action: startRound) {
+                VStack(spacing: 5) {
+                    Image(systemName: isRoundActive ? "flag.fill" : "plus")
+                        .font(.system(size: 24, weight: .heavy))
+                    Text(isRoundActive ? "Round" : "Round")
+                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                }
+                .foregroundStyle(.white)
+                .frame(width: 76, height: 76)
+                .background(
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(red: 0.03, green: 0.62, blue: 0.34), AppTheme.mint],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+                .overlay(Circle().stroke(.white.opacity(0.92), lineWidth: 3))
+                .shadow(color: AppTheme.mint.opacity(0.28), radius: 18, x: 0, y: 10)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isRoundActive ? "Resume current round" : "Start new round")
+        }
     }
 }
 
@@ -621,7 +679,7 @@ struct PlayerProfileCard: View {
         let scoreToPar = latest.totalScore - latest.totalPar
         if scoreToPar <= 9 { return "Strong card" }
         if latest.stablefordPoints ?? 0 >= 36 { return "Points day" }
-        return "Keep building"
+        return "Card saved"
     }
 }
 
