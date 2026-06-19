@@ -436,12 +436,12 @@ struct HomeView: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 18) {
-                    HomeHeader(hasSavedRounds: !savedRounds.isEmpty)
-
-                    PlayerProfileCard(rounds: savedRounds, profileImageData: $profileImageData)
+                VStack(alignment: .leading, spacing: 14) {
+                    HomeHeader()
 
                     PerformanceOverview(rounds: savedRounds)
+
+                    PlayerProfileCard(rounds: savedRounds, profileImageData: $profileImageData)
 
                     PersonalBestStrip(rounds: savedRounds)
 
@@ -486,7 +486,7 @@ struct HomeView: View {
                     CourseFormSection(rounds: savedRounds)
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 10)
+                .padding(.top, 4)
                 .padding(.bottom, 112)
             }
 
@@ -529,14 +529,12 @@ struct HomeView: View {
 }
 
 struct HomeHeader: View {
-    let hasSavedRounds: Bool
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Pinpoint Golf")
-                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.ink)
                     Text("Good afternoon, James")
                         .font(.system(.subheadline, design: .rounded).weight(.medium))
@@ -544,13 +542,8 @@ struct HomeHeader: View {
                 }
                 Spacer()
             }
-
-            Text(hasSavedRounds ? "Your latest cards are saved below. Keep the next round simple and let the stats build naturally." : "Start and finish a round to build your real scoring profile.")
-                .font(.system(.subheadline, design: .rounded))
-                .foregroundStyle(AppTheme.softText)
-                .lineSpacing(3)
         }
-        .padding(.top, 8)
+        .padding(.top, 4)
     }
 }
 
