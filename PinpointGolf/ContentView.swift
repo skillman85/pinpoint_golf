@@ -1004,8 +1004,9 @@ struct PerformanceOverview: View {
     }
 
     private var girPercent: Int {
-        let hit = seasonRounds.reduce(0) { $0 + $1.greensInRegulation }
-        let total = seasonRounds.reduce(0) { $0 + $1.holes.count }
+        let holes = seasonRounds.flatMap(\.holes)
+        let hit = holes.filter { $0.green == .hit }.count
+        let total = holes.filter { $0.green != .notTracked }.count
         guard total > 0 else { return 0 }
         return Int((Double(hit) / Double(total)) * 100)
     }
