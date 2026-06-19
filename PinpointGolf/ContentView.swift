@@ -951,8 +951,14 @@ struct PerformanceOverview: View {
                 DesignedMetric(title: "Putts", value: averagePutts, icon: "circle.grid.cross", tint: AppTheme.gold)
                 DesignedMetric(title: "Stableford", value: averageStableford, icon: "plus.circle.fill", tint: Color(red: 0.12, green: 0.56, blue: 0.32))
                 DesignedMetric(title: "Penalties", value: averagePenalties, icon: "exclamationmark.triangle.fill", tint: Color(red: 0.82, green: 0.34, blue: 0.20))
-                DesignedMetric(title: "Doubles/Round", value: averageDoublesOrWorse, icon: "xmark.octagon.fill", tint: Color(red: 0.42, green: 0.22, blue: 0.58))
             }
+
+            ScoringMixStrip(
+                birdies: averageBirdies,
+                pars: averagePars,
+                bogeys: averageBogeys,
+                doubles: averageDoublesOrWorse
+            )
         }
         .padding(20)
         .background(
@@ -1032,10 +1038,81 @@ struct PerformanceOverview: View {
     }
 
     private var averageDoublesOrWorse: String {
+        averageScoringHoles { $0.score >= $0.par + 2 }
+    }
+
+    private var averageBirdies: String {
+        averageScoringHoles { $0.score == $0.par - 1 }
+    }
+
+    private var averagePars: String {
+        averageScoringHoles { $0.score == $0.par }
+    }
+
+    private var averageBogeys: String {
+        averageScoringHoles { $0.score == $0.par + 1 }
+    }
+
+    private func averageScoringHoles(matching predicate: (SavedHoleEntry) -> Bool) -> String {
         guard !seasonRounds.isEmpty else { return "-" }
-        let total = seasonRounds.flatMap(\.holes).filter { $0.score >= $0.par + 2 }.count
+        let total = seasonRounds.flatMap(\.holes).filter(predicate).count
         let average = Double(total) / Double(seasonRounds.count)
         return String(format: "%.1f", average)
+    }
+}
+
+struct ScoringMixStrip: View {
+    let birdies: String
+    let pars: String
+    let bogeys: String
+    let doubles: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Scoring Mix")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text("avg per round")
+                    .font(.system(.caption2, design: .rounded).weight(.bold))
+                    .foregroundStyle(AppTheme.softText)
+            }
+
+            HStack(spacing: 8) {
+                ScoringMixPill(title: "Birdies", value: birdies, tint: Color(red: 0.88, green: 0.16, blue: 0.20))
+                ScoringMixPill(title: "Pars", value: pars, tint: AppTheme.mint)
+                ScoringMixPill(title: "Bogeys", value: bogeys, tint: AppTheme.gold)
+                ScoringMixPill(title: "Doubles+", value: doubles, tint: Color(red: 0.42, green: 0.22, blue: 0.58))
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.82)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
+    }
+}
+
+struct ScoringMixPill: View {
+    let title: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 19, weight: .heavy, design: .rounded))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(title)
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.softText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 8).fill(tint.opacity(0.08)))
     }
 }
 
