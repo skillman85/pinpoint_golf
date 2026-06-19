@@ -951,7 +951,7 @@ struct PerformanceOverview: View {
                 DesignedMetric(title: "Putts", value: averagePutts, icon: "circle.grid.cross", tint: AppTheme.gold)
                 DesignedMetric(title: "Stableford", value: averageStableford, icon: "plus.circle.fill", tint: Color(red: 0.12, green: 0.56, blue: 0.32))
                 DesignedMetric(title: "Penalties", value: averagePenalties, icon: "exclamationmark.triangle.fill", tint: Color(red: 0.82, green: 0.34, blue: 0.20))
-                DesignedMetric(title: "Doubles+", value: "\(doublesOrWorse)", icon: "xmark.octagon.fill", tint: Color(red: 0.42, green: 0.22, blue: 0.58))
+                DesignedMetric(title: "Doubles/Round", value: averageDoublesOrWorse, icon: "xmark.octagon.fill", tint: Color(red: 0.42, green: 0.22, blue: 0.58))
             }
         }
         .padding(20)
@@ -1031,8 +1031,11 @@ struct PerformanceOverview: View {
         return String(format: "%.1f", average)
     }
 
-    private var doublesOrWorse: Int {
-        seasonRounds.flatMap(\.holes).filter { $0.score >= $0.par + 2 }.count
+    private var averageDoublesOrWorse: String {
+        guard !seasonRounds.isEmpty else { return "-" }
+        let total = seasonRounds.flatMap(\.holes).filter { $0.score >= $0.par + 2 }.count
+        let average = Double(total) / Double(seasonRounds.count)
+        return String(format: "%.1f", average)
     }
 }
 
