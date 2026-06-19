@@ -3935,14 +3935,6 @@ struct InsightsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HeaderBlock(title: "Insights", subtitle: savedRounds.isEmpty && !isRoundActive ? "Finish a round to unlock personalised patterns." : "Clear patterns from your completed cards.")
 
-                InsightScorecardHero(
-                    title: strongestArea(snapshot),
-                    primaryValue: formatAverage(snapshot.parsPerRound),
-                    primaryLabel: "Pars / round",
-                    secondaryValue: "\(snapshot.girPercent)%",
-                    secondaryLabel: "GIR"
-                )
-
                 InsightMetricSection(title: "Scoring Mix", icon: "flag.fill", accent: AppTheme.mint) {
                     InsightStatGrid {
                         InsightStatTile(title: "Birdies", value: formatAverage(snapshot.birdiesPerRound), caption: "\(yearSnapshot.birdies) this year", accent: AppTheme.mint)
@@ -5366,80 +5358,6 @@ struct PenaltyPanel: View {
     }
 }
 
-struct InsightScorecardHero: View {
-    let title: String
-    let primaryValue: String
-    let primaryLabel: String
-    let secondaryValue: String
-    let secondaryLabel: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: "chart.bar.xaxis")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(AppTheme.mint)
-                    .frame(width: 42, height: 42)
-                    .background(Circle().fill(AppTheme.mintWash))
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Current Read")
-                        .font(.system(.caption2, design: .rounded).weight(.heavy))
-                        .foregroundStyle(AppTheme.softText)
-                        .textCase(.uppercase)
-                    Text(title)
-                        .font(.system(.title3, design: .rounded).weight(.bold))
-                        .foregroundStyle(AppTheme.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 0)
-            }
-
-            HStack(spacing: 12) {
-                InsightHeroValue(value: primaryValue, label: primaryLabel, accent: AppTheme.mint)
-                InsightHeroValue(value: secondaryValue, label: secondaryLabel, accent: AppTheme.gold)
-            }
-        }
-        .padding(18)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(AppTheme.panel)
-                .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 10)
-        )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
-    }
-}
-
-struct InsightHeroValue: View {
-    let value: String
-    let label: String
-    let accent: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(value)
-                .font(.system(size: 30, weight: .bold, design: .rounded))
-                .foregroundStyle(AppTheme.ink)
-                .minimumScaleFactor(0.72)
-                .lineLimit(1)
-            Text(label)
-                .font(.system(.caption, design: .rounded).weight(.bold))
-                .foregroundStyle(AppTheme.softText)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(accent.opacity(0.09))
-        )
-        .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(accent)
-                .frame(width: 4)
-        }
-    }
-}
-
 struct InsightMetricSection<Content: View>: View {
     let title: String
     let icon: String
@@ -5449,11 +5367,14 @@ struct InsightMetricSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .heavy))
-                    .foregroundStyle(accent)
-                    .frame(width: 30, height: 30)
-                    .background(Circle().fill(accent.opacity(0.1)))
+                ZStack {
+                    Circle()
+                        .fill(accent.opacity(0.13))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .heavy))
+                        .foregroundStyle(accent)
+                }
                 Text(title)
                     .font(.system(.headline, design: .rounded).weight(.heavy))
                     .foregroundStyle(AppTheme.ink)
@@ -5461,8 +5382,28 @@ struct InsightMetricSection<Content: View>: View {
             }
             content
         }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill.opacity(0.55)))
+        .padding(16)
+        .background(
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white,
+                                accent.opacity(0.055)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Circle()
+                    .fill(accent.opacity(0.08))
+                    .frame(width: 96, height: 96)
+                    .offset(x: 38, y: -44)
+            }
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.7), radius: 14, x: 0, y: 7)
     }
 }
 
@@ -5488,17 +5429,18 @@ struct InsightStatTile: View {
     let accent: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: iconName)
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundStyle(accent)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(accent.opacity(0.12)))
                 Text(title)
                     .font(.system(.caption, design: .rounded).weight(.heavy))
                     .foregroundStyle(AppTheme.softText)
                     .lineLimit(2)
                 Spacer(minLength: 8)
-                Circle()
-                    .fill(accent)
-                    .frame(width: 8, height: 8)
-                    .padding(.top, 4)
             }
 
             Text(value)
@@ -5524,8 +5466,46 @@ struct InsightStatTile: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 132, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.white.opacity(0.92))
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(accent.opacity(0.14)))
+    }
+
+    private var iconName: String {
+        switch title.lowercased() {
+        case let value where value.contains("bird"):
+            return "bird.fill"
+        case let value where value.contains("par 3"):
+            return "3.circle.fill"
+        case let value where value.contains("par 4"):
+            return "4.circle.fill"
+        case let value where value.contains("par 5"):
+            return "5.circle.fill"
+        case let value where value.contains("pars"):
+            return "checkmark.seal.fill"
+        case let value where value.contains("bogey"):
+            return "plus.circle.fill"
+        case let value where value.contains("worse"):
+            return "xmark.octagon.fill"
+        case let value where value.contains("fairway"):
+            return "arrow.up.forward.circle.fill"
+        case let value where value.contains("left"):
+            return "arrow.left.circle.fill"
+        case let value where value.contains("right"):
+            return "arrow.right.circle.fill"
+        case let value where value.contains("short"):
+            return "arrow.down.circle.fill"
+        case let value where value.contains("long"):
+            return "arrow.up.circle.fill"
+        case let value where value.contains("gir"):
+            return "target"
+        case let value where value.contains("putt"):
+            return "circle.grid.cross.fill"
+        default:
+            return "chart.bar.fill"
+        }
     }
 }
 
