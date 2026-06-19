@@ -436,14 +436,12 @@ struct HomeView: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 12) {
                     HomeHeader()
-
-                    PerformanceOverview(rounds: savedRounds)
 
                     PlayerProfileCard(rounds: savedRounds, profileImageData: $profileImageData)
 
-                    PersonalBestStrip(rounds: savedRounds)
+                    PerformanceOverview(rounds: savedRounds)
 
                     SectionHeader(title: "Recent Rounds", actionTitle: "View all")
 
@@ -900,27 +898,27 @@ struct PerformanceOverview: View {
     let rounds: [SavedRound]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 7) {
                     HStack(spacing: 7) {
                         Image(systemName: "calendar.badge.clock")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                         Text("\(String(seasonYear)) Season")
-                            .font(.system(.caption, design: .rounded).weight(.heavy))
+                            .font(.system(.caption2, design: .rounded).weight(.heavy))
                     }
                     .foregroundStyle(AppTheme.mint)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
                     .background(Capsule().fill(AppTheme.mint.opacity(0.1)))
 
                     Text("Scoring Average")
-                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
                         .foregroundStyle(AppTheme.ink)
 
                     HStack(alignment: .lastTextBaseline, spacing: 8) {
                         Text(scoringAverage)
-                            .font(.system(size: 58, weight: .heavy, design: .rounded))
+                            .font(.system(size: 50, weight: .heavy, design: .rounded))
                             .foregroundStyle(AppTheme.ink)
                         Text(roundCountLabel)
                             .font(.system(.subheadline, design: .rounded).weight(.heavy))
@@ -928,22 +926,18 @@ struct PerformanceOverview: View {
                     }
                 }
                 Spacer()
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.gold.opacity(0.14))
-                        .frame(width: 70, height: 70)
-                    Image(systemName: "flag.checkered")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(AppTheme.gold)
+
+                VStack(spacing: 8) {
+                    CompactMetricPill(title: "Stableford", value: averageStableford, tint: AppTheme.mint)
+                    CompactMetricPill(title: "Penalties", value: averagePenalties, tint: Color(red: 0.82, green: 0.34, blue: 0.20))
                 }
+                .frame(width: 108)
             }
 
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                DesignedMetric(title: "Fairways", value: "\(fairwayPercent)%", icon: "arrow.up.forward", tint: AppTheme.mint)
-                DesignedMetric(title: "GIR", value: "\(girPercent)%", icon: "target", tint: Color(red: 0.11, green: 0.42, blue: 0.74))
-                DesignedMetric(title: "Putts", value: averagePutts, icon: "circle.grid.cross", tint: AppTheme.gold)
-                DesignedMetric(title: "Stableford", value: averageStableford, icon: "plus.circle.fill", tint: Color(red: 0.12, green: 0.56, blue: 0.32))
-                DesignedMetric(title: "Penalties", value: averagePenalties, icon: "exclamationmark.triangle.fill", tint: Color(red: 0.82, green: 0.34, blue: 0.20))
+            HStack(spacing: 8) {
+                CompactMetricPill(title: "Fairways", value: "\(fairwayPercent)%", tint: AppTheme.mint)
+                CompactMetricPill(title: "GIR", value: "\(girPercent)%", tint: Color(red: 0.11, green: 0.42, blue: 0.74))
+                CompactMetricPill(title: "Putts", value: averagePutts, tint: AppTheme.gold)
             }
 
             ScoringMixStrip(
@@ -953,7 +947,7 @@ struct PerformanceOverview: View {
                 doubles: averageDoublesOrWorse
             )
         }
-        .padding(20)
+        .padding(16)
         .background(
             ZStack(alignment: .bottomTrailing) {
                 RoundedRectangle(cornerRadius: 8)
@@ -1062,7 +1056,7 @@ struct ScoringMixStrip: View {
     let doubles: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Scoring Mix")
                     .font(.system(.caption, design: .rounded).weight(.heavy))
@@ -1080,9 +1074,35 @@ struct ScoringMixStrip: View {
                 ScoringMixPill(title: "Doubles+", value: doubles, tint: Color(red: 0.42, green: 0.22, blue: 0.58))
             }
         }
-        .padding(12)
+        .padding(10)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.82)))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
+    }
+}
+
+struct CompactMetricPill: View {
+    let title: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.softText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(value)
+                .font(.system(size: 19, weight: .heavy, design: .rounded))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(tint.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.12)))
     }
 }
 
@@ -1094,7 +1114,7 @@ struct ScoringMixPill: View {
     var body: some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 19, weight: .heavy, design: .rounded))
+                .font(.system(size: 18, weight: .heavy, design: .rounded))
                 .foregroundStyle(tint)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
@@ -1105,7 +1125,7 @@ struct ScoringMixPill: View {
                 .minimumScaleFactor(0.65)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 9)
+        .padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 8).fill(tint.opacity(0.08)))
     }
 }
