@@ -64,7 +64,18 @@ async function request(path, query = {}) {
     throw new RapidAPIError("RapidAPI returned an unexpected response.", response.status, "invalid_response");
   }
 
-  return response.json();
+  const payload = await response.json();
+  if (typeof payload?.message === "string") {
+    const message = payload.message.toLowerCase();
+    if (message.includes("rate limit")) {
+      throw new RapidAPIError("RapidAPI rate limit reached.", 429, "rate_limited");
+    }
+    if (message.includes("endpoint") && message.includes("does not exist")) {
+      throw new RapidAPIError(payload.message, 404, "missing_endpoint");
+    }
+  }
+
+  return payload;
 }
 
 export async function searchClubs(query) {
@@ -73,7 +84,7 @@ export async function searchClubs(query) {
 }
 
 export async function fetchClubCourses(clubId) {
-  const payload = await request(`/clubs/${encodeURIComponent(clubId)}/courses`);
+  const payload = await request(`/clubs/${encodeURIComponent(clubId)}`);
   return unwrapArray(payload, ["data", "courses", "results"]).map(normalizeCourseSummary);
 }
 
@@ -168,7 +179,7 @@ function normalizeScorecard(raw, fallbackId) {
 
 function normalizeTee(raw) {
   const holes = unwrapArray(raw, ["holes"]).map(normalizeHole).filter((hole) => hole.number > 0);
-  const yards = Number(firstPresent(raw, ["yards", "yardage"], holes.reduce((total, hole) => total + hole.yards, 0)));
+  const yards = Number(firstPresent(raw, ["yards", "yardage", "total_yardage", "totalYardage"], holes.reduce((total, hole) => total + hole.yards, 0)));
   const par = Number(firstPresent(raw, ["par"], holes.reduce((total, hole) => total + hole.par, 0)));
   return {
     name: `${firstPresent(raw, ["name", "tee", "tee_name", "colour", "color"], "Tee")}`,
