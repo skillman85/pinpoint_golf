@@ -1,0 +1,16 @@
+{
+  "name": "pinpoint-golf-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "check": "node --check api/courses/search.js && node --check api/courses/near.js && node --check api/courses/scorecard.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "vercel": "^44.2.6"
+  }
+}

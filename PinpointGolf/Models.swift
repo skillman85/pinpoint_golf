@@ -115,8 +115,37 @@ final class CourseScorecardStore: ObservableObject {
     func courses(from baseCourses: [GolfCourse]) -> [GolfCourse] {
         let overridesByKey = Dictionary(uniqueKeysWithValues: overrides.map { ($0.courseKey, $0) })
         return baseCourses.map { course in
-            overridesByKey[course.favoriteKey]?.toGolfCourse() ?? course
+            courseWithKnownStrokeIndexes(overridesByKey[course.favoriteKey]?.toGolfCourse() ?? course)
         }
+    }
+
+    func courseWithKnownStrokeIndexes(_ course: GolfCourse) -> GolfCourse {
+        let correctedCourse = course.applyingWergsScorecardCorrection()
+
+        guard correctedCourse.needsStrokeIndexSource else {
+            return correctedCourse
+        }
+
+        let trustedCourses = overrides.map { $0.toGolfCourse().applyingWergsScorecardCorrection() } + CourseDatabase.courses.map { $0.applyingWergsScorecardCorrection() }
+        guard let trustedCourse = trustedCourses.first(where: { $0.canProvideStrokeIndexes(for: correctedCourse) }) else {
+            return correctedCourse
+        }
+
+        let tees = correctedCourse.tees.map { tee in
+            guard tee.usesGeneratedStrokeIndexes,
+                  let trustedTee = trustedCourse.teeMatching(tee) else {
+                return tee
+            }
+            return tee.withStrokeIndexes(from: trustedTee)
+        }
+
+        return GolfCourse(
+            name: correctedCourse.name,
+            distance: correctedCourse.distance,
+            location: correctedCourse.location,
+            tees: tees,
+            hasVerifiedScorecard: correctedCourse.hasVerifiedScorecard
+        )
     }
 
     func override(for course: GolfCourse) -> CourseScorecardOverride? {
@@ -135,6 +164,115 @@ final class CourseScorecardStore: ObservableObject {
     func replace(with restored: [CourseScorecardOverride]) {
         overrides = restored
         database.saveCourseScorecardOverrides(restored)
+    }
+}
+
+private extension GolfCourse {
+    func applyingWergsScorecardCorrection() -> GolfCourse {
+        guard scorecardMatchTokens.contains("wergs") else { return self }
+
+        let correctedTees = tees.map { tee in
+            tee.applyingWergsScorecardCorrection()
+        }
+
+        return GolfCourse(
+            name: name,
+            distance: distance,
+            location: location,
+            tees: correctedTees,
+            hasVerifiedScorecard: hasVerifiedScorecard
+        )
+    }
+
+    var needsStrokeIndexSource: Bool {
+        tees.contains { $0.usesGeneratedStrokeIndexes }
+    }
+
+    func canProvideStrokeIndexes(for importedCourse: GolfCourse) -> Bool {
+        scorecardMatchTokens.intersection(importedCourse.scorecardMatchTokens).isEmpty == false
+            && tees.contains { trustedTee in
+                importedCourse.tees.contains { importedTee in
+                    trustedTee.canProvideStrokeIndexes(for: importedTee)
+                }
+            }
+    }
+
+    func teeMatching(_ importedTee: TeeBox) -> TeeBox? {
+        tees.first { $0.canProvideStrokeIndexes(for: importedTee) }
+    }
+
+    var scorecardMatchTokens: Set<String> {
+        let cleaned = name
+            .lowercased()
+            .replacingOccurrences(of: "\\([^)]*\\)", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "[^a-z0-9]+", with: " ", options: .regularExpression)
+
+        let ignoredWords: Set<String> = [
+            "and", "club", "course", "golf", "links", "the", "uk", "united", "kingdom"
+        ]
+
+        return Set(
+            cleaned
+                .split(separator: " ")
+                .map(String.init)
+                .filter { $0.count > 2 && ignoredWords.contains($0) == false && Int($0) == nil }
+        )
+    }
+}
+
+private extension TeeBox {
+    func applyingWergsScorecardCorrection() -> TeeBox {
+        guard normalizedName == "white" || normalizedName == "yellow" else { return self }
+
+        let correctedHoles = normalizedName == "white" ? DemoData.wergsWhiteHoles : DemoData.wergsYellowHoles
+
+        return TeeBox(
+            name: name,
+            markerColor: markerColor,
+            yards: correctedHoles.reduce(0) { $0 + $1.yards },
+            par: correctedHoles.reduce(0) { $0 + $1.par },
+            slope: slope,
+            rating: rating,
+            holes: correctedHoles
+        )
+    }
+
+    var usesGeneratedStrokeIndexes: Bool {
+        !holes.isEmpty && holes.map(\.strokeIndex) == Array(1...holes.count)
+    }
+
+    func canProvideStrokeIndexes(for importedTee: TeeBox) -> Bool {
+        holes.count == importedTee.holes.count
+            && usesGeneratedStrokeIndexes == false
+            && normalizedName == importedTee.normalizedName
+    }
+
+    func withStrokeIndexes(from trustedTee: TeeBox) -> TeeBox {
+        let trustedIndexesByHole = Dictionary(uniqueKeysWithValues: trustedTee.holes.map { ($0.number, $0.strokeIndex) })
+        let mergedHoles = holes.map { hole in
+            Hole(
+                number: hole.number,
+                par: hole.par,
+                yards: hole.yards,
+                strokeIndex: trustedIndexesByHole[hole.number] ?? hole.strokeIndex
+            )
+        }
+
+        return TeeBox(
+            name: name,
+            markerColor: markerColor,
+            yards: yards,
+            par: par,
+            slope: slope,
+            rating: rating,
+            holes: mergedHoles
+        )
+    }
+
+    var normalizedName: String {
+        name
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9]+", with: "", options: .regularExpression)
     }
 }
 
@@ -303,6 +441,28 @@ enum FirstPuttDistance: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 }
 
+enum ApproachProximity: String, CaseIterable, Identifiable, Codable {
+    case feet0to5 = "0-5 ft"
+    case feet6to10 = "6-10 ft"
+    case feet11to15 = "11-15 ft"
+    case feet16to20 = "16-20 ft"
+    case feet21to25 = "21-25 ft"
+    case feet26to30 = "26-30 ft"
+
+    var id: String { rawValue }
+
+    var midpointFeet: Int {
+        switch self {
+        case .feet0to5: return 3
+        case .feet6to10: return 8
+        case .feet11to15: return 13
+        case .feet16to20: return 18
+        case .feet21to25: return 23
+        case .feet26to30: return 28
+        }
+    }
+}
+
 enum PenaltyType: String, CaseIterable, Identifiable, Codable {
     case none = "None"
     case water = "Water"
@@ -322,6 +482,7 @@ struct RoundHoleEntry: Identifiable, Equatable {
     var green: MissDirection
     var teeClub: TeeClub
     var approachRange: ApproachRange
+    var approachProximity: ApproachProximity?
     var firstPuttDistance: FirstPuttDistance
     var penalties: Int
     var penaltyType: PenaltyType
@@ -373,11 +534,24 @@ struct SavedRound: Identifiable, Codable {
     var fairwaysTotal: Int { holes.filter { $0.par > 3 && $0.fairway != .notTracked }.count }
     var greensInRegulation: Int { holes.filter { $0.green == .hit }.count }
     var greensTracked: Int { holes.filter { $0.green != .notTracked }.count }
+    var girProximities: [ApproachProximity] { holes.compactMap { $0.green == .hit ? $0.approachProximity : nil } }
+    var averageGirProximityFeet: Double? {
+        let proximities = girProximities
+        guard !proximities.isEmpty else { return nil }
+        return Double(proximities.reduce(0) { $0 + $1.midpointFeet }) / Double(proximities.count)
+    }
+    var bestGirProximity: ApproachProximity? {
+        girProximities.min { $0.midpointFeet < $1.midpointFeet }
+    }
     var onePutts: Int { holes.filter { $0.putts == 1 }.count }
     var twoPutts: Int { holes.filter { $0.putts == 2 }.count }
     var threePutts: Int { holes.filter { $0.putts >= 3 }.count }
     var scramblingOpportunities: Int { holes.filter { $0.green != .hit && $0.green != .notTracked }.count }
     var scrambles: Int { holes.filter { $0.green != .hit && $0.green != .notTracked && $0.score <= $0.par }.count }
+    var scramblePercent: Int {
+        guard scramblingOpportunities > 0 else { return 0 }
+        return Int((Double(scrambles) / Double(scramblingOpportunities) * 100).rounded())
+    }
     var penalties: Int { holes.reduce(0) { $0 + $1.penalties } }
     var holeInOnes: Int { holes.filter { $0.par == 3 && $0.score == 1 }.count }
     var eaglesOrBetter: Int { holes.filter { $0.score - $0.par <= -2 }.count }
@@ -436,6 +610,7 @@ struct SavedHoleEntry: Identifiable, Codable, Hashable {
     let green: MissDirection
     let teeClub: TeeClub?
     let approachRange: ApproachRange?
+    let approachProximity: ApproachProximity?
     let firstPuttDistance: FirstPuttDistance?
     let penalties: Int
     let penaltyType: PenaltyType?
@@ -571,7 +746,7 @@ final class HandicapHistoryStore: ObservableObject {
 
 struct ClubYardage: Identifiable, Codable, Equatable {
     let id: String
-    let name: String
+    var name: String
     var isInBag: Bool
     var yards: Int?
 
@@ -597,8 +772,14 @@ final class ClubYardageStore: ObservableObject {
     static let defaultClubs: [ClubYardage] = [
         ClubYardage(id: "dr", name: "Dr", isInBag: true, yards: nil),
         ClubYardage(id: "3w", name: "3W", isInBag: true, yards: nil),
+        ClubYardage(id: "5w", name: "5W", isInBag: false, yards: nil),
+        ClubYardage(id: "7w", name: "7W", isInBag: false, yards: nil),
         ClubYardage(id: "hybrid", name: "Hybrid", isInBag: true, yards: nil),
+        ClubYardage(id: "2h", name: "2H", isInBag: false, yards: nil),
+        ClubYardage(id: "3h", name: "3H", isInBag: false, yards: nil),
+        ClubYardage(id: "4h", name: "4H", isInBag: false, yards: nil),
         ClubYardage(id: "di", name: "DI", isInBag: true, yards: nil),
+        ClubYardage(id: "2i", name: "2", isInBag: false, yards: nil),
         ClubYardage(id: "3", name: "3", isInBag: true, yards: nil),
         ClubYardage(id: "4", name: "4", isInBag: true, yards: nil),
         ClubYardage(id: "5", name: "5", isInBag: true, yards: nil),
@@ -608,9 +789,19 @@ final class ClubYardageStore: ObservableObject {
         ClubYardage(id: "9", name: "9", isInBag: true, yards: nil),
         ClubYardage(id: "pw", name: "PW", isInBag: true, yards: nil),
         ClubYardage(id: "gw", name: "GW", isInBag: true, yards: nil),
+        ClubYardage(id: "sw", name: "SW", isInBag: false, yards: nil),
+        ClubYardage(id: "lw", name: "LW", isInBag: false, yards: nil),
+        ClubYardage(id: "50", name: "50", isInBag: false, yards: nil),
+        ClubYardage(id: "52", name: "52", isInBag: false, yards: nil),
+        ClubYardage(id: "54", name: "54", isInBag: false, yards: nil),
         ClubYardage(id: "56", name: "56", isInBag: true, yards: nil),
+        ClubYardage(id: "58", name: "58", isInBag: false, yards: nil),
         ClubYardage(id: "60", name: "60", isInBag: true, yards: nil)
     ]
+
+    private static var defaultClubIDs: Set<String> {
+        Set(defaultClubs.map(\.id))
+    }
 
     private static func mergedDefaults(with stored: [ClubYardage]) -> [ClubYardage] {
         guard !stored.isEmpty else { return defaultClubs }
@@ -623,6 +814,29 @@ final class ClubYardageStore: ObservableObject {
 
     func replace(with restored: [ClubYardage]) {
         clubs = Self.mergedDefaults(with: restored)
+    }
+
+    func addCustomClub(named rawName: String) {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        let baseID = "custom-" + name.lowercased().filter { $0.isLetter || $0.isNumber }
+        let idRoot = baseID == "custom-" ? "custom-club" : baseID
+        var candidate = idRoot
+        var suffix = 2
+        let existingIDs = Set(clubs.map(\.id))
+        while existingIDs.contains(candidate) {
+            candidate = "\(idRoot)-\(suffix)"
+            suffix += 1
+        }
+        clubs.append(ClubYardage(id: candidate, name: name, isInBag: true, yards: nil))
+    }
+
+    func removeClub(id: String) {
+        if Self.defaultClubIDs.contains(id), let index = clubs.firstIndex(where: { $0.id == id }) {
+            clubs[index].isInBag = false
+        } else {
+            clubs.removeAll { $0.id == id }
+        }
     }
 }
 
@@ -678,12 +892,13 @@ final class RoundArchive: ObservableObject {
                     green: entry.green,
                     teeClub: entry.teeClub,
                     approachRange: entry.approachRange,
+                    approachProximity: entry.green == .hit ? entry.approachProximity : nil,
                     firstPuttDistance: entry.firstPuttDistance,
                     penalties: entry.penalties,
                     penaltyType: entry.penaltyType,
                     bunker: entry.bunker,
                     upAndDown: entry.upAndDown,
-                    sandSave: entry.sandSave,
+                    sandSave: entry.bunker && entry.score <= entry.hole.par,
                     recovery: entry.recovery,
                     note: entry.note
                 )
@@ -714,45 +929,45 @@ final class RoundArchive: ObservableObject {
 
 struct DemoData {
     static let wergsWhiteHoles: [Hole] = [
-        .init(number: 1, par: 4, yards: 291, strokeIndex: 17),
-        .init(number: 2, par: 5, yards: 521, strokeIndex: 3),
-        .init(number: 3, par: 4, yards: 309, strokeIndex: 15),
-        .init(number: 4, par: 4, yards: 334, strokeIndex: 13),
-        .init(number: 5, par: 3, yards: 220, strokeIndex: 9),
-        .init(number: 6, par: 4, yards: 393, strokeIndex: 1),
-        .init(number: 7, par: 5, yards: 573, strokeIndex: 5),
-        .init(number: 8, par: 5, yards: 455, strokeIndex: 11),
-        .init(number: 9, par: 3, yards: 195, strokeIndex: 7),
-        .init(number: 10, par: 4, yards: 407, strokeIndex: 6),
-        .init(number: 11, par: 3, yards: 162, strokeIndex: 18),
-        .init(number: 12, par: 4, yards: 299, strokeIndex: 14),
-        .init(number: 13, par: 4, yards: 366, strokeIndex: 16),
-        .init(number: 14, par: 4, yards: 366, strokeIndex: 12),
-        .init(number: 15, par: 5, yards: 511, strokeIndex: 4),
-        .init(number: 16, par: 4, yards: 417, strokeIndex: 2),
-        .init(number: 17, par: 4, yards: 402, strokeIndex: 8),
-        .init(number: 18, par: 4, yards: 423, strokeIndex: 10)
+        .init(number: 1, par: 4, yards: 292, strokeIndex: 17),
+        .init(number: 2, par: 5, yards: 525, strokeIndex: 3),
+        .init(number: 3, par: 4, yards: 325, strokeIndex: 15),
+        .init(number: 4, par: 4, yards: 340, strokeIndex: 13),
+        .init(number: 5, par: 3, yards: 197, strokeIndex: 9),
+        .init(number: 6, par: 4, yards: 396, strokeIndex: 5),
+        .init(number: 7, par: 5, yards: 569, strokeIndex: 1),
+        .init(number: 8, par: 5, yards: 457, strokeIndex: 7),
+        .init(number: 9, par: 3, yards: 191, strokeIndex: 11),
+        .init(number: 10, par: 4, yards: 408, strokeIndex: 6),
+        .init(number: 11, par: 3, yards: 157, strokeIndex: 18),
+        .init(number: 12, par: 4, yards: 297, strokeIndex: 12),
+        .init(number: 13, par: 5, yards: 499, strokeIndex: 8),
+        .init(number: 14, par: 4, yards: 418, strokeIndex: 2),
+        .init(number: 15, par: 4, yards: 406, strokeIndex: 4),
+        .init(number: 16, par: 4, yards: 388, strokeIndex: 16),
+        .init(number: 17, par: 4, yards: 355, strokeIndex: 14),
+        .init(number: 18, par: 4, yards: 412, strokeIndex: 10)
     ]
 
     static let wergsYellowHoles: [Hole] = [
-        .init(number: 1, par: 4, yards: 273, strokeIndex: 17),
-        .init(number: 2, par: 5, yards: 484, strokeIndex: 3),
-        .init(number: 3, par: 4, yards: 301, strokeIndex: 15),
+        .init(number: 1, par: 4, yards: 277, strokeIndex: 17),
+        .init(number: 2, par: 5, yards: 499, strokeIndex: 3),
+        .init(number: 3, par: 4, yards: 315, strokeIndex: 15),
         .init(number: 4, par: 4, yards: 318, strokeIndex: 13),
         .init(number: 5, par: 3, yards: 175, strokeIndex: 9),
-        .init(number: 6, par: 4, yards: 372, strokeIndex: 1),
-        .init(number: 7, par: 5, yards: 478, strokeIndex: 5),
-        .init(number: 8, par: 5, yards: 429, strokeIndex: 11),
-        .init(number: 9, par: 3, yards: 195, strokeIndex: 7),
-        .init(number: 10, par: 4, yards: 379, strokeIndex: 6),
-        .init(number: 11, par: 3, yards: 145, strokeIndex: 18),
-        .init(number: 12, par: 4, yards: 281, strokeIndex: 14),
-        .init(number: 13, par: 4, yards: 305, strokeIndex: 16),
-        .init(number: 14, par: 4, yards: 358, strokeIndex: 12),
-        .init(number: 15, par: 5, yards: 496, strokeIndex: 4),
-        .init(number: 16, par: 4, yards: 379, strokeIndex: 2),
-        .init(number: 17, par: 4, yards: 397, strokeIndex: 8),
-        .init(number: 18, par: 4, yards: 412, strokeIndex: 10)
+        .init(number: 6, par: 4, yards: 383, strokeIndex: 5),
+        .init(number: 7, par: 5, yards: 502, strokeIndex: 1),
+        .init(number: 8, par: 5, yards: 431, strokeIndex: 7),
+        .init(number: 9, par: 3, yards: 173, strokeIndex: 11),
+        .init(number: 10, par: 4, yards: 384, strokeIndex: 6),
+        .init(number: 11, par: 3, yards: 144, strokeIndex: 18),
+        .init(number: 12, par: 4, yards: 287, strokeIndex: 12),
+        .init(number: 13, par: 5, yards: 476, strokeIndex: 8),
+        .init(number: 14, par: 4, yards: 377, strokeIndex: 2),
+        .init(number: 15, par: 4, yards: 398, strokeIndex: 4),
+        .init(number: 16, par: 4, yards: 359, strokeIndex: 16),
+        .init(number: 17, par: 4, yards: 288, strokeIndex: 14),
+        .init(number: 18, par: 4, yards: 405, strokeIndex: 10)
     ]
 
     static let holes: [Hole] = [
@@ -782,8 +997,8 @@ struct DemoData {
             distance: "Verified local",
             location: "Tettenhall, Staffordshire",
             tees: [
-                TeeBox(name: "White", yards: 6644, par: 73, slope: 124, rating: 71.5, holes: wergsWhiteHoles),
-                TeeBox(name: "Yellow", markerColor: .yellow, yards: 6177, par: 73, slope: 119, rating: 69.2, holes: wergsYellowHoles)
+                TeeBox(name: "White", yards: 6632, par: 73, slope: 124, rating: 71.5, holes: wergsWhiteHoles),
+                TeeBox(name: "Yellow", markerColor: .yellow, yards: 6191, par: 73, slope: 119, rating: 69.2, holes: wergsYellowHoles)
             ]
         ),
         GolfCourse(

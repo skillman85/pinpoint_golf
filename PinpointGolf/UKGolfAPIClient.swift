@@ -4,6 +4,7 @@ enum UKGolfAPIError: LocalizedError {
     case missingAPIKey
     case invalidResponse
     case unauthorized
+    case rateLimited
 
     var errorDescription: String? {
         switch self {
@@ -13,12 +14,14 @@ enum UKGolfAPIError: LocalizedError {
             "UK Golf API returned an unexpected response."
         case .unauthorized:
             "UK Golf API rejected the RapidAPI key."
+        case .rateLimited:
+            "RapidAPI rate limit reached. Try again shortly."
         }
     }
 }
 
 struct UKGolfAPIClient {
-    private let baseURL = URL(string: "https://uk-golf-api.vercel.app")!
+    private let baseURL = URL(string: "https://uk-golf-course-data-api.p.rapidapi.com")!
     private let apiKey: String
     private let session: URLSession
 
@@ -27,22 +30,54 @@ struct UKGolfAPIClient {
         self.session = session
     }
 
-    func searchCourses(query: String) async throws -> [GolfCourse] {
+    func searchCourses(query: String, maxClubs: Int = 8, maxCoursesPerClub: Int = 3) async throws -> [GolfCourse] {
         let response: UKGolfClubSearchResponse = try await request(
             path: "/clubs",
             queryItems: [URLQueryItem(name: "search", value: query)]
         )
 
         var courses: [GolfCourse] = []
-        for club in response.clubs.prefix(8) {
+        for club in response.clubs.prefix(maxClubs) {
             let clubCourses = try await fetchCourses(clubID: club.id)
-            for courseSummary in clubCourses.prefix(3) {
+            for courseSummary in clubCourses.prefix(maxCoursesPerClub) {
                 if let scorecard = try? await scorecard(courseID: courseSummary.id) {
                     courses.append(scorecard.toGolfCourse(club: club))
                 }
             }
         }
 
+        return courses
+    }
+
+    func searchCourses(queries: [String], limit: Int, maxClubsPerQuery: Int = 8, maxCoursesPerClub: Int = 3) async throws -> [GolfCourse] {
+        var courses: [GolfCourse] = []
+        var seenKeys = Set<String>()
+        var lastError: Error?
+
+        for query in queries {
+            do {
+                let matches = try await searchCourses(query: query, maxClubs: maxClubsPerQuery, maxCoursesPerClub: maxCoursesPerClub)
+                for course in matches where !seenKeys.contains(course.favoriteKey) {
+                    courses.append(course)
+                    seenKeys.insert(course.favoriteKey)
+                    if courses.count >= limit {
+                        return courses
+                    }
+                }
+            } catch UKGolfAPIError.rateLimited {
+                throw UKGolfAPIError.rateLimited
+            } catch UKGolfAPIError.missingAPIKey {
+                throw UKGolfAPIError.missingAPIKey
+            } catch UKGolfAPIError.unauthorized {
+                throw UKGolfAPIError.unauthorized
+            } catch {
+                lastError = error
+            }
+        }
+
+        if courses.isEmpty, let lastError {
+            throw lastError
+        }
         return courses
     }
 
@@ -56,7 +91,7 @@ struct UKGolfAPIClient {
 
     func scorecard(courseID: String) async throws -> UKGolfScorecard {
         let response: UKGolfScorecardResponse = try await request(
-            path: "/courses/\(courseID)/scorecard",
+            path: "/courses/\(courseID)",
             queryItems: []
         )
         return response.scorecard
@@ -68,7 +103,8 @@ struct UKGolfAPIClient {
             throw UKGolfAPIError.missingAPIKey
         }
 
-        var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        components?.path = path
         components?.queryItems = queryItems.isEmpty ? nil : queryItems
         guard let url = components?.url else {
             throw UKGolfAPIError.invalidResponse
@@ -84,6 +120,9 @@ struct UKGolfAPIClient {
         }
         guard httpResponse.statusCode != 401 && httpResponse.statusCode != 403 else {
             throw UKGolfAPIError.unauthorized
+        }
+        guard httpResponse.statusCode != 429 else {
+            throw UKGolfAPIError.rateLimited
         }
         guard (200...299).contains(httpResponse.statusCode) else {
             throw UKGolfAPIError.invalidResponse
