@@ -64,7 +64,18 @@ struct WatchScoringView: View {
                     selection: hole.green,
                     color: .blue
                 ) { value in
-                    update { $0.green = value }
+                    update {
+                        $0.green = value
+                        if value != .hit {
+                            $0.approachProximity = nil
+                        }
+                    }
+                }
+
+                if hole.green == .hit {
+                    WatchProximityRow(selection: hole.approachProximity) { value in
+                        update { $0.approachProximity = value }
+                    }
                 }
 
                 HStack(spacing: 8) {
@@ -174,6 +185,51 @@ struct WatchChoiceRow: View {
         }
         .padding(8)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+struct WatchProximityRow: View {
+    let selection: WatchApproachProximity?
+    let update: (WatchApproachProximity?) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text("Proximity")
+                    .font(.headline)
+                Spacer()
+                if selection != nil {
+                    Button {
+                        update(nil)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                }
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 54), spacing: 6)], spacing: 6) {
+                ForEach(WatchApproachProximity.allCases) { proximity in
+                    Button {
+                        update(proximity)
+                    } label: {
+                        Text(shortLabel(for: proximity))
+                            .font(.caption2.bold())
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(selection == proximity ? .green : .gray)
+                }
+            }
+        }
+        .padding(8)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func shortLabel(for proximity: WatchApproachProximity) -> String {
+        proximity.rawValue.replacingOccurrences(of: " ft", with: "")
     }
 }
 

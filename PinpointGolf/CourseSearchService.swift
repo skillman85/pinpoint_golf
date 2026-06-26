@@ -11,8 +11,11 @@ final class CourseSearchViewModel: ObservableObject {
 
     private let ukGolfAPI = UKGolfAPIClient()
     private let locationProvider = CourseLocationProvider()
+    private var cachedLocationSearch: (label: String, date: Date, courses: [GolfCourse])?
+    private let locationSearchCacheLifetime: TimeInterval = 10 * 60
 
     func search(query: String) async {
+        guard !isSearching else { return }
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
             results = []
@@ -50,6 +53,7 @@ final class CourseSearchViewModel: ObservableObject {
     }
 
     func searchNearCurrentLocation() async {
+        guard !isSearching else { return }
         isSearching = true
         errorMessage = nil
         defer { isSearching = false }
@@ -58,16 +62,34 @@ final class CourseSearchViewModel: ObservableObject {
             let context = try await locationProvider.currentSearchContext()
             locationSearchLabel = context.label
 
-            let nearbyNames = try await locationProvider.nearbyGolfCourseNames(near: context.location)
-            let courses = try await ukGolfAPI.searchCourses(queries: nearbyNames, limit: 10)
-            if !courses.isEmpty {
-                results = courses
+            if let cachedLocationSearch,
+               cachedLocationSearch.label == context.label,
+               Date().timeIntervalSince(cachedLocationSearch.date) < locationSearchCacheLifetime {
+                results = cachedLocationSearch.courses
                 return
             }
 
-            let fallbackCourses = try await ukGolfAPI.searchCourses(query: context.label)
+            let nearbyNames = try await locationProvider.nearbyGolfCourseNames(near: context.location)
+            let courses = try await ukGolfAPI.searchCourses(
+                queries: Array(nearbyNames.prefix(3)),
+                limit: 4,
+                maxClubsPerQuery: 2,
+                maxCoursesPerClub: 1
+            )
+            if !courses.isEmpty {
+                results = courses
+                cachedLocationSearch = (context.label, Date(), courses)
+                return
+            }
+
+            let fallbackCourses = try await ukGolfAPI.searchCourses(
+                query: context.label,
+                maxClubs: 2,
+                maxCoursesPerClub: 1
+            )
             if !fallbackCourses.isEmpty {
                 results = fallbackCourses
+                cachedLocationSearch = (context.label, Date(), fallbackCourses)
                 return
             }
 
@@ -168,7 +190,7 @@ final class CourseLocationProvider: NSObject, CLLocationManagerDelegate {
             seenNames.insert(key)
             return true
         }
-        .prefix(8)
+        .prefix(5)
 
         guard !uniqueNames.isEmpty else {
             throw CourseLocationError.noNearbyCourses

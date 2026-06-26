@@ -12,6 +12,17 @@ enum WatchMissValue: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum WatchApproachProximity: String, Codable, CaseIterable, Identifiable {
+    case feet0to5 = "0-5 ft"
+    case feet6to10 = "6-10 ft"
+    case feet11to15 = "11-15 ft"
+    case feet16to20 = "16-20 ft"
+    case feet21to25 = "21-25 ft"
+    case feet26to30 = "26-30 ft"
+
+    var id: String { rawValue }
+}
+
 struct WatchHolePayload: Identifiable, Codable, Hashable {
     var id: Int { number }
     let number: Int
@@ -22,6 +33,7 @@ struct WatchHolePayload: Identifiable, Codable, Hashable {
     var putts: Int
     var fairway: WatchMissValue
     var green: WatchMissValue
+    var approachProximity: WatchApproachProximity?
 }
 
 struct WatchRoundPayload: Codable, Hashable {
@@ -151,6 +163,30 @@ extension WatchMissValue {
     }
 }
 
+extension WatchApproachProximity {
+    init(_ proximity: ApproachProximity) {
+        switch proximity {
+        case .feet0to5: self = .feet0to5
+        case .feet6to10: self = .feet6to10
+        case .feet11to15: self = .feet11to15
+        case .feet16to20: self = .feet16to20
+        case .feet21to25: self = .feet21to25
+        case .feet26to30: self = .feet26to30
+        }
+    }
+
+    var appProximity: ApproachProximity {
+        switch self {
+        case .feet0to5: .feet0to5
+        case .feet6to10: .feet6to10
+        case .feet11to15: .feet11to15
+        case .feet16to20: .feet16to20
+        case .feet21to25: .feet21to25
+        case .feet26to30: .feet26to30
+        }
+    }
+}
+
 extension WatchRoundPayload {
     init(course: GolfCourse, tee: TeeBox, handicap: Double, currentHoleIndex: Int, entries: [RoundHoleEntry]) {
         let adjusted = (handicap * Double(tee.slope) / 113.0) + (tee.rating - Double(tee.par))
@@ -169,7 +205,8 @@ extension WatchRoundPayload {
                     score: entry.score,
                     putts: entry.putts,
                     fairway: WatchMissValue(entry.fairway),
-                    green: WatchMissValue(entry.green)
+                    green: WatchMissValue(entry.green),
+                    approachProximity: entry.approachProximity.map(WatchApproachProximity.init)
                 )
             }
         )

@@ -66,6 +66,7 @@ struct ContentView: View {
         case .home:
                 HomeView(
                     savedRounds: roundArchive.rounds,
+                    entries: entries,
                     recentRounds: recentRounds,
                     isRoundActive: isRoundActive,
                     currentHandicap: playerSettings.handicap,
@@ -84,7 +85,17 @@ struct ContentView: View {
         case .yardages:
             YardagesView(store: clubYardages)
         case .insights:
-            InsightsView(entries: entries, savedRounds: roundArchive.rounds, isRoundActive: isRoundActive, clubYardages: clubYardages)
+            RecentRoundsView(
+                savedRounds: roundArchive.rounds,
+                currentHandicap: playerSettings.handicap,
+                startRound: openRoundFlow,
+                deleteRound: { round in
+                    roundArchive.delete(roundID: round.id)
+                },
+                updateRound: { round in
+                    roundArchive.update(round)
+                }
+            )
         case .goals:
             GoalsView(savedRounds: roundArchive.rounds, goalArchive: goalArchive)
         case .settings:
@@ -160,6 +171,7 @@ struct ContentView: View {
             green: .notTracked,
             teeClub: hole.par == 3 ? .iron : .driver,
             approachRange: hole.yards < 350 ? .yards100to150 : .yards150to200,
+            approachProximity: nil,
             firstPuttDistance: .feet10to20,
             penalties: 0,
             penaltyType: .none,
@@ -208,7 +220,8 @@ struct ContentView: View {
         }
         currentHoleIndex = min(max(0, draft.currentHoleIndex), max(0, entries.count - 1))
         isRoundActive = true
-        isRoundFlowPresented = true
+        isRoundFlowPresented = false
+        selectedTab = .home
         publishActiveRoundToWatch()
     }
 
@@ -240,6 +253,11 @@ struct ContentView: View {
         entries[entryIndex].putts = update.hole.putts
         entries[entryIndex].fairway = update.hole.fairway.appDirection
         entries[entryIndex].green = update.hole.green.appDirection
+        if entries[entryIndex].green != .hit {
+            entries[entryIndex].approachProximity = nil
+        } else {
+            entries[entryIndex].approachProximity = update.hole.approachProximity?.appProximity
+        }
         currentHoleIndex = min(max(0, update.currentHoleIndex), max(0, entries.count - 1))
         saveActiveRoundDraft()
         publishActiveRoundToWatch()
@@ -276,6 +294,7 @@ private struct ActiveRoundHoleDraft: Codable {
     let green: MissDirection
     let teeClub: TeeClub
     let approachRange: ApproachRange
+    let approachProximity: ApproachProximity?
     let firstPuttDistance: FirstPuttDistance
     let penalties: Int
     let penaltyType: PenaltyType
@@ -293,6 +312,7 @@ private struct ActiveRoundHoleDraft: Codable {
         green = entry.green
         teeClub = entry.teeClub
         approachRange = entry.approachRange
+        approachProximity = entry.approachProximity
         firstPuttDistance = entry.firstPuttDistance
         penalties = entry.penalties
         penaltyType = entry.penaltyType
@@ -312,6 +332,7 @@ private struct ActiveRoundHoleDraft: Codable {
             green: green,
             teeClub: teeClub,
             approachRange: approachRange,
+            approachProximity: green == .hit ? approachProximity : nil,
             firstPuttDistance: firstPuttDistance,
             penalties: penalties,
             penaltyType: penaltyType,
@@ -378,7 +399,7 @@ extension ContentView {
 enum Tab: String, CaseIterable {
     case home = "Home"
     case yardages = "Yardages"
-    case insights = "Insights"
+    case insights = "Rounds"
     case goals = "Goals"
     case settings = "Settings"
 
@@ -386,7 +407,7 @@ enum Tab: String, CaseIterable {
         switch self {
         case .home: "house.fill"
         case .yardages: "ruler.fill"
-        case .insights: "chart.line.uptrend.xyaxis"
+        case .insights: "list.bullet.rectangle.portrait.fill"
         case .goals: "target"
         case .settings: "gearshape.fill"
         }
@@ -413,6 +434,7 @@ struct AppTheme {
 
 struct HomeView: View {
     let savedRounds: [SavedRound]
+    let entries: [RoundHoleEntry]
     let recentRounds: [RoundSummary]
     let isRoundActive: Bool
     let currentHandicap: Double
@@ -423,15 +445,6 @@ struct HomeView: View {
     let updateRound: (SavedRound) -> Void
     @State private var selectedRound: SavedRound?
     @State private var showDiscardRoundAlert = false
-    @State private var visibleRecentRoundCount = 4
-
-    private var visibleRecentRounds: ArraySlice<SavedRound> {
-        savedRounds.prefix(visibleRecentRoundCount)
-    }
-
-    private var canLoadMoreRounds: Bool {
-        visibleRecentRoundCount < savedRounds.count
-    }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
@@ -443,45 +456,8 @@ struct HomeView: View {
 
                     PerformanceOverview(rounds: savedRounds)
 
-                    SectionHeader(title: "Recent Rounds", actionTitle: "View all")
+                    InsightsDashboardContent(entries: entries, savedRounds: savedRounds, isRoundActive: isRoundActive)
 
-                    VStack(spacing: 10) {
-                        if savedRounds.isEmpty {
-                            EmptyRoundsCard(startRound: startRound)
-                        } else {
-                            ForEach(visibleRecentRounds) { round in
-                                SavedRoundRow(
-                                    round: round,
-                                    viewRound: { selectedRound = round },
-                                    deleteRound: { deleteRound(round) }
-                                )
-                            }
-
-                            if canLoadMoreRounds {
-                                Button {
-                                    visibleRecentRoundCount = min(visibleRecentRoundCount + 4, savedRounds.count)
-                                } label: {
-                                    HStack {
-                                        Text("Load More Rounds")
-                                        Spacer()
-                                        Text("\(min(savedRounds.count - visibleRecentRoundCount, 4)) more")
-                                        Image(systemName: "chevron.down")
-                                    }
-                                    .font(.system(.subheadline, design: .rounded).weight(.bold))
-                                    .foregroundStyle(AppTheme.mint)
-                                    .padding(14)
-                                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-
-                    if let focus = homeFocus {
-                        FocusCard(title: "Next Edge", headline: focus.headline, detail: focus.detail)
-                    }
-
-                    CourseFormSection(rounds: savedRounds)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 4)
@@ -508,40 +484,107 @@ struct HomeView: View {
             Text("This will stop the live round and remove all unsaved scores and stats from this card.")
         }
     }
+}
 
-    private var homeFocus: (headline: String, detail: String)? {
-        guard let latestRound = savedRounds.first else {
-            return nil
+struct RecentRoundsView: View {
+    let savedRounds: [SavedRound]
+    let currentHandicap: Double
+    let startRound: () -> Void
+    let deleteRound: (SavedRound) -> Void
+    let updateRound: (SavedRound) -> Void
+    @State private var selectedRound: SavedRound?
+    @State private var visibleRecentRoundCount = 8
+
+    private var visibleRecentRounds: ArraySlice<SavedRound> {
+        savedRounds.prefix(visibleRecentRoundCount)
+    }
+
+    private var canLoadMoreRounds: Bool {
+        visibleRecentRoundCount < savedRounds.count
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 16) {
+                HeaderBlock(
+                    title: "Rounds",
+                    subtitle: savedRounds.isEmpty ? "Completed scorecards will live here." : "\(savedRounds.count) saved scorecard\(savedRounds.count == 1 ? "" : "s")"
+                )
+
+                VStack(spacing: 10) {
+                    if savedRounds.isEmpty {
+                        EmptyRoundsCard(startRound: startRound)
+                    } else {
+                        ForEach(visibleRecentRounds) { round in
+                            SavedRoundRow(
+                                round: round,
+                                viewRound: { selectedRound = round },
+                                deleteRound: { deleteRound(round) }
+                            )
+                        }
+
+                        if canLoadMoreRounds {
+                            Button {
+                                visibleRecentRoundCount = min(visibleRecentRoundCount + 8, savedRounds.count)
+                            } label: {
+                                HStack {
+                                    Text("Load More Rounds")
+                                    Spacer()
+                                    Text("\(min(savedRounds.count - visibleRecentRoundCount, 8)) more")
+                                    Image(systemName: "chevron.down")
+                                }
+                                .font(.system(.subheadline, design: .rounded).weight(.bold))
+                                .foregroundStyle(AppTheme.mint)
+                                .padding(14)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            .padding(20)
+            .padding(.bottom, 20)
         }
-
-        if latestRound.holes.reduce(0, { $0 + $1.penalties }) > 0 {
-            return ("Cut out penalty shots", "Your latest round included \(latestRound.holes.reduce(0) { $0 + $1.penalties }) penalty shots. Start the next card with conservative tee targets.")
+        .sheet(item: $selectedRound) { round in
+            SavedRoundDetailView(round: round, currentHandicap: currentHandicap, updateRound: updateRound)
         }
-
-        if latestRound.holes.filter({ $0.putts >= 3 }).count > 0 {
-            return ("Tidy up lag putting", "Your latest round had \(latestRound.holes.filter { $0.putts >= 3 }.count) three-putts. Build the next practice block around pace from distance.")
-        }
-
-        return ("Build the trend", "Your latest card is saved. Finish two more rounds to make the home summary and insights more reliable.")
     }
 }
 
 struct HomeHeader: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 7) {
                     Text("Pinpoint Golf")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.ink)
+                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
                     Text("Good afternoon, James")
-                        .font(.system(.subheadline, design: .rounded).weight(.medium))
-                        .foregroundStyle(AppTheme.softText)
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.84))
                 }
                 Spacer()
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 22, weight: .heavy))
+                    .foregroundStyle(AppTheme.mint)
+                    .frame(width: 52, height: 52)
+                    .background(Circle().fill(Color.white))
             }
         }
-        .padding(.top, 4)
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.07, green: 0.67, blue: 0.35), AppTheme.mint],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.62)))
+        .shadow(color: AppTheme.shadow.opacity(1.35), radius: 20, x: 0, y: 10)
     }
 }
 
@@ -551,41 +594,42 @@ struct HomeFloatingRoundButton: View {
     let discardRound: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             if isRoundActive {
                 Button(action: discardRound) {
                     Image(systemName: "trash.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(AppTheme.gold)
-                        .frame(width: 48, height: 48)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.red.opacity(0.82))
+                        .frame(width: 44, height: 44)
                         .background(Circle().fill(.white))
-                        .overlay(Circle().stroke(AppTheme.border))
-                        .shadow(color: AppTheme.shadow, radius: 12, x: 0, y: 6)
+                        .overlay(Circle().stroke(Color.red.opacity(0.15)))
+                        .shadow(color: AppTheme.shadow, radius: 10, x: 0, y: 5)
                 }
                 .buttonStyle(.plain)
             }
 
             Button(action: startRound) {
-                VStack(spacing: 5) {
+                HStack(spacing: 10) {
                     Image(systemName: isRoundActive ? "flag.fill" : "plus")
-                        .font(.system(size: 24, weight: .heavy))
-                    Text(isRoundActive ? "Round" : "Round")
-                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        .font(.system(size: 15, weight: .heavy))
+                        .foregroundStyle(AppTheme.mint)
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(AppTheme.mintWash))
+                    Text(isRoundActive ? "Resume Round" : "New Round")
+                        .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
                 }
-                .foregroundStyle(.white)
-                .frame(width: 76, height: 76)
+                .foregroundStyle(AppTheme.ink)
+                .padding(.leading, 12)
+                .padding(.trailing, 16)
+                .frame(height: 56)
                 .background(
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(red: 0.03, green: 0.62, blue: 0.34), AppTheme.mint],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                    Capsule()
+                        .fill(Color.white)
                 )
-                .overlay(Circle().stroke(.white.opacity(0.92), lineWidth: 3))
-                .shadow(color: AppTheme.mint.opacity(0.28), radius: 18, x: 0, y: 10)
+                .overlay(Capsule().stroke(AppTheme.mint.opacity(isRoundActive ? 0.32 : 0.18), lineWidth: 1))
+                .shadow(color: AppTheme.shadow.opacity(1.35), radius: 16, x: 0, y: 8)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isRoundActive ? "Resume current round" : "Start new round")
@@ -625,44 +669,21 @@ struct PlayerProfileCard: View {
                         .lineLimit(2)
                     HStack(spacing: 8) {
                         PlayerBadge(icon: "flag.fill", text: rounds.isEmpty ? "First card waiting" : "\(rounds.count) rounds logged", color: AppTheme.mint)
-                        PlayerBadge(icon: "sparkles", text: formBadgeText, color: AppTheme.gold)
+                        PlayerBadge(icon: "chart.line.uptrend.xyaxis", text: formBadgeText, color: AppTheme.ink)
                     }
                 }
             }
 
             HStack(spacing: 10) {
-                ProfileMiniStat(title: "Best Gross", value: bestGross, tint: AppTheme.mint)
-                ProfileMiniStat(title: "Best Points", value: bestStableford, tint: AppTheme.gold)
-                ProfileMiniStat(title: "Latest", value: latestScore, tint: Color(red: 0.12, green: 0.36, blue: 0.72))
+                ProfileMiniStat(title: "Best Gross", value: bestGross)
+                ProfileMiniStat(title: "Best Points", value: bestStableford)
+                ProfileMiniStat(title: "Latest", value: latestScore)
             }
         }
         .padding(18)
-        .background(
-            ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.96, green: 0.99, blue: 0.97),
-                                Color.white,
-                                Color(red: 1.00, green: 0.97, blue: 0.90)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                Circle()
-                    .fill(AppTheme.gold.opacity(0.16))
-                    .frame(width: 120, height: 120)
-                    .offset(x: 42, y: -58)
-                Circle()
-                    .fill(AppTheme.mint.opacity(0.12))
-                    .frame(width: 98, height: 98)
-                    .offset(x: -230, y: 112)
-            }
-        )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-        .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow.opacity(0.72), radius: 18, x: 0, y: 10)
         .onChange(of: selectedPhoto) { _, newItem in
             Task {
                 guard let data = try? await newItem?.loadTransferable(type: Data.self) else { return }
@@ -704,7 +725,6 @@ struct PlayerProfileCard: View {
 struct ProfileMiniStat: View {
     let title: String
     let value: String
-    var tint: Color = AppTheme.mint
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -714,12 +734,12 @@ struct ProfileMiniStat: View {
                 .textCase(.uppercase)
             Text(value)
                 .font(.system(.headline, design: .rounded).weight(.bold))
-                .foregroundStyle(tint)
+                .foregroundStyle(AppTheme.ink)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.76)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.16)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill.opacity(0.72)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
     }
 }
 
@@ -772,7 +792,8 @@ struct PlayerBadge: View {
         .foregroundStyle(color)
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .background(Capsule().fill(color.opacity(0.12)))
+        .background(Capsule().fill(AppTheme.subtleFill.opacity(0.74)))
+        .overlay(Capsule().stroke(AppTheme.border.opacity(0.75)))
     }
 }
 
@@ -898,78 +919,87 @@ struct PerformanceOverview: View {
     let rounds: [SavedRound]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack(spacing: 7) {
-                        Image(systemName: "calendar.badge.clock")
-                            .font(.system(size: 12, weight: .bold))
-                        Text("\(String(seasonYear)) Season")
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(spacing: 7) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.system(size: 12, weight: .heavy))
+                            Text("\(String(seasonYear)) Season")
+                                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        }
+                        .foregroundStyle(.white.opacity(0.86))
+
+                        Text("Scoring Average")
+                            .font(.system(.title3, design: .rounded).weight(.heavy))
+                            .foregroundStyle(.white)
+                    }
+
+                    Spacer()
+
+                    Text(roundCountLabel)
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.mint)
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .background(Capsule().fill(Color.white))
+                }
+
+                HStack(alignment: .bottom, spacing: 16) {
+                    Text(scoringAverage)
+                        .font(.system(size: 64, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("gross")
                             .font(.system(.caption2, design: .rounded).weight(.heavy))
-                    }
-                    .foregroundStyle(AppTheme.mint)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(Capsule().fill(AppTheme.mint.opacity(0.1)))
-
-                    Text("Scoring Average")
-                        .font(.system(.headline, design: .rounded).weight(.heavy))
-                        .foregroundStyle(AppTheme.ink)
-
-                    HStack(alignment: .lastTextBaseline, spacing: 8) {
-                        Text(scoringAverage)
-                            .font(.system(size: 50, weight: .heavy, design: .rounded))
-                            .foregroundStyle(AppTheme.ink)
-                        Text(roundCountLabel)
+                            .foregroundStyle(.white.opacity(0.72))
+                            .textCase(.uppercase)
+                        Text("per round")
                             .font(.system(.subheadline, design: .rounded).weight(.heavy))
-                            .foregroundStyle(AppTheme.softText)
+                            .foregroundStyle(.white.opacity(0.9))
                     }
+                    .padding(.bottom, 11)
+                    Spacer()
                 }
-                Spacer()
-
-                VStack(spacing: 8) {
-                    CompactMetricPill(title: "Stableford", value: averageStableford, tint: AppTheme.mint)
-                    CompactMetricPill(title: "Penalties", value: averagePenalties, tint: Color(red: 0.82, green: 0.34, blue: 0.20))
-                }
-                .frame(width: 108)
             }
-
-            HStack(spacing: 8) {
-                CompactMetricPill(title: "Fairways", value: "\(fairwayPercent)%", tint: AppTheme.mint)
-                CompactMetricPill(title: "GIR", value: "\(girPercent)%", tint: Color(red: 0.11, green: 0.42, blue: 0.74))
-                CompactMetricPill(title: "Putts", value: averagePutts, tint: AppTheme.gold)
-            }
-
-            ScoringMixStrip(
-                birdies: averageBirdies,
-                pars: averagePars,
-                bogeys: averageBogeys,
-                doubles: averageDoublesOrWorse
-            )
-        }
-        .padding(16)
-        .background(
-            ZStack(alignment: .bottomTrailing) {
-                RoundedRectangle(cornerRadius: 8)
+            .padding(20)
+            .background(
+                UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 8)
                     .fill(
                         LinearGradient(
-                            colors: [
-                                Color(red: 0.98, green: 0.99, blue: 0.97),
-                                Color.white,
-                                Color(red: 0.95, green: 0.98, blue: 1.00)
-                            ],
+                            colors: [Color(red: 0.07, green: 0.67, blue: 0.35), AppTheme.mint],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
-                Circle()
-                    .fill(AppTheme.mint.opacity(0.10))
-                    .frame(width: 132, height: 132)
-                    .offset(x: 52, y: 50)
+            )
+
+            VStack(spacing: 14) {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    CompactMetricPill(title: "Stableford", value: averageStableford, tint: AppTheme.mint)
+                    CompactMetricPill(title: "Putts", value: averagePutts, tint: AppTheme.gold)
+                    CompactMetricPill(title: "Penalties", value: averagePenalties, tint: Color(red: 0.82, green: 0.34, blue: 0.20))
+                    CompactMetricPill(title: "Fairways", value: "\(fairwayPercent)%", tint: AppTheme.mint)
+                    CompactMetricPill(title: "GIR", value: "\(girPercent)%", tint: Color(red: 0.11, green: 0.42, blue: 0.74))
+                    CompactMetricPill(title: "Scramble", value: "\(scramblePercent)%", tint: Color(red: 0.42, green: 0.22, blue: 0.58))
+                }
+
+                ScoringMixStrip(
+                    birdies: averageBirdies,
+                    pars: averagePars,
+                    bogeys: averageBogeys,
+                    doubles: averageDoublesOrWorse
+                )
             }
-        )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
-        .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 8)
+            .padding(16)
+            .background(Color.white)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow.opacity(0.72), radius: 18, x: 0, y: 10)
     }
 
     private var seasonRounds: [SavedRound] {
@@ -1003,6 +1033,13 @@ struct PerformanceOverview: View {
         let total = holes.filter { $0.green != .notTracked }.count
         guard total > 0 else { return 0 }
         return Int((Double(hit) / Double(total)) * 100)
+    }
+
+    private var scramblePercent: Int {
+        let made = seasonRounds.reduce(0) { $0 + $1.scrambles }
+        let total = seasonRounds.reduce(0) { $0 + $1.scramblingOpportunities }
+        guard total > 0 else { return 0 }
+        return Int((Double(made) / Double(total) * 100).rounded())
     }
 
     private var averagePutts: String {
@@ -1067,14 +1104,14 @@ struct ScoringMixStrip: View {
                     .foregroundStyle(AppTheme.softText)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 ScoringMixPill(title: "Birdies", value: birdies, tint: Color(red: 0.88, green: 0.16, blue: 0.20))
                 ScoringMixPill(title: "Pars", value: pars, tint: AppTheme.mint)
                 ScoringMixPill(title: "Bogeys", value: bogeys, tint: AppTheme.gold)
                 ScoringMixPill(title: "Doubles+", value: doubles, tint: Color(red: 0.42, green: 0.22, blue: 0.58))
             }
         }
-        .padding(10)
+        .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.82)))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
     }
@@ -1086,23 +1123,25 @@ struct CompactMetricPill: View {
     let tint: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundStyle(AppTheme.softText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(value)
-                .font(.system(size: 19, weight: .heavy, design: .rounded))
-                .foregroundStyle(tint)
+                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(tint.opacity(0.08)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.12)))
+        .frame(minHeight: 70)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.72)))
+        .shadow(color: AppTheme.shadow.opacity(0.38), radius: 10, x: 0, y: 6)
     }
 }
 
@@ -1112,21 +1151,24 @@ struct ScoringMixPill: View {
     let tint: Color
 
     var body: some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 5) {
             Text(value)
-                .font(.system(size: 18, weight: .heavy, design: .rounded))
-                .foregroundStyle(tint)
+                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
             Text(title)
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundStyle(AppTheme.softText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(tint.opacity(0.08)))
+        .padding(.vertical, 12)
+        .frame(minHeight: 72)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.62)))
+        .shadow(color: AppTheme.shadow.opacity(0.32), radius: 9, x: 0, y: 5)
     }
 }
 
@@ -1303,7 +1345,7 @@ struct StartRoundPanel: View {
         VStack(alignment: .leading, spacing: 14) {
             Button(action: startRound) {
                 HStack(spacing: 14) {
-                    Image(systemName: "plus")
+                    Image(systemName: isRoundActive ? "flag.fill" : "plus")
                         .font(.system(size: 18, weight: .heavy))
                         .foregroundStyle(Color.white)
                         .frame(width: 46, height: 46)
@@ -1531,6 +1573,7 @@ struct SavedRoundRow: View {
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
     }
 
     private var scoreToPar: Int {
@@ -1580,48 +1623,9 @@ struct SavedRoundDetailView: View {
 
                     ShareableRoundSummaryCard(round: round)
 
-                    HStack(spacing: 10) {
-                        StatTile(title: "Score", value: "\(round.totalScore)", caption: scoreToParLabel)
-                        StatTile(title: "Stableford", value: stablefordValue, caption: stablefordCaption)
-                        StatTile(title: "Putts", value: "\(round.totalPutts)", caption: "total")
-                        StatTile(title: "GIR", value: "\(round.greensInRegulation)", caption: "of 18")
-                    }
+                    RoundShotPatternSection(pattern: shotPattern)
 
-                    HStack(spacing: 10) {
-                        StatTile(title: "Fairways", value: "\(round.fairwaysHit)", caption: "of \(round.fairwaysTotal)")
-                        StatTile(title: "Penalties", value: "\(penalties)", caption: "shots")
-                        StatTile(title: "Slope", value: "\(round.teeSlope)", caption: "\(String(format: "%.1f", round.teeRating)) rating")
-                    }
-
-                    SectionHeader(title: "Scoring Analysis", actionTitle: nil)
-
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 10)], spacing: 10) {
-                        RoundAnalysisTile(title: "Birdies", value: "\(round.birdies)", accent: AppTheme.mint)
-                        RoundAnalysisTile(title: "Pars", value: "\(round.pars)", accent: AppTheme.ink)
-                        RoundAnalysisTile(title: "Bogeys", value: "\(round.bogeys)", accent: AppTheme.gold)
-                        RoundAnalysisTile(title: "Doubles+", value: "\(round.doublesOrWorse)", accent: AppTheme.gold)
-                        RoundAnalysisTile(title: "HIO", value: "\(round.holeInOnes)", accent: AppTheme.mint)
-                        RoundAnalysisTile(title: "Eagles+", value: "\(round.eaglesOrBetter)", accent: AppTheme.mint)
-                    }
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Round Pattern")
-                                .font(.system(.headline, design: .rounded).weight(.bold))
-                                .foregroundStyle(AppTheme.ink)
-                            Spacer()
-                            Text(scoringPatternLabel)
-                                .font(.system(.caption, design: .rounded).weight(.heavy))
-                                .foregroundStyle(AppTheme.mint)
-                        }
-                        Text(scoringPatternDetail)
-                            .font(.system(.subheadline, design: .rounded).weight(.medium))
-                            .foregroundStyle(AppTheme.softText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(16)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+                    RoundApproachProximitySection(round: round)
 
                     DisclosureGroup(isExpanded: $showHoleBreakdown) {
                         VStack(spacing: 8) {
@@ -1672,49 +1676,390 @@ struct SavedRoundDetailView: View {
         }
     }
 
-    private var penalties: Int {
-        round.holes.reduce(0) { $0 + $1.penalties }
+    private var shotPattern: RoundShotPattern {
+        RoundShotPattern(round: round)
+    }
+}
+
+struct RoundShotPattern {
+    let fairwaysHit: Int
+    let fairwaysTracked: Int
+    let fairwayMisses: [MissDirection]
+    let greensHit: Int
+    let greensTracked: Int
+    let approachMisses: [MissDirection]
+
+    init(round: SavedRound) {
+        let trackedTeeShots = round.holes.filter { $0.par > 3 && $0.fairway != .notTracked }
+        fairwaysHit = trackedTeeShots.filter { $0.fairway == .hit }.count
+        fairwaysTracked = trackedTeeShots.count
+        fairwayMisses = trackedTeeShots
+            .map(\.fairway)
+            .filter { [.left, .right].contains($0) }
+
+        let trackedApproaches = round.holes.filter { $0.green != .notTracked }
+        greensHit = trackedApproaches.filter { $0.green == .hit }.count
+        greensTracked = trackedApproaches.count
+        approachMisses = trackedApproaches
+            .map(\.green)
+            .filter { [.short, .long, .left, .right].contains($0) }
     }
 
-    private var stablefordValue: String {
-        round.stablefordPoints.map(String.init) ?? "-"
+    var fairwayPercent: Int {
+        percent(fairwaysHit, fairwaysTracked)
     }
 
-    private var stablefordCaption: String {
-        guard let handicap = round.handicap else {
-            return "No saved handicap"
+    var girPercent: Int {
+        percent(greensHit, greensTracked)
+    }
+
+    func count(_ direction: MissDirection, in misses: [MissDirection]) -> Int {
+        misses.filter { $0 == direction }.count
+    }
+
+    func missPercent(_ direction: MissDirection, in misses: [MissDirection], tracked: Int) -> Int {
+        percent(count(direction, in: misses), tracked)
+    }
+
+    private func percent(_ value: Int, _ total: Int) -> Int {
+        guard total > 0 else { return 0 }
+        return Int((Double(value) / Double(total) * 100).rounded())
+    }
+}
+
+struct RoundShotPatternSection: View {
+    let pattern: RoundShotPattern
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Shot Pattern")
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("Directional misses from this round")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer()
+                Text(leakLabel)
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.mint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+
+            VStack(spacing: 12) {
+                RoundShotPatternCard(
+                    title: "Drives",
+                    icon: "location.north.line.fill",
+                    trackedLabel: "\(pattern.fairwaysTracked) tracked tee shots",
+                    hitLabel: "\(pattern.fairwayPercent)% fairways",
+                    misses: pattern.fairwayMisses,
+                    trackedCount: pattern.fairwaysTracked,
+                    directions: [.left, .right],
+                    pattern: pattern
+                )
+
+                RoundShotPatternCard(
+                    title: "Approaches",
+                    icon: "scope",
+                    trackedLabel: "\(pattern.greensTracked) tracked approaches",
+                    hitLabel: "\(pattern.girPercent)% GIR",
+                    misses: pattern.approachMisses,
+                    trackedCount: pattern.greensTracked,
+                    directions: [.short, .long, .left, .right],
+                    pattern: pattern
+                )
+            }
         }
-        let courseHandicap = round.courseHandicap(using: handicap)
-        return "CH \(courseHandicap)"
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white, AppTheme.subtleFill, AppTheme.mintWash],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.8), radius: 14, x: 0, y: 7)
     }
 
-    private var scoreToPar: Int {
-        round.totalScore - round.totalPar
+    private var leakLabel: String {
+        guard let topMiss else { return "No miss bias" }
+        return "\(topMiss.area) \(topMiss.direction.rawValue)"
     }
 
-    private var scoreToParLabel: String {
-        scoreToPar == 0 ? "Even" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
+    private var topMiss: (area: String, direction: MissDirection, count: Int)? {
+        let drive = topMiss(in: pattern.fairwayMisses, area: "Drive", directions: [.left, .right])
+        let approach = topMiss(in: pattern.approachMisses, area: "Approach", directions: [.short, .long, .left, .right])
+        return [drive, approach]
+            .compactMap { $0 }
+            .max { $0.count < $1.count }
     }
 
-    private var scoringPatternLabel: String {
-        if round.birdies + round.eaglesOrBetter + round.holeInOnes > 0 {
-            return "Scoring chances"
+    private func topMiss(in misses: [MissDirection], area: String, directions: [MissDirection]) -> (area: String, direction: MissDirection, count: Int)? {
+        directions
+            .map { (area: area, direction: $0, count: pattern.count($0, in: misses)) }
+            .filter { $0.count > 0 }
+            .max { $0.count < $1.count }
+    }
+}
+
+struct RoundShotPatternCard: View {
+    let title: String
+    let icon: String
+    let trackedLabel: String
+    let hitLabel: String
+    let misses: [MissDirection]
+    let trackedCount: Int
+    let directions: [MissDirection]
+    let pattern: RoundShotPattern
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(AppTheme.mint)
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(AppTheme.mint.opacity(0.12)))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("\(trackedLabel) - \(hitLabel)")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer()
+            }
+
+            if trackedCount == 0 {
+                Text("No tracked \(title.lowercased()) for this round.")
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.softText)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(directions, id: \.self) { direction in
+                        RoundDirectionBar(
+                            direction: direction,
+                            count: pattern.count(direction, in: misses),
+                            percent: pattern.missPercent(direction, in: misses, tracked: trackedCount)
+                        )
+                    }
+                }
+            }
         }
-        if round.doublesOrWorse > round.pars {
-            return "Damage control"
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.92)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
+    }
+}
+
+struct RoundDirectionBar: View {
+    let direction: MissDirection
+    let count: Int
+    let percent: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Image(systemName: iconName)
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(count == 0 ? AppTheme.softText : AppTheme.gold)
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill((count == 0 ? AppTheme.subtleFill : AppTheme.gold.opacity(0.14))))
+                Text(direction.rawValue)
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text("\(count) - \(percent)%")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(count == 0 ? AppTheme.softText : AppTheme.mint)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(AppTheme.subtleFill)
+                    Capsule()
+                        .fill(count == 0 ? AppTheme.border : AppTheme.mint)
+                        .frame(width: barWidth(in: proxy.size.width))
+                }
+            }
+            .frame(height: 8)
         }
-        return "Steady card"
     }
 
-    private var scoringPatternDetail: String {
-        let positives = round.birdies + round.eaglesOrBetter + round.holeInOnes
-        if positives > 0 {
-            return "You made \(positives) scoring hole\(positives == 1 ? "" : "s") and \(round.pars) par\(round.pars == 1 ? "" : "s"). The main leak was \(round.doublesOrWorse) double\(round.doublesOrWorse == 1 ? "" : "s") or worse."
+    private var iconName: String {
+        switch direction {
+        case .left:
+            return "arrow.left.circle.fill"
+        case .right:
+            return "arrow.right.circle.fill"
+        case .short:
+            return "arrow.down.circle.fill"
+        case .long:
+            return "arrow.up.circle.fill"
+        default:
+            return "circle.fill"
         }
-        if round.doublesOrWorse > 0 {
-            return "No birdies recorded, with \(round.doublesOrWorse) double\(round.doublesOrWorse == 1 ? "" : "s") or worse. Reducing those big numbers is the quickest scoring gain."
+    }
+
+    private func barWidth(in width: CGFloat) -> CGFloat {
+        guard count > 0 else { return 0 }
+        return max(8, width * CGFloat(percent) / 100)
+    }
+}
+
+struct RoundApproachProximitySection: View {
+    let round: SavedRound
+
+    private var proximities: [ApproachProximity] {
+        round.girProximities
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Approach Proximity")
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("Only counted when GIR is hit")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer()
+                Text(averageText)
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.mint)
+            }
+
+            if proximities.isEmpty {
+                Text("No GIR proximity recorded for this round yet.")
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.softText)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+            } else {
+                HStack(spacing: 8) {
+                    ProximitySummaryTile(title: "Avg", value: averageText, caption: "\(proximities.count) GIR", accent: AppTheme.mint)
+                    ProximitySummaryTile(title: "Best", value: round.bestGirProximity?.rawValue ?? "-", caption: "closest bucket", accent: AppTheme.gold)
+                    ProximitySummaryTile(title: "Inside 10", value: "\(inside10Count)", caption: "\(inside10Percent)%", accent: AppTheme.mint)
+                }
+
+                VStack(spacing: 8) {
+                    ForEach(ApproachProximity.allCases) { proximity in
+                        ProximityDistributionBar(
+                            proximity: proximity,
+                            count: count(proximity),
+                            percent: percent(proximity)
+                        )
+                    }
+                }
+                .padding(.top, 4)
+            }
         }
-        return "You avoided big numbers and made \(round.pars) par\(round.pars == 1 ? "" : "s")."
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+    }
+
+    private var averageText: String {
+        guard let average = round.averageGirProximityFeet else { return "-" }
+        return "\(Int(average.rounded())) ft"
+    }
+
+    private var inside10Count: Int {
+        proximities.filter { $0.midpointFeet <= 10 }.count
+    }
+
+    private var inside10Percent: Int {
+        guard !proximities.isEmpty else { return 0 }
+        return Int((Double(inside10Count) / Double(proximities.count) * 100).rounded())
+    }
+
+    private func count(_ proximity: ApproachProximity) -> Int {
+        proximities.filter { $0 == proximity }.count
+    }
+
+    private func percent(_ proximity: ApproachProximity) -> Int {
+        guard !proximities.isEmpty else { return 0 }
+        return Int((Double(count(proximity)) / Double(proximities.count) * 100).rounded())
+    }
+}
+
+struct ProximityDistributionBar: View {
+    let proximity: ApproachProximity
+    let count: Int
+    let percent: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(proximity.rawValue)
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text("\(count) - \(percent)%")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(count == 0 ? AppTheme.softText : AppTheme.mint)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(AppTheme.subtleFill)
+                    Capsule()
+                        .fill(count == 0 ? AppTheme.border : AppTheme.mint)
+                        .frame(width: barWidth(in: proxy.size.width))
+                }
+            }
+            .frame(height: 8)
+        }
+    }
+
+    private func barWidth(in width: CGFloat) -> CGFloat {
+        guard count > 0 else { return 0 }
+        return max(8, width * CGFloat(percent) / 100)
+    }
+}
+
+struct ProximitySummaryTile: View {
+    let title: String
+    let value: String
+    let caption: String
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+            Text(value)
+                .font(.system(.headline, design: .rounded).weight(.heavy))
+                .foregroundStyle(accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(caption)
+                .font(.system(.caption2, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.softText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 86, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
     }
 }
 
@@ -1809,6 +2154,7 @@ struct EditableSavedHole: Identifiable {
     var green: MissDirection
     let teeClub: TeeClub?
     let approachRange: ApproachRange?
+    var approachProximity: ApproachProximity?
     let firstPuttDistance: FirstPuttDistance?
     var penalties: Int
     let penaltyType: PenaltyType?
@@ -1830,6 +2176,7 @@ struct EditableSavedHole: Identifiable {
         green = hole.green
         teeClub = hole.teeClub
         approachRange = hole.approachRange
+        approachProximity = hole.approachProximity
         firstPuttDistance = hole.firstPuttDistance
         penalties = hole.penalties
         penaltyType = hole.penaltyType
@@ -1853,6 +2200,7 @@ struct EditableSavedHole: Identifiable {
             green: green,
             teeClub: teeClub,
             approachRange: approachRange,
+            approachProximity: green == .hit ? approachProximity : nil,
             firstPuttDistance: firstPuttDistance,
             penalties: penalties,
             penaltyType: penaltyType,
@@ -1889,6 +2237,10 @@ struct EditableHoleRow: View {
             HStack(spacing: 8) {
                 StatMenu(title: "Fairway", selection: $hole.fairway, choices: [.notTracked, .hit, .left, .right])
                 StatMenu(title: "GIR", selection: $hole.green, choices: [.notTracked, .hit, .left, .right, .short, .long])
+            }
+
+            if hole.green == .hit {
+                OptionalStatMenu(title: "Approach Proximity", selection: $hole.approachProximity, choices: ApproachProximity.allCases)
             }
         }
         .padding(14)
@@ -1948,6 +2300,42 @@ struct StatMenu: View {
                         .font(.system(.caption2, design: .rounded).weight(.heavy))
                         .foregroundStyle(AppTheme.softText)
                     Text(selection.rawValue)
+                        .font(.system(.caption, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                }
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AppTheme.softText)
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+        }
+    }
+}
+
+struct OptionalStatMenu<Option: Identifiable & RawRepresentable & Hashable>: View where Option.RawValue == String {
+    let title: String
+    @Binding var selection: Option?
+    let choices: [Option]
+
+    var body: some View {
+        Menu {
+            Button("Not set") {
+                selection = nil
+            }
+            ForEach(choices) { choice in
+                Button(choice.rawValue) {
+                    selection = choice
+                }
+            }
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.softText)
+                    Text(selection?.rawValue ?? "Not set")
                         .font(.system(.caption, design: .rounded).weight(.bold))
                         .foregroundStyle(AppTheme.ink)
                 }
@@ -2168,6 +2556,7 @@ struct ScorecardTotalRow: View {
             ScorecardFooterCell(title: "Score", value: "\(round.totalScore)/\(round.totalPar)", accent: AppTheme.mint)
             ScorecardFooterCell(title: "Slope", value: "\(round.teeSlope)")
             ScorecardFooterCell(title: "Putts", value: "\(round.totalPutts)")
+            ScorecardFooterCell(title: "Scr", value: "\(round.scramblePercent)%", accent: AppTheme.mint)
             ScorecardFooterCell(title: "Points", value: stablefordText, accent: AppTheme.gold)
         }
         .padding(6)
@@ -2374,10 +2763,11 @@ struct HoleBreakdownRow: View {
             "Approach \(hole.green.rawValue)",
             "1st putt \(hole.firstPuttDistance?.rawValue ?? "Not set")"
         ]
+        if hole.green == .hit, let proximity = hole.approachProximity {
+            parts.append("Prox \(proximity.rawValue)")
+        }
         if hole.bunker == true { parts.append("Bunker") }
-        if hole.upAndDown == true { parts.append("Up & down") }
-        if hole.sandSave == true { parts.append("Sand save") }
-        if hole.recovery == true { parts.append("Recovery") }
+        if hole.bunker == true && hole.score <= hole.par { parts.append("Sand save") }
         if hole.penalties > 0, let penaltyType = hole.penaltyType {
             parts.append(penaltyType.rawValue)
         }
@@ -2509,7 +2899,8 @@ struct NewRoundSetupView: View {
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
     }
 
     private var modePicker: some View {
@@ -2528,11 +2919,17 @@ struct NewRoundSetupView: View {
                     .foregroundStyle(entryMode == mode ? AppTheme.mint : AppTheme.ink)
                     .frame(maxWidth: .infinity)
                     .frame(height: 46)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(entryMode == mode ? AppTheme.mintWash : AppTheme.panel))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(entryMode == mode ? AppTheme.mint.opacity(0.45) : Color.clear))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(entryMode == mode ? Color.white : AppTheme.subtleFill))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(entryMode == mode ? AppTheme.mint.opacity(0.5) : AppTheme.border.opacity(0.65)))
+                    .shadow(color: entryMode == mode ? AppTheme.shadow.opacity(0.7) : .clear, radius: 10, x: 0, y: 5)
                 }
+                .buttonStyle(.plain)
             }
         }
+        .padding(5)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
+        .shadow(color: AppTheme.shadow.opacity(0.58), radius: 12, x: 0, y: 6)
     }
 
     private var databaseSearch: some View {
@@ -2554,6 +2951,7 @@ struct NewRoundSetupView: View {
             }
             .padding(15)
             .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
 
             Button {
                 Task { await courseSearch.searchNearCurrentLocation() }
@@ -2572,6 +2970,7 @@ struct NewRoundSetupView: View {
                 .foregroundStyle(AppTheme.ink)
                 .padding(14)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.6)))
             }
 
             if courseSearch.isSearching {
@@ -2596,19 +2995,39 @@ struct NewRoundSetupView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
             }
 
-            SectionHeader(title: sectionTitle, actionTitle: nil)
+            SectionHeader(title: sectionTitle, actionTitle: filteredCourses.isEmpty ? nil : "\(filteredCourses.count)")
 
-            ForEach(filteredCourses) { course in
-                CourseSetupCard(
-                    course: course,
-                    selectedCourse: $selectedCourse,
-                    selectedTee: $selectedTee,
-                    isFavorite: courseFavorites.isFavorite(course),
-                    toggleFavorite: { courseFavorites.toggle(course) },
-                    startRound: startRound,
-                    editScorecard: { editingCourse = course },
-                    setupScorecard: prefillManualScorecard
-                )
+            if filteredCourses.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Image(systemName: "star")
+                        .font(.system(size: 18, weight: .heavy))
+                        .foregroundStyle(AppTheme.gold)
+                    Text(emptyCourseListTitle)
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(emptyCourseListMessage)
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.softText)
+                        .lineSpacing(3)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                .shadow(color: AppTheme.shadow.opacity(0.52), radius: 10, x: 0, y: 5)
+            } else {
+                ForEach(filteredCourses) { course in
+                    CourseSetupCard(
+                        course: course,
+                        selectedCourse: $selectedCourse,
+                        selectedTee: $selectedTee,
+                        isFavorite: courseFavorites.isFavorite(course),
+                        toggleFavorite: { courseFavorites.toggle(course) },
+                        startRound: startRound,
+                        editScorecard: { editingCourse = course },
+                        setupScorecard: prefillManualScorecard
+                    )
+                }
             }
         }
     }
@@ -2684,19 +3103,31 @@ struct NewRoundSetupView: View {
     }
 
     private var filteredCourses: [GolfCourse] {
-        let sourceCourses = courseSearch.results.isEmpty ? courses : courseSearch.results.map(scorecardStore.courseWithKnownStrokeIndexes)
+        let isShowingSearchResults = !courseSearch.results.isEmpty
+        let sourceCourses = isShowingSearchResults ? courseSearch.results.map(scorecardStore.courseWithKnownStrokeIndexes) : courses.filter(courseFavorites.isFavorite)
         let term = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let filtered = term.isEmpty ? sourceCourses : sourceCourses.filter {
             $0.name.lowercased().contains(term) || $0.location.lowercased().contains(term)
         }
-        return courseFavorites.sorted(filtered)
+        return isShowingSearchResults ? courseFavorites.sorted(filtered) : filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private var sectionTitle: String {
         if !courseSearch.results.isEmpty {
             return "Verified Scorecards"
         }
-        return courseFavorites.favoriteKeys.isEmpty ? "Saved Courses" : "Favourites First"
+        return "Favourite Courses"
+    }
+
+    private var emptyCourseListTitle: String {
+        courseSearch.results.isEmpty ? "No favourite courses yet" : "No matching courses"
+    }
+
+    private var emptyCourseListMessage: String {
+        if courseSearch.results.isEmpty {
+            return "Search for a course, tap the star to save it, and it will appear here next time you start a round."
+        }
+        return "Try a different course, town, city or county search."
     }
 
     private var courseHandicapPreview: Int {
@@ -2906,12 +3337,14 @@ struct CourseSetupCard: View {
                 .font(.system(.headline, design: .rounded).weight(.bold))
                 .foregroundStyle(Color.white)
                 .padding(14)
-                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.ink))
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mint))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.mint.opacity(0.18)))
             }
         }
         .padding(18)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
     }
 
     private var isCourseSelected: Bool {
@@ -3186,83 +3619,98 @@ struct CompactManualField: View {
 struct YardagesView: View {
     @ObservedObject var store: ClubYardageStore
     @State private var newClubName = ""
+    @State private var isBagSetupExpanded = false
 
     private var activeClubs: [ClubYardage] {
         store.clubs.filter(\.isInBag)
-    }
-
-    private var longestClubText: String {
-        guard let club = activeClubs.compactMap({ club -> (String, Int)? in
-            guard let yards = club.yards else { return nil }
-            return (club.name, yards)
-        }).max(by: { $0.1 < $1.1 }) else {
-            return "-"
-        }
-        return "\(club.0) \(club.1)"
     }
 
     private var mappedCount: Int {
         activeClubs.filter { $0.yards != nil }.count
     }
 
+    private var mappedClubs: [ClubYardage] {
+        activeClubs
+            .filter { $0.yards != nil }
+            .sorted { ($0.yards ?? 0) > ($1.yards ?? 0) }
+    }
+
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Yardages")
-                        .font(.system(size: 40, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.ink)
-                    Text("Your bag gaps at a glance.")
-                        .font(.system(.subheadline, design: .rounded).weight(.medium))
-                        .foregroundStyle(AppTheme.softText)
-                }
-
-                HStack(spacing: 10) {
-                    YardageSummaryMetric(title: "In Bag", value: "\(activeClubs.count)")
-                    YardageSummaryMetric(title: "Longest", value: longestClubText)
-                    YardageSummaryMetric(title: "Mapped", value: "\(mappedCount)/\(activeClubs.count)")
-                }
+            VStack(alignment: .leading, spacing: 18) {
+                YardageHeroCard(
+                    activeCount: activeClubs.count,
+                    mappedCount: mappedCount
+                )
 
                 ClubGappingSection(clubs: store.clubs)
 
                 VStack(alignment: .leading, spacing: 14) {
-                    HStack {
-                        SectionHeader(title: "Bag Setup", actionTitle: nil)
-                        Spacer()
-                    }
-
-                    HStack(spacing: 10) {
-                        TextField("Add club, e.g. 5W", text: $newClubName)
-                            .textInputAutocapitalization(.characters)
-                            .font(.system(.subheadline, design: .rounded).weight(.bold))
-                            .foregroundStyle(AppTheme.ink)
-                            .padding(.vertical, 11)
-                            .padding(.horizontal, 13)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
-
-                        Button {
-                            store.addCustomClub(named: newClubName)
-                            newClubName = ""
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 15, weight: .heavy))
-                                .foregroundStyle(Color.white)
-                                .frame(width: 44, height: 44)
-                                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.ink))
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            isBagSetupExpanded.toggle()
                         }
-                        .disabled(newClubName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .opacity(newClubName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
-                    }
-
-                    VStack(spacing: 8) {
-                        ForEach($store.clubs) { $club in
-                            YardageSetupRow(
-                                club: $club,
-                                removeClub: { store.removeClub(id: club.id) }
-                            )
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Bag Setup")
+                                    .font(.system(.title2, design: .rounded).weight(.heavy))
+                                    .foregroundStyle(AppTheme.ink)
+                                Text(isBagSetupExpanded ? "Edit clubs and carry numbers" : "Tap to edit clubs and carries")
+                                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                                    .foregroundStyle(AppTheme.softText)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 14, weight: .heavy))
+                                .foregroundStyle(AppTheme.mint)
+                                .rotationEffect(.degrees(isBagSetupExpanded ? 180 : 0))
+                                .frame(width: 38, height: 38)
+                                .background(Circle().fill(AppTheme.mintWash))
                         }
+                    }
+                    .buttonStyle(.plain)
+
+                    if isBagSetupExpanded {
+                        HStack(spacing: 10) {
+                            TextField("Add club, e.g. 5W", text: $newClubName)
+                                .textInputAutocapitalization(.characters)
+                                .font(.system(.subheadline, design: .rounded).weight(.bold))
+                                .foregroundStyle(AppTheme.ink)
+                                .padding(.vertical, 11)
+                                .padding(.horizontal, 13)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+
+                            Button {
+                                store.addCustomClub(named: newClubName)
+                                newClubName = ""
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 15, weight: .heavy))
+                                    .foregroundStyle(Color.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mint))
+                            }
+                            .disabled(newClubName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .opacity(newClubName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+                        }
+
+                        VStack(spacing: 10) {
+                            ForEach($store.clubs) { $club in
+                                YardageSetupRow(
+                                    club: $club,
+                                    removeClub: { store.removeClub(id: club.id) }
+                                )
+                            }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
+                .padding(16)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+                .shadow(color: AppTheme.shadow.opacity(0.72), radius: 18, x: 0, y: 10)
             }
             .padding(20)
             .padding(.bottom, 20)
@@ -3270,25 +3718,81 @@ struct YardagesView: View {
     }
 }
 
+struct YardageHeroCard: View {
+    let activeCount: Int
+    let mappedCount: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Yardages")
+                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("Build your bag map and spot distance gaps quickly.")
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.84))
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Image(systemName: "ruler.fill")
+                    .font(.system(size: 22, weight: .heavy))
+                    .foregroundStyle(AppTheme.mint)
+                    .frame(width: 52, height: 52)
+                    .background(Circle().fill(Color.white))
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.07, green: 0.67, blue: 0.35), AppTheme.mint],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.65), lineWidth: 1))
+        .shadow(color: AppTheme.shadow.opacity(1.35), radius: 20, x: 0, y: 10)
+    }
+}
+
 struct YardageSummaryMetric: View {
     let title: String
     let value: String
+    let icon: String
+    let accent: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(.caption2, design: .rounded).weight(.heavy))
-                .foregroundStyle(AppTheme.softText)
-                .textCase(.uppercase)
-            Text(value)
-                .font(.system(.headline, design: .rounded).weight(.bold))
-                .foregroundStyle(AppTheme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .heavy))
+                .foregroundStyle(accent)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(accent.opacity(0.12)))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(value)
+                    .font(.system(size: 24, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
+                Text(title)
+                    .font(.system(.caption2, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+            }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+        .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.72)))
+        .shadow(color: AppTheme.shadow.opacity(0.55), radius: 12, x: 0, y: 6)
     }
 }
 
@@ -3306,19 +3810,25 @@ struct YardageReferenceRow: View {
             Text(club.name)
                 .font(.system(.headline, design: .rounded).weight(.heavy))
                 .foregroundStyle(AppTheme.ink)
-                .frame(width: 56, alignment: .leading)
+                .frame(width: 54, alignment: .leading)
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(AppTheme.subtleFill)
                     Capsule()
-                        .fill(AppTheme.mint)
+                        .fill(
+                            LinearGradient(
+                                colors: [AppTheme.gold.opacity(0.82), Color(red: 0.07, green: 0.67, blue: 0.35)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
                         .frame(width: max(6, proxy.size.width * progress))
                         .opacity(club.yards == nil ? 0 : 1)
                 }
             }
-            .frame(height: 8)
+            .frame(height: 12)
 
             Text(club.yards.map { "\($0) yds" } ?? "-")
                 .font(.system(.headline, design: .rounded).weight(.bold))
@@ -3326,7 +3836,7 @@ struct YardageReferenceRow: View {
                 .frame(width: 76, alignment: .trailing)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 13)
+        .padding(.vertical, 14)
     }
 }
 
@@ -3349,11 +3859,16 @@ struct YardageSetupRow: View {
             Button {
                 club.isInBag.toggle()
             } label: {
-                Image(systemName: club.isInBag ? "checkmark" : "plus")
-                    .font(.system(size: 13, weight: .heavy))
-                    .foregroundStyle(club.isInBag ? Color.white : AppTheme.softText)
-                    .frame(width: 30, height: 30)
-                    .background(Circle().fill(club.isInBag ? AppTheme.mint : AppTheme.subtleFill))
+                VStack(spacing: 3) {
+                    Image(systemName: club.isInBag ? "checkmark" : "plus")
+                        .font(.system(size: 12, weight: .heavy))
+                    Text(club.isInBag ? "In" : "Out")
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                }
+                .foregroundStyle(club.isInBag ? Color.white : AppTheme.softText)
+                .frame(width: 42, height: 42)
+                .background(RoundedRectangle(cornerRadius: 8).fill(club.isInBag ? AppTheme.mint : AppTheme.subtleFill))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(club.isInBag ? AppTheme.mint.opacity(0.12) : AppTheme.border.opacity(0.75)))
             }
             .accessibilityLabel(club.isInBag ? "Remove \(club.name) from bag" : "Add \(club.name) to bag")
 
@@ -3361,7 +3876,7 @@ struct YardageSetupRow: View {
                 .textInputAutocapitalization(.characters)
                 .font(.system(.headline, design: .rounded).weight(.bold))
                 .foregroundStyle(AppTheme.ink)
-                .frame(width: 58, alignment: .leading)
+                .frame(width: 62, alignment: .leading)
 
             Spacer()
 
@@ -3370,10 +3885,11 @@ struct YardageSetupRow: View {
                 .multilineTextAlignment(.trailing)
                 .font(.system(.headline, design: .rounded).weight(.bold))
                 .foregroundStyle(AppTheme.ink)
-                .frame(width: 74)
-                .padding(.vertical, 8)
+                .frame(width: 70)
+                .padding(.vertical, 10)
                 .padding(.horizontal, 12)
-                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
 
             Text("yds")
                 .font(.system(.subheadline, design: .rounded).weight(.bold))
@@ -3381,16 +3897,17 @@ struct YardageSetupRow: View {
                 .frame(width: 32, alignment: .trailing)
 
             Button(action: removeClub) {
-                Image(systemName: "minus.circle")
-                    .font(.system(size: 18, weight: .bold))
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .heavy))
                     .foregroundStyle(AppTheme.softText)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 32, height: 32)
+                    .background(Circle().fill(AppTheme.subtleFill))
             }
             .accessibilityLabel("Remove \(club.name)")
         }
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        .background(RoundedRectangle(cornerRadius: 8).fill(club.isInBag ? AppTheme.mintWash.opacity(0.58) : AppTheme.subtleFill.opacity(0.65)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(club.isInBag ? AppTheme.mint.opacity(0.14) : AppTheme.border.opacity(0.7)))
         .opacity(club.isInBag ? 1 : 0.62)
     }
 }
@@ -3493,32 +4010,19 @@ struct LiveRoundView: View {
             set: { entries[currentHoleIndex] = $0 }
         )
 
-        VStack(spacing: 10) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(selectedCourse.name)
-                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                        .foregroundStyle(AppTheme.mint)
-                    Text("Hole \(entry.wrappedValue.hole.number)")
-                        .font(.system(size: 40, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.ink)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("Par \(entry.wrappedValue.hole.par)")
-                    Text("\(entry.wrappedValue.hole.yards) yds")
-                    Text("SI \(entry.wrappedValue.hole.strokeIndex)")
-                    Text("CH \(courseHandicap)")
-                        .foregroundStyle(AppTheme.mint)
-                }
-                .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                .foregroundStyle(AppTheme.softText)
-            }
+        VStack(spacing: 12) {
+            LiveRoundHeaderCard(
+                courseName: selectedCourse.name,
+                holeNumber: entry.wrappedValue.hole.number,
+                par: entry.wrappedValue.hole.par,
+                yards: entry.wrappedValue.hole.yards,
+                strokeIndex: entry.wrappedValue.hole.strokeIndex,
+                courseHandicap: courseHandicap,
+                gross: currentGross,
+                stableford: currentStableford
+            )
             .padding(.horizontal, 20)
-            .padding(.top, 12)
-
-            RunningRoundStrip(gross: currentGross, stableford: currentStableford)
-                .padding(.horizontal, 20)
+            .padding(.top, 14)
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 12) {
@@ -3529,7 +4033,10 @@ struct LiveRoundView: View {
                         showFairway: entry.wrappedValue.hole.par > 3,
                         fairway: entry.fairway,
                         green: entry.green,
-                        penalties: entry.penalties
+                        approachProximity: entry.approachProximity,
+                        penalties: entry.penalties,
+                        penaltyType: entry.penaltyType,
+                        bunker: entry.bunker
                     )
                 }
                 .padding(.horizontal, 20)
@@ -3577,6 +4084,7 @@ struct LiveRoundView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 16)
         }
+        .background(AppTheme.background.ignoresSafeArea())
         .alert("Scores missing", isPresented: $showIncompleteScoreAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -3851,16 +4359,14 @@ struct InsightSnapshot {
     let penalties: Int
     let fairwayMisses: [MissDirection]
     let greenMisses: [MissDirection]
+    let girProximities: [ApproachProximity]
     let threePutts: Int
     let onePutts: Int
     let twoPutts: Int
     let scrambles: Int
     let scrambleOpportunities: Int
-    let upAndDowns: Int
-    let upAndDownOpportunities: Int
     let sandSaves: Int
     let bunkerHoles: Int
-    let recoveryShots: Int
     let birdies: Int
     let pars: Int
     let bogeys: Int
@@ -3891,8 +4397,16 @@ struct InsightSnapshot {
     var greenMissLeftPercent: Int { missPercent(.left, in: greenMisses, total: greensTotal) }
     var greenMissRightPercent: Int { missPercent(.right, in: greenMisses, total: greensTotal) }
     var greenMissLongPercent: Int { missPercent(.long, in: greenMisses, total: greensTotal) }
+    var averageGirProximity: Double? {
+        guard !girProximities.isEmpty else { return nil }
+        return Double(girProximities.reduce(0) { $0 + $1.midpointFeet }) / Double(girProximities.count)
+    }
+    var inside10ProximityPercent: Int {
+        guard !girProximities.isEmpty else { return 0 }
+        let inside10 = girProximities.filter { $0.midpointFeet <= 10 }.count
+        return percent(inside10, girProximities.count)
+    }
     var scramblePercent: Int { scrambleOpportunities == 0 ? 0 : percent(scrambles, scrambleOpportunities) }
-    var upAndDownPercent: Int { upAndDownOpportunities == 0 ? 0 : percent(upAndDowns, upAndDownOpportunities) }
     var sandSavePercent: Int { bunkerHoles == 0 ? 0 : percent(sandSaves, bunkerHoles) }
     var par3Average: Double? { averageScore(par3Score, par3Count) }
     var par4Average: Double? { averageScore(par4Score, par4Count) }
@@ -3921,65 +4435,93 @@ struct InsightSnapshot {
     }
 }
 
-struct InsightsView: View {
+enum InsightRange: String, CaseIterable, Identifiable {
+    case last5 = "Last 5"
+    case last15 = "Last 15"
+    case all = "All"
+
+    var id: String { rawValue }
+}
+
+struct InsightsDashboardContent: View {
     let entries: [RoundHoleEntry]
     let savedRounds: [SavedRound]
     let isRoundActive: Bool
-    @ObservedObject var clubYardages: ClubYardageStore
+    @State private var selectedRange: InsightRange = .all
+    @State private var selectedInsightPage = 0
 
     var body: some View {
-        let snapshot = insightSnapshot
-        let yearSnapshot = currentYearSnapshot
+        let snapshot = selectedSnapshot
 
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 18) {
-                HeaderBlock(title: "Insights", subtitle: savedRounds.isEmpty && !isRoundActive ? "Finish a round to unlock personalised patterns." : "Clear patterns from your completed cards.")
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Insights")
+                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                Text(snapshot.roundCount == 0 ? "Finish a round to unlock personalised patterns." : "\(snapshot.roundCount) round baseline - \(snapshot.holeCount) holes tracked")
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.softText)
+            }
 
-                InsightMetricSection(title: "Scoring Mix", icon: "flag.fill", accent: AppTheme.mint) {
-                    InsightStatGrid {
-                        InsightStatTile(title: "Birdies", value: formatAverage(snapshot.birdiesPerRound), caption: "\(yearSnapshot.birdies) this year", accent: AppTheme.mint)
-                        InsightStatTile(title: "Pars", value: formatAverage(snapshot.parsPerRound), caption: "\(yearSnapshot.pars) this year", accent: AppTheme.mint)
-                        InsightStatTile(title: "Bogeys", value: formatAverage(snapshot.bogeysPerRound), caption: "\(yearSnapshot.bogeys) this year", accent: AppTheme.gold)
-                        InsightStatTile(title: "Worse", value: formatAverage(snapshot.doublesOrWorsePerRound), caption: "\(yearSnapshot.doublesOrWorse) this year", accent: AppTheme.gold)
-                    }
-                }
+            PremiumInsightRangePicker(selection: $selectedRange)
 
-                InsightMetricSection(title: "Par Averages", icon: "number.circle.fill", accent: AppTheme.gold) {
-                    InsightStatGrid {
-                        InsightStatTile(title: "Par 3", value: formatOptionalAverage(snapshot.par3Average), caption: "\(snapshot.par3Count) holes", accent: AppTheme.gold)
-                        InsightStatTile(title: "Par 4", value: formatOptionalAverage(snapshot.par4Average), caption: "\(snapshot.par4Count) holes", accent: AppTheme.mint)
-                        InsightStatTile(title: "Par 5", value: formatOptionalAverage(snapshot.par5Average), caption: "\(snapshot.par5Count) holes", accent: AppTheme.mint)
-                    }
-                }
+            TabView(selection: $selectedInsightPage) {
+                StrengthWeaknessPremiumCard(snapshot: snapshot, averageScore: formatAverage(snapshot.averageScore), puttsPerRound: formatAverage(snapshot.puttsPerRound))
+                    .tag(0)
+                FairwayPremiumCard(snapshot: snapshot)
+                    .tag(1)
+                PuttingPremiumCard(snapshot: snapshot, puttsPerRound: formatAverage(snapshot.puttsPerRound))
+                    .tag(2)
+                ApproachPremiumCard(snapshot: snapshot, averageProximity: formatFeet(snapshot.averageGirProximity))
+                    .tag(3)
+                ShortGamePremiumCard(snapshot: snapshot)
+                    .tag(4)
+                PenaltyPremiumCard(
+                    snapshot: snapshot,
+                    penaltyTypes: trackedPenaltyTypes.map { ($0.rawValue, penaltyCount($0, in: snapshot), penaltyPercent($0, in: snapshot)) }
+                )
+                .tag(5)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 535)
 
-                InsightMetricSection(title: "Tee Game", icon: "location.north.line.fill", accent: AppTheme.mint) {
-                    InsightStatGrid {
-                        InsightStatTile(title: "Fairways", value: "\(snapshot.fairwayPercent)%", caption: "\(snapshot.fairwaysHit)/\(snapshot.fairwaysTotal) tracked", accent: AppTheme.mint)
-                        InsightStatTile(title: "Miss Left", value: "\(snapshot.fairwayMissLeftPercent)%", caption: "\(missCount(.left, in: snapshot.fairwayMisses)) tee shots", accent: AppTheme.gold)
-                        InsightStatTile(title: "Miss Right", value: "\(snapshot.fairwayMissRightPercent)%", caption: "\(missCount(.right, in: snapshot.fairwayMisses)) tee shots", accent: AppTheme.gold)
-                    }
-                }
+            PremiumPageDots(count: 6, selection: $selectedInsightPage)
+                .frame(maxWidth: .infinity)
 
-                InsightMetricSection(title: "Approach", icon: "scope", accent: AppTheme.mint) {
-                    InsightStatGrid {
-                        InsightStatTile(title: "GIR", value: "\(snapshot.girPercent)%", caption: "\(snapshot.greensHit)/\(snapshot.greensTotal) tracked", accent: AppTheme.mint)
-                        InsightStatTile(title: "Short", value: "\(snapshot.greenMissShortPercent)%", caption: "\(missCount(.short, in: snapshot.greenMisses)) approaches", accent: AppTheme.gold)
-                        InsightStatTile(title: "Left", value: "\(snapshot.greenMissLeftPercent)%", caption: "\(missCount(.left, in: snapshot.greenMisses)) approaches", accent: AppTheme.gold)
-                        InsightStatTile(title: "Right", value: "\(snapshot.greenMissRightPercent)%", caption: "\(missCount(.right, in: snapshot.greenMisses)) approaches", accent: AppTheme.gold)
-                        InsightStatTile(title: "Long", value: "\(snapshot.greenMissLongPercent)%", caption: "\(missCount(.long, in: snapshot.greenMisses)) approaches", accent: AppTheme.gold)
-                    }
-                }
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Stat Cards")
+                    .font(.system(.title2, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
 
-                InsightMetricSection(title: "Putting", icon: "circle.dotted.circle", accent: AppTheme.gold) {
-                    InsightStatGrid {
-                        InsightStatTile(title: "Putts / Round", value: formatAverage(snapshot.puttsPerRound), caption: "\(snapshot.putts) total", accent: AppTheme.mint)
-                        InsightStatTile(title: "3-Putts", value: formatAverage(snapshot.threePuttsPerRound), caption: "\(yearSnapshot.threePutts) this year", accent: AppTheme.gold)
-                    }
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    PremiumMiniStat(title: "Birdies", value: formatAverage(snapshot.birdiesPerRound), caption: "\(snapshot.birdies) total", accent: AppTheme.mint)
+                    PremiumMiniStat(title: "Pars", value: formatAverage(snapshot.parsPerRound), caption: "\(snapshot.pars) total", accent: AppTheme.mint)
+                    PremiumMiniStat(title: "Doubles+", value: formatAverage(snapshot.doublesOrWorsePerRound), caption: "\(snapshot.doublesOrWorse) total", accent: .red)
+                    PremiumMiniStat(title: "Par 3 Avg", value: formatOptionalAverage(snapshot.par3Average), caption: "\(snapshot.par3Count) holes", accent: AppTheme.gold)
+                    PremiumMiniStat(title: "Par 4 Avg", value: formatOptionalAverage(snapshot.par4Average), caption: "\(snapshot.par4Count) holes", accent: AppTheme.mint)
                 }
             }
-            .padding(20)
-            .padding(.bottom, 20)
         }
+    }
+
+    private var selectedRounds: [SavedRound] {
+        let ordered = savedRounds.sorted { $0.date < $1.date }
+        switch selectedRange {
+        case .last5:
+            return Array(ordered.suffix(5))
+        case .last15:
+            return Array(ordered.suffix(15))
+        case .all:
+            return ordered
+        }
+    }
+
+    private var selectedSnapshot: InsightSnapshot {
+        if !selectedRounds.isEmpty {
+            return snapshot(from: selectedRounds)
+        }
+
+        return activeRoundSnapshot
     }
 
     private var insightSnapshot: InsightSnapshot {
@@ -4022,16 +4564,14 @@ struct InsightsView: View {
                 penalties: holes.reduce(0) { $0 + $1.penalties },
                 fairwayMisses: trackedDrivingHoles.map(\.fairway).filter { $0 != .hit },
                 greenMisses: trackedGreens.map(\.green).filter { $0 != .hit },
+                girProximities: holes.compactMap { $0.green == .hit ? $0.approachProximity : nil },
                 threePutts: holes.filter { $0.putts >= 3 }.count,
                 onePutts: holes.filter { $0.putts == 1 }.count,
                 twoPutts: holes.filter { $0.putts == 2 }.count,
                 scrambles: trackedGreens.filter { $0.green != .hit && $0.score <= $0.par }.count,
                 scrambleOpportunities: trackedGreens.filter { $0.green != .hit }.count,
-                upAndDowns: holes.filter { $0.upAndDown == true }.count,
-                upAndDownOpportunities: trackedGreens.filter { $0.green != .hit || $0.upAndDown == true }.count,
-                sandSaves: holes.filter { $0.sandSave == true }.count,
+                sandSaves: holes.filter { $0.bunker == true && $0.score <= $0.par }.count,
                 bunkerHoles: holes.filter { $0.bunker == true }.count,
-                recoveryShots: holes.filter { $0.recovery == true }.count,
                 birdies: holes.filter { $0.score - $0.par == -1 }.count,
                 pars: holes.filter { $0.score == $0.par }.count,
                 bogeys: holes.filter { $0.score == $0.par + 1 }.count,
@@ -4042,7 +4582,7 @@ struct InsightsView: View {
                 par4Count: par4s.count,
                 par5Score: par5s.reduce(0) { $0 + $1.score },
                 par5Count: par5s.count,
-                penaltyTypes: holes.filter { $0.penalties > 0 }.compactMap(\.penaltyType),
+                penaltyTypes: penaltyTypes(from: holes),
                 teeClubInsights: teeClubInsights(from: drivingHoles)
             )
         }
@@ -4070,16 +4610,14 @@ struct InsightsView: View {
             penalties: entries.reduce(0) { $0 + $1.penalties },
             fairwayMisses: trackedDrivingEntries.map(\.fairway).filter { $0 != .hit },
             greenMisses: trackedGreenEntries.map(\.green).filter { $0 != .hit },
+            girProximities: entries.compactMap { $0.green == .hit ? $0.approachProximity : nil },
             threePutts: entries.filter { $0.putts >= 3 }.count,
             onePutts: entries.filter { $0.putts == 1 }.count,
             twoPutts: entries.filter { $0.putts == 2 }.count,
             scrambles: trackedGreenEntries.filter { $0.green != .hit && $0.score <= $0.hole.par }.count,
             scrambleOpportunities: trackedGreenEntries.filter { $0.green != .hit }.count,
-            upAndDowns: entries.filter(\.upAndDown).count,
-            upAndDownOpportunities: trackedGreenEntries.filter { $0.green != .hit || $0.upAndDown }.count,
-            sandSaves: entries.filter(\.sandSave).count,
+            sandSaves: entries.filter { $0.bunker && $0.score <= $0.hole.par }.count,
             bunkerHoles: entries.filter(\.bunker).count,
-            recoveryShots: entries.filter(\.recovery).count,
             birdies: entries.filter { $0.score - $0.hole.par == -1 }.count,
             pars: entries.filter { $0.score == $0.hole.par }.count,
             bogeys: entries.filter { $0.score == $0.hole.par + 1 }.count,
@@ -4090,7 +4628,7 @@ struct InsightsView: View {
             par4Count: par4s.count,
             par5Score: par5s.reduce(0) { $0 + $1.score },
             par5Count: par5s.count,
-            penaltyTypes: entries.filter { $0.penalties > 0 }.map(\.penaltyType),
+            penaltyTypes: penaltyTypes(from: entries),
             teeClubInsights: teeClubInsights(from: drivingEntries)
         )
     }
@@ -4109,16 +4647,14 @@ struct InsightsView: View {
             penalties: 0,
             fairwayMisses: [],
             greenMisses: [],
+            girProximities: [],
             threePutts: 0,
             onePutts: 0,
             twoPutts: 0,
             scrambles: 0,
             scrambleOpportunities: 0,
-            upAndDowns: 0,
-            upAndDownOpportunities: 0,
             sandSaves: 0,
             bunkerHoles: 0,
-            recoveryShots: 0,
             birdies: 0,
             pars: 0,
             bogeys: 0,
@@ -4134,6 +4670,43 @@ struct InsightsView: View {
         )
     }
 
+    private var trackedPenaltyTypes: [PenaltyType] {
+        PenaltyType.allCases.filter { $0 != .none }
+    }
+
+    private func penaltyTypes(from holes: [SavedHoleEntry]) -> [PenaltyType] {
+        holes.flatMap { hole -> [PenaltyType] in
+            guard hole.penalties > 0, let type = hole.penaltyType, type != .none else { return [] }
+            return Array(repeating: type, count: hole.penalties)
+        }
+    }
+
+    private func penaltyTypes(from entries: [RoundHoleEntry]) -> [PenaltyType] {
+        entries.flatMap { entry -> [PenaltyType] in
+            guard entry.penalties > 0, entry.penaltyType != .none else { return [] }
+            return Array(repeating: entry.penaltyType, count: entry.penalties)
+        }
+    }
+
+    private func penaltyCount(_ type: PenaltyType, in snapshot: InsightSnapshot) -> Int {
+        snapshot.penaltyTypes.filter { $0 == type }.count
+    }
+
+    private func penaltyPercent(_ type: PenaltyType, in snapshot: InsightSnapshot) -> Int {
+        let count = penaltyCount(type, in: snapshot)
+        guard snapshot.penalties > 0 else { return 0 }
+        return Int((Double(count) / Double(snapshot.penalties) * 100).rounded())
+    }
+
+    private func penaltyValue(_ type: PenaltyType, in snapshot: InsightSnapshot) -> String {
+        "\(penaltyCount(type, in: snapshot)) (\(penaltyPercent(type, in: snapshot))%)"
+    }
+
+    private func penaltyCaption(_ type: PenaltyType, in snapshot: InsightSnapshot) -> String {
+        guard snapshot.penalties > 0 else { return "no penalties" }
+        return "of \(snapshot.penalties) penalties"
+    }
+
     private func formatAverage(_ value: Double) -> String {
         String(format: "%.1f", value)
     }
@@ -4141,6 +4714,11 @@ struct InsightsView: View {
     private func formatOptionalAverage(_ value: Double?) -> String {
         guard let value else { return "-" }
         return String(format: "%.1f", value)
+    }
+
+    private func formatFeet(_ value: Double?) -> String {
+        guard let value else { return "-" }
+        return "\(Int(value.rounded())) ft"
     }
 
     private func missCount(_ direction: MissDirection, in misses: [MissDirection]) -> Int {
@@ -4188,7 +4766,7 @@ struct InsightsView: View {
     }
 
     private func shortGameDetail(for snapshot: InsightSnapshot) -> String {
-        "\(snapshot.scrambles)/\(snapshot.scrambleOpportunities) scrambles, \(snapshot.upAndDownPercent)% up-and-down, \(snapshot.sandSavePercent)% sand saves."
+        "\(snapshot.scrambles)/\(snapshot.scrambleOpportunities) scrambles, \(snapshot.sandSavePercent)% sand saves."
     }
 
     private func puttingDetail(for snapshot: InsightSnapshot) -> String {
@@ -4197,7 +4775,7 @@ struct InsightsView: View {
 
     private func mistakesDetail(for snapshot: InsightSnapshot) -> String {
         let penalty = mostCommon(snapshot.penaltyTypes)?.rawValue ?? "No dominant penalty"
-        return "\(penalty). \(snapshot.doublesOrWorse) doubles or worse, \(snapshot.recoveryShots) recovery shots."
+        return "\(penalty). \(snapshot.doublesOrWorse) doubles or worse."
     }
 
     private func practiceHeadline(for snapshot: InsightSnapshot) -> String {
@@ -4292,6 +4870,651 @@ struct InsightsView: View {
                 )
             )
         })
+    }
+}
+
+struct PremiumInsightRangePicker: View {
+    @Binding var selection: InsightRange
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(InsightRange.allCases) { range in
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        selection = range
+                    }
+                } label: {
+                    Text(range.rawValue)
+                        .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(selection == range ? .white : AppTheme.softText)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(
+                            Capsule()
+                                .fill(selection == range ? Color(red: 0.07, green: 0.67, blue: 0.35) : Color.clear)
+                                .shadow(color: selection == range ? AppTheme.shadow.opacity(1.6) : .clear, radius: 12, x: 0, y: 6)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(5)
+        .background(Capsule().fill(Color.white))
+        .overlay(Capsule().stroke(AppTheme.border.opacity(0.65)))
+        .shadow(color: AppTheme.shadow.opacity(0.95), radius: 16, x: 0, y: 8)
+    }
+}
+
+struct PremiumPageDots: View {
+    let count: Int
+    @Binding var selection: Int
+
+    var body: some View {
+        HStack(spacing: 9) {
+            ForEach(0..<count, id: \.self) { index in
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        selection = index
+                    }
+                } label: {
+                    Capsule()
+                        .fill(selection == index ? Color(red: 0.07, green: 0.67, blue: 0.35) : AppTheme.softText.opacity(0.28))
+                        .frame(width: selection == index ? 22 : 8, height: 8)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(Capsule().fill(Color.white.opacity(0.94)))
+        .overlay(Capsule().stroke(AppTheme.border.opacity(0.55)))
+        .shadow(color: AppTheme.shadow.opacity(0.65), radius: 10, x: 0, y: 5)
+        .accessibilityLabel("Insight pages")
+    }
+}
+
+struct PremiumStatsCard<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(title)
+                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 18)
+                .background(
+                    UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 8)
+                        .fill(Color(red: 0.07, green: 0.67, blue: 0.35))
+                )
+
+            content
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+                .padding(.bottom, 22)
+                .frame(maxWidth: .infinity, minHeight: 410, alignment: .top)
+                .background(Color.white)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.55)))
+        .shadow(color: AppTheme.shadow.opacity(2.2), radius: 24, x: 0, y: 14)
+        .padding(.horizontal, 2)
+    }
+}
+
+struct StrengthWeaknessPremiumCard: View {
+    let snapshot: InsightSnapshot
+    let averageScore: String
+    let puttsPerRound: String
+
+    var body: some View {
+        PremiumStatsCard(title: "Strengths & Weaknesses") {
+            VStack(alignment: .leading, spacing: 13) {
+                Text("Benchmarked against an average 8.8 handicap golfer.")
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.softText)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity)
+
+                PremiumBenchmarkRow(title: "Gross avg.", value: averageScore, percent: lowerIsBetterPercent(snapshot.averageScore, benchmark: 84, betterSpan: 6, worseSpan: 10), targetLabel: "84")
+                PremiumBenchmarkRow(title: "Fairways", value: "\(snapshot.fairwayPercent)%", percent: higherIsBetterPercent(Double(snapshot.fairwayPercent), benchmark: 50, worseSpan: 20, betterSpan: 12), targetLabel: "50%")
+                PremiumBenchmarkRow(title: "GIR", value: "\(snapshot.girPercent)%", percent: higherIsBetterPercent(Double(snapshot.girPercent), benchmark: 39, worseSpan: 18, betterSpan: 14), targetLabel: "39%")
+                PremiumBenchmarkRow(title: "Up & Downs", value: "\(snapshot.scramblePercent)%", percent: higherIsBetterPercent(Double(snapshot.scramblePercent), benchmark: 33, worseSpan: 18, betterSpan: 14), targetLabel: "33%")
+                PremiumBenchmarkRow(title: "Putts / round", value: puttsPerRound, percent: lowerIsBetterPercent(snapshot.puttsPerRound, benchmark: 33.5, betterSpan: 5, worseSpan: 8), targetLabel: "33.5")
+            }
+        }
+    }
+
+    private func higherIsBetterPercent(_ value: Double, benchmark: Double, worseSpan: Double, betterSpan: Double) -> Int {
+        guard value > 0 else { return 0 }
+        if value < benchmark {
+            return clampPercent(50 - ((benchmark - value) / worseSpan) * 50)
+        }
+        return clampPercent(50 + ((value - benchmark) / betterSpan) * 50)
+    }
+
+    private func lowerIsBetterPercent(_ value: Double, benchmark: Double, betterSpan: Double, worseSpan: Double) -> Int {
+        guard value > 0 else { return 0 }
+        if value < benchmark {
+            return clampPercent(50 + ((benchmark - value) / betterSpan) * 50)
+        }
+        return clampPercent(50 - ((value - benchmark) / worseSpan) * 50)
+    }
+
+    private func clampPercent(_ value: Double) -> Int {
+        max(0, min(100, Int(value.rounded())))
+    }
+}
+
+struct FairwayPremiumCard: View {
+    let snapshot: InsightSnapshot
+
+    var body: some View {
+        PremiumStatsCard(title: "Fairways") {
+            VStack(spacing: 22) {
+                ZStack {
+                    FairwayFanShape()
+                        .stroke(AppTheme.border.opacity(0.8), lineWidth: 1.5)
+                        .frame(height: 175)
+
+                    VStack(spacing: 8) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 34, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .frame(width: 126, height: 82)
+                            .background(
+                                UnevenRoundedRectangle(topLeadingRadius: 64, bottomLeadingRadius: 8, bottomTrailingRadius: 8, topTrailingRadius: 64)
+                                    .fill(Color(red: 0.07, green: 0.67, blue: 0.35))
+                            )
+                        HStack(spacing: 14) {
+                            PremiumDirectionPill(title: "LEFT", value: "\(snapshot.fairwayMissLeftPercent)%", color: .red)
+                            PremiumDirectionPill(title: "CENTER", value: "\(snapshot.fairwayPercent)%", color: Color(red: 0.07, green: 0.67, blue: 0.35))
+                            PremiumDirectionPill(title: "RIGHT", value: "\(snapshot.fairwayMissRightPercent)%", color: .red)
+                        }
+                    }
+                    .padding(.top, 44)
+                }
+
+                Text("\(snapshot.fairwaysHit)/\(max(snapshot.fairwaysTotal, 0)) tracked tee shots")
+                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+
+                Divider()
+
+                HStack(spacing: 18) {
+                    PremiumBottomMetric(title: "Score with hit", value: hitScoreText, accent: AppTheme.mint)
+                    PremiumBottomMetric(title: "Common miss", value: commonMissText, accent: .red)
+                }
+            }
+        }
+    }
+
+    private var hitScoreText: String {
+        snapshot.fairwaysTotal == 0 ? "-" : "\(snapshot.fairwayPercent)%"
+    }
+
+    private var commonMissText: String {
+        snapshot.fairwayMissLeftPercent >= snapshot.fairwayMissRightPercent ? "Left" : "Right"
+    }
+}
+
+struct PuttingPremiumCard: View {
+    let snapshot: InsightSnapshot
+    let puttsPerRound: String
+
+    var body: some View {
+        PremiumStatsCard(title: "Putts") {
+            VStack(spacing: 20) {
+                PremiumDonutChart(
+                    segments: [
+                        PremiumChartSegment(value: Double(snapshot.onePutts), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "1 PUTT"),
+                        PremiumChartSegment(value: Double(snapshot.twoPutts), color: Color(red: 0.07, green: 0.67, blue: 0.35), label: "2 PUTTS"),
+                        PremiumChartSegment(value: Double(snapshot.threePutts), color: .red, label: "3 PUTTS")
+                    ],
+                    centerTitle: puttsPerRound,
+                    centerSubtitle: "Putts / round"
+                )
+                .frame(width: 190, height: 190)
+
+                PremiumLegend(segments: [
+                    PremiumChartSegment(value: Double(snapshot.onePutts), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "1 PUTT"),
+                    PremiumChartSegment(value: Double(snapshot.twoPutts), color: Color(red: 0.07, green: 0.67, blue: 0.35), label: "2 PUTTS"),
+                    PremiumChartSegment(value: Double(snapshot.threePutts), color: .red, label: "3 PUTTS")
+                ])
+
+                Divider()
+
+                HStack(spacing: 18) {
+                    PremiumBottomMetric(title: "Putts Per Hole", value: String(format: "%.2f", snapshot.puttsPerHole), accent: AppTheme.mint)
+                    PremiumBottomMetric(title: "3-Putts / Round", value: String(format: "%.1f", snapshot.threePuttsPerRound), accent: .red)
+                }
+            }
+        }
+    }
+}
+
+struct ApproachPremiumCard: View {
+    let snapshot: InsightSnapshot
+    let averageProximity: String
+
+    var body: some View {
+        PremiumStatsCard(title: "Approach Play") {
+            VStack(spacing: 18) {
+                HStack(spacing: 14) {
+                    PremiumBottomMetric(title: "GIR", value: "\(snapshot.girPercent)%", accent: AppTheme.mint)
+                    PremiumBottomMetric(title: "Avg Proximity", value: averageProximity, accent: AppTheme.mint)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Approach miss pattern")
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    PremiumHorizontalBar(label: "Short", value: snapshot.greenMissShortPercent, color: AppTheme.gold)
+                    PremiumHorizontalBar(label: "Left", value: snapshot.greenMissLeftPercent, color: .red)
+                    PremiumHorizontalBar(label: "Right", value: snapshot.greenMissRightPercent, color: .red)
+                    PremiumHorizontalBar(label: "Long", value: snapshot.greenMissLongPercent, color: AppTheme.gold)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("GIR proximity")
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    ForEach(ApproachProximity.allCases) { proximity in
+                        PremiumHorizontalBar(label: proximity.rawValue.replacingOccurrences(of: " ft", with: ""), value: proximityPercent(proximity), color: Color(red: 0.07, green: 0.67, blue: 0.35))
+                    }
+                }
+            }
+        }
+    }
+
+    private func proximityPercent(_ proximity: ApproachProximity) -> Int {
+        guard !snapshot.girProximities.isEmpty else { return 0 }
+        let count = snapshot.girProximities.filter { $0 == proximity }.count
+        return Int((Double(count) / Double(snapshot.girProximities.count) * 100).rounded())
+    }
+}
+
+struct ShortGamePremiumCard: View {
+    let snapshot: InsightSnapshot
+
+    var body: some View {
+        PremiumStatsCard(title: "Short Game") {
+            VStack(spacing: 20) {
+                PremiumDonutChart(
+                    segments: [
+                        PremiumChartSegment(value: Double(snapshot.scrambles), color: Color(red: 0.07, green: 0.67, blue: 0.35), label: "SAVED"),
+                        PremiumChartSegment(value: Double(max(snapshot.scrambleOpportunities - snapshot.scrambles, 0)), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "MISSED")
+                    ],
+                    centerTitle: "\(snapshot.scramblePercent)%",
+                    centerSubtitle: "Scramble"
+                )
+                .frame(width: 190, height: 190)
+
+                PremiumLegend(segments: [
+                    PremiumChartSegment(value: Double(snapshot.scrambles), color: Color(red: 0.07, green: 0.67, blue: 0.35), label: "SAVED"),
+                    PremiumChartSegment(value: Double(max(snapshot.scrambleOpportunities - snapshot.scrambles, 0)), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "MISSED")
+                ])
+
+                Divider()
+
+                HStack(spacing: 18) {
+                    PremiumBottomMetric(title: "Scrambles", value: "\(snapshot.scrambles)/\(snapshot.scrambleOpportunities)", accent: AppTheme.mint)
+                    PremiumBottomMetric(title: "Sand Save", value: "\(snapshot.sandSavePercent)%", accent: AppTheme.mint)
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Around the green")
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    PremiumHorizontalBar(label: "Scramble", value: snapshot.scramblePercent, color: Color(red: 0.07, green: 0.67, blue: 0.35))
+                    PremiumHorizontalBar(label: "Sand", value: snapshot.sandSavePercent, color: AppTheme.gold)
+                }
+            }
+        }
+    }
+}
+
+struct PenaltyPremiumCard: View {
+    let snapshot: InsightSnapshot
+    let penaltyTypes: [(String, Int, Int)]
+
+    private var activePenaltyTypes: [(String, Int, Int)] {
+        penaltyTypes.filter { $0.1 > 0 }
+    }
+
+    var body: some View {
+        PremiumStatsCard(title: "Penalties") {
+            VStack(spacing: 20) {
+                PremiumDonutChart(
+                    segments: donutSegments,
+                    centerTitle: "\(snapshot.penalties)",
+                    centerSubtitle: snapshot.penalties == 1 ? "Penalty" : "Penalties"
+                )
+                .frame(width: 190, height: 190)
+
+                PremiumLegend(segments: donutSegments)
+
+                Divider()
+
+                HStack(spacing: 18) {
+                    PremiumBottomMetric(title: "Total", value: "\(snapshot.penalties)", accent: .red)
+                    PremiumBottomMetric(title: "Per Round", value: String(format: "%.1f", penaltiesPerRound), accent: AppTheme.gold)
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Penalty type")
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+
+                    if activePenaltyTypes.isEmpty {
+                        Text("No OB, water, lost ball or unplayable penalties recorded in this range.")
+                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                            .foregroundStyle(AppTheme.softText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(Array(activePenaltyTypes.enumerated()), id: \.offset) { _, item in
+                            PremiumPenaltyBar(label: item.0, count: item.1, percent: item.2, color: penaltyColor(for: item.0))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var donutSegments: [PremiumChartSegment] {
+        if activePenaltyTypes.isEmpty {
+            return [PremiumChartSegment(value: 1, color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "CLEAN")]
+        }
+        return activePenaltyTypes.map { item in
+            PremiumChartSegment(value: Double(item.1), color: penaltyColor(for: item.0), label: item.0.uppercased())
+        }
+    }
+
+    private var penaltiesPerRound: Double {
+        guard snapshot.roundCount > 0 else { return 0 }
+        return Double(snapshot.penalties) / Double(snapshot.roundCount)
+    }
+
+    private func penaltyColor(for label: String) -> Color {
+        switch label {
+        case "Water": return .blue
+        case "OB": return .red
+        case "Lost": return AppTheme.gold
+        case "Unplayable": return .orange
+        default: return .red
+        }
+    }
+}
+
+struct PremiumChartSegment {
+    let value: Double
+    let color: Color
+    let label: String
+}
+
+struct PremiumDonutChart: View {
+    let segments: [PremiumChartSegment]
+    let centerTitle: String
+    let centerSubtitle: String
+
+    private var total: Double {
+        max(segments.reduce(0) { $0 + $1.value }, 1)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(AppTheme.subtleFill, lineWidth: 42)
+
+            ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
+                Circle()
+                    .trim(from: start(for: index), to: end(for: index))
+                    .stroke(segment.color, style: StrokeStyle(lineWidth: 42, lineCap: .butt))
+                    .rotationEffect(.degrees(-90))
+            }
+
+            VStack(spacing: 3) {
+                Text(centerTitle)
+                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                Text(centerSubtitle)
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(width: 112)
+        }
+    }
+
+    private func start(for index: Int) -> CGFloat {
+        CGFloat(segments.prefix(index).reduce(0) { $0 + $1.value } / total)
+    }
+
+    private func end(for index: Int) -> CGFloat {
+        CGFloat(segments.prefix(index + 1).reduce(0) { $0 + $1.value } / total)
+    }
+}
+
+struct PremiumLegend: View {
+    let segments: [PremiumChartSegment]
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 72), spacing: 8)
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .center, spacing: 8) {
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                Text(segment.label)
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 24)
+                    .background(Capsule().fill(segment.color))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 2)
+    }
+}
+
+struct PremiumPenaltyBar: View {
+    let label: String
+    let count: Int
+    let percent: Int
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(label)
+                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .foregroundStyle(AppTheme.softText)
+                Spacer()
+                Text("\(count) - \(percent)%")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(AppTheme.subtleFill)
+                    Capsule()
+                        .fill(color)
+                        .frame(width: max(8, proxy.size.width * CGFloat(percent) / 100))
+                }
+            }
+            .frame(height: 9)
+        }
+    }
+}
+
+struct PremiumBenchmarkRow: View {
+    let title: String
+    let value: String
+    let percent: Int
+    let targetLabel: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(.caption, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.softText)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    LinearGradient(colors: [.red, AppTheme.gold, Color(red: 0.07, green: 0.67, blue: 0.35)], startPoint: .leading, endPoint: .trailing)
+                        .frame(height: 20)
+                        .clipShape(Capsule())
+                        .offset(y: 24)
+                    Rectangle()
+                        .fill(AppTheme.ink.opacity(0.78))
+                        .frame(width: 4, height: 18)
+                        .offset(x: proxy.size.width * 0.5, y: 25)
+                    Text(targetLabel)
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.ink.opacity(0.78))
+                        .padding(.horizontal, 7)
+                        .frame(height: 20)
+                        .background(Capsule().fill(Color.white.opacity(0.96)))
+                        .offset(x: proxy.size.width * 0.5 - 28, y: -2)
+                    Text(value)
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundStyle(statusColor)
+                        .padding(.horizontal, 9)
+                        .frame(height: 28)
+                        .background(Capsule().fill(Color.white).overlay(Capsule().stroke(statusColor, lineWidth: 2)))
+                        .offset(x: min(max(proxy.size.width * CGFloat(percent) / 100 - 25, 0), proxy.size.width - 56), y: 20)
+                }
+            }
+            .frame(height: 52)
+        }
+    }
+
+    private var statusColor: Color {
+        percent >= 50 ? Color(red: 0.07, green: 0.67, blue: 0.35) : AppTheme.gold
+    }
+}
+
+struct PremiumDirectionPill: View {
+    let title: String
+    let value: String
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 7) {
+            Text(title)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(width: 86, height: 24)
+                .background(Capsule().fill(color))
+            Text(value)
+                .font(.system(size: 27, weight: .heavy, design: .rounded))
+                .foregroundStyle(color)
+                .minimumScaleFactor(0.65)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct PremiumBottomMetric: View {
+    let title: String
+    let value: String
+    let accent: Color
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(title)
+                .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
+            Text(value)
+                .font(.system(size: 31, weight: .heavy, design: .rounded))
+                .foregroundStyle(accent)
+                .minimumScaleFactor(0.62)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct PremiumHorizontalBar: View {
+    let label: String
+    let value: Int
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(label)
+                .font(.system(.caption, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.softText)
+                .frame(width: 58, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.74)
+            GeometryReader { proxy in
+                Capsule()
+                    .fill(color)
+                    .frame(width: max(value == 0 ? 0 : 7, proxy.size.width * CGFloat(min(value, 100)) / 100))
+            }
+            .frame(height: 16)
+            Text("\(value)%")
+                .font(.system(.caption, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.ink)
+                .frame(width: 42, alignment: .leading)
+        }
+        .frame(height: 19)
+    }
+}
+
+struct PremiumMiniStat: View {
+    let title: String
+    let value: String
+    let caption: String
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(.caption, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+            Text(value)
+                .font(.system(size: 28, weight: .heavy, design: .rounded))
+                .foregroundStyle(accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(caption)
+                .font(.system(.caption2, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.softText)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 108, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
+        .shadow(color: AppTheme.shadow.opacity(0.72), radius: 10, x: 0, y: 5)
+    }
+}
+
+struct FairwayFanShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + 16, y: rect.maxY))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX - 16, y: rect.maxY), control: CGPoint(x: rect.midX, y: rect.minY - 34))
+        return path
     }
 }
 
@@ -4396,6 +5619,8 @@ struct SettingsView: View {
                 }
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
 
                 VStack(alignment: .leading, spacing: 10) {
                     SectionHeader(title: "Handicap History", actionTitle: handicapHistory.records.isEmpty ? nil : "\(handicapHistory.records.count) records")
@@ -4423,7 +5648,8 @@ struct SettingsView: View {
                 }
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
 
                 SectionHeader(title: "Stableford", actionTitle: savedRounds.isEmpty ? nil : "Saved rounds")
 
@@ -4466,6 +5692,8 @@ struct SettingsView: View {
                 }
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
 
                 VStack(alignment: .leading, spacing: 14) {
                     SectionHeader(title: "Data Backup", actionTitle: nil)
@@ -4520,7 +5748,8 @@ struct SettingsView: View {
                 }
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
             }
             .padding(20)
             .padding(.bottom, 20)
@@ -4727,6 +5956,8 @@ struct GoalsView: View {
                 }
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
             }
             .padding(20)
             .padding(.bottom, 20)
@@ -4820,24 +6051,35 @@ struct GoalProgressHero: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Progress")
                 .font(.system(.caption, design: .rounded).weight(.heavy))
-                .foregroundStyle(AppTheme.mint)
+                .foregroundStyle(.white.opacity(0.78))
             HStack(alignment: .lastTextBaseline) {
                 Text("\(completed)")
                     .font(.system(size: 58, weight: .bold, design: .rounded))
-                    .foregroundStyle(AppTheme.ink)
+                    .foregroundStyle(.white)
                 Text("of \(max(total, 1)) complete")
                     .font(.system(.headline, design: .rounded).weight(.bold))
-                    .foregroundStyle(AppTheme.softText)
+                    .foregroundStyle(.white.opacity(0.82))
             }
             ProgressView(value: total == 0 ? 0 : Double(completed), total: Double(max(total, 1)))
-                .tint(AppTheme.mint)
+                .tint(.white)
             Text(total == 0 ? "Add a custom goal to start building your target list." : "Automatic goals update when rounds are saved. Custom goals stay in your control.")
                 .font(.system(.subheadline, design: .rounded))
-                .foregroundStyle(AppTheme.softText)
+                .foregroundStyle(.white.opacity(0.84))
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelStrong))
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.07, green: 0.67, blue: 0.35), AppTheme.mint],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.62)))
+        .shadow(color: AppTheme.shadow.opacity(1.2), radius: 18, x: 0, y: 9)
     }
 }
 
@@ -4894,6 +6136,8 @@ struct GoalRow: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
+        .shadow(color: AppTheme.shadow.opacity(0.45), radius: 10, x: 0, y: 5)
     }
 }
 
@@ -4916,16 +6160,50 @@ struct HeaderBlock: View {
     let subtitle: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-                .foregroundStyle(AppTheme.ink)
-            Text(subtitle)
-                .font(.system(.subheadline, design: .rounded))
-                .foregroundStyle(AppTheme.softText)
+        HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(title)
+                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Text(subtitle)
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.84))
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.78)
+            }
+            Spacer()
+            Image(systemName: iconName)
+                .font(.system(size: 22, weight: .heavy))
+                .foregroundStyle(AppTheme.mint)
+                .frame(width: 52, height: 52)
+                .background(Circle().fill(Color.white))
         }
+        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.07, green: 0.67, blue: 0.35), AppTheme.mint],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.62)))
+        .shadow(color: AppTheme.shadow.opacity(1.35), radius: 20, x: 0, y: 10)
+    }
+
+    private var iconName: String {
+        switch title {
+        case "New Round": return "flag.fill"
+        case "Goals": return "target"
+        case "Settings": return "gearshape.fill"
+        case "Rounds": return "list.bullet.rectangle.portrait.fill"
+        default: return "flag.fill"
+        }
     }
 }
 
@@ -4950,6 +6228,8 @@ struct StatTile: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
+        .shadow(color: AppTheme.shadow.opacity(0.42), radius: 9, x: 0, y: 5)
     }
 }
 
@@ -4975,6 +6255,7 @@ struct FocusCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelStrong))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.gold.opacity(0.35)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
     }
 }
 
@@ -5044,17 +6325,23 @@ struct StepperPanel: View {
     var blankWhenZero = false
 
     var body: some View {
-        HStack {
-            Text(title)
-                .font(.system(.headline, design: .rounded))
-                .foregroundStyle(AppTheme.ink)
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Text(title == "Score" ? "Gross strokes" : "Total putts")
+                    .font(.system(.caption2, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .textCase(.uppercase)
+            }
             Spacer()
             Button { value = max(range.lowerBound, value - 1) } label: {
                 Image(systemName: "minus")
             }
             .buttonStyle(CounterButtonStyle())
             Text(blankWhenZero && value == 0 ? "-" : "\(value)")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .font(.system(size: 38, weight: .heavy, design: .rounded))
                 .foregroundStyle(blankWhenZero && value == 0 ? AppTheme.softText : accent)
                 .frame(width: 54)
             Button { value = min(range.upperBound, value + 1) } label: {
@@ -5063,9 +6350,10 @@ struct StepperPanel: View {
             .buttonStyle(CounterButtonStyle())
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.vertical, 16)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow.opacity(0.58), radius: 12, x: 0, y: 6)
     }
 }
 
@@ -5173,7 +6461,10 @@ struct QuickStatsPanel: View {
     let showFairway: Bool
     @Binding var fairway: MissDirection
     @Binding var green: MissDirection
+    @Binding var approachProximity: ApproachProximity?
     @Binding var penalties: Int
+    @Binding var penaltyType: PenaltyType
+    @Binding var bunker: Bool
 
     var body: some View {
         VStack(spacing: 12) {
@@ -5193,6 +6484,10 @@ struct QuickStatsPanel: View {
                 missChoices: [.left, .right, .short, .long]
             )
 
+            if green == .hit {
+                ApproachProximityPanel(selection: $approachProximity)
+            }
+
             HStack {
                 Text("Penalties")
                     .font(.system(.subheadline, design: .rounded).weight(.bold))
@@ -5204,16 +6499,136 @@ struct QuickStatsPanel: View {
                     } label: {
                         Text(value == 2 ? "2+" : "\(value)")
                             .font(.system(.caption, design: .rounded).weight(.bold))
-                            .foregroundStyle(penalties == value ? .black : AppTheme.ink)
+                            .foregroundStyle(penalties == value ? .white : AppTheme.ink)
                             .frame(width: 48, height: 38)
                             .background(RoundedRectangle(cornerRadius: 8).fill(penalties == value ? AppTheme.gold : AppTheme.subtleFill))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(penalties == value ? AppTheme.gold.opacity(0.18) : AppTheme.border.opacity(0.62)))
                     }
+                    .buttonStyle(.plain)
                 }
+            }
+
+            if penalties > 0 {
+                PenaltyTypePanel(selection: $penaltyType)
+            }
+
+            HStack(spacing: 12) {
+                Text("Bunker Save")
+                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Button {
+                    bunker.toggle()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: bunker ? "checkmark.circle.fill" : "circle")
+                        Text("Yes")
+                    }
+                    .font(.system(.caption, design: .rounded).weight(.bold))
+                    .foregroundStyle(bunker ? .white : AppTheme.ink)
+                    .padding(.horizontal, 13)
+                    .frame(height: 38)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(bunker ? AppTheme.mint : AppTheme.subtleFill))
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow.opacity(0.58), radius: 12, x: 0, y: 6)
+        .onChange(of: green) { _, newValue in
+            if newValue != .hit {
+                approachProximity = nil
+            }
+        }
+        .onChange(of: penalties) { _, newValue in
+            if newValue == 0 {
+                penaltyType = .none
+            } else if penaltyType == .none {
+                penaltyType = .water
+            }
+        }
+    }
+}
+
+struct PenaltyTypePanel: View {
+    @Binding var selection: PenaltyType
+
+    private var choices: [PenaltyType] {
+        PenaltyType.allCases.filter { $0 != .none }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Penalty Type")
+                .font(.system(.subheadline, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+
+            HStack(spacing: 8) {
+                ForEach(choices) { type in
+                    Button {
+                        selection = type
+                    } label: {
+                        Text(type.rawValue)
+                            .font(.system(.caption, design: .rounded).weight(.bold))
+                            .foregroundStyle(selection == type ? .white : AppTheme.ink)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 36)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(selection == type ? AppTheme.gold : AppTheme.subtleFill))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection == type ? AppTheme.gold.opacity(0.18) : AppTheme.border.opacity(0.62)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+
+struct ApproachProximityPanel: View {
+    @Binding var selection: ApproachProximity?
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8),
+        GridItem(.flexible(), spacing: 8)
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Approach Proximity")
+                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text("GIR only")
+                    .font(.system(.caption2, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.mint)
+            }
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(ApproachProximity.allCases) { proximity in
+                    Button {
+                        selection = proximity
+                    } label: {
+                        Text(proximity.rawValue)
+                            .font(.system(.caption, design: .rounded).weight(.heavy))
+                            .foregroundStyle(selection == proximity ? .white : AppTheme.ink)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 36)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(selection == proximity ? AppTheme.mint : AppTheme.subtleFill))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mintWash.opacity(0.72)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.mint.opacity(0.16)))
     }
 }
 
@@ -5236,6 +6651,86 @@ struct RunningRoundStrip: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+    }
+}
+
+struct LiveRoundHeaderCard: View {
+    let courseName: String
+    let holeNumber: Int
+    let par: Int
+    let yards: Int
+    let strokeIndex: Int
+    let courseHandicap: Int
+    let gross: Int
+    let stableford: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(courseName)
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.74)
+                    Text("Hole \(holeNumber)")
+                        .font(.system(size: 38, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 5) {
+                    Text("Par \(par)")
+                    Text("\(yards) yds")
+                    Text("SI \(strokeIndex)")
+                }
+                .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                .foregroundStyle(.white.opacity(0.86))
+            }
+
+            HStack(spacing: 10) {
+                LiveRoundHeaderMetric(title: "Gross", value: "\(gross)", accent: AppTheme.gold)
+                LiveRoundHeaderMetric(title: "Points", value: "\(stableford)", accent: .white)
+                LiveRoundHeaderMetric(title: "CH", value: "\(courseHandicap)", accent: .white)
+            }
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(red: 0.07, green: 0.67, blue: 0.35), AppTheme.mint],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.62)))
+        .shadow(color: AppTheme.shadow.opacity(1.35), radius: 20, x: 0, y: 10)
+    }
+}
+
+struct LiveRoundHeaderMetric: View {
+    let title: String
+    let value: String
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(.white.opacity(0.72))
+                .textCase(.uppercase)
+            Text(value)
+                .font(.system(size: 23, weight: .heavy, design: .rounded))
+                .foregroundStyle(accent)
+                .lineLimit(1)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.14)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.18)))
     }
 }
 
@@ -5266,7 +6761,7 @@ struct ShotOutcomePanel: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(title)
-                    .font(.system(.subheadline, design: .rounded).weight(.bold))
+                    .font(.system(.subheadline, design: .rounded).weight(.heavy))
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
                 Button {
@@ -5281,7 +6776,9 @@ struct ShotOutcomePanel: View {
                     .padding(.horizontal, 12)
                     .frame(height: 34)
                     .background(RoundedRectangle(cornerRadius: 8).fill(selection == .hit ? AppTheme.mint : AppTheme.subtleFill))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection == .hit ? AppTheme.mint.opacity(0.18) : AppTheme.border.opacity(0.62)))
                 }
+                .buttonStyle(.plain)
             }
 
             if selection != .hit {
@@ -5298,36 +6795,12 @@ struct ShotOutcomePanel: View {
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 36)
                                 .background(RoundedRectangle(cornerRadius: 8).fill(selection == choice ? AppTheme.gold.opacity(0.9) : AppTheme.subtleFill))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection == choice ? AppTheme.gold.opacity(0.2) : AppTheme.border.opacity(0.62)))
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
-        }
-    }
-}
-
-struct QuickStatToggle: View {
-    let title: String
-    let icon: String
-    @Binding var isOn: Bool
-
-    var body: some View {
-        Button {
-            isOn.toggle()
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                Text(title)
-                Spacer()
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(isOn ? .black.opacity(0.65) : AppTheme.softText)
-            }
-            .font(.system(.subheadline, design: .rounded).weight(.bold))
-            .foregroundStyle(isOn ? .black : AppTheme.ink)
-            .padding(13)
-            .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 8).fill(isOn ? AppTheme.mint : AppTheme.subtleFill))
         }
     }
 }
@@ -5367,14 +6840,12 @@ struct InsightMetricSection<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(accent.opacity(0.13))
-                        .frame(width: 38, height: 38)
-                    Image(systemName: icon)
-                        .font(.system(size: 15, weight: .heavy))
-                        .foregroundStyle(accent)
-                }
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(AppTheme.ink)
+                    .frame(width: 34, height: 34)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill.opacity(0.78)))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.78)))
                 Text(title)
                     .font(.system(.headline, design: .rounded).weight(.heavy))
                     .foregroundStyle(AppTheme.ink)
@@ -5383,27 +6854,9 @@ struct InsightMetricSection<Content: View>: View {
             content
         }
         .padding(16)
-        .background(
-            ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white,
-                                accent.opacity(0.055)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                Circle()
-                    .fill(accent.opacity(0.08))
-                    .frame(width: 96, height: 96)
-                    .offset(x: 38, y: -44)
-            }
-        )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-        .shadow(color: AppTheme.shadow.opacity(0.7), radius: 14, x: 0, y: 7)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow.opacity(0.72), radius: 18, x: 0, y: 10)
     }
 }
 
@@ -5432,10 +6885,10 @@ struct InsightStatTile: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 8) {
                 Image(systemName: iconName)
-                    .font(.system(size: 13, weight: .heavy))
-                    .foregroundStyle(accent)
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(accent.opacity(0.12)))
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .frame(width: 26, height: 26)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(AppTheme.subtleFill.opacity(0.76)))
                 Text(title)
                     .font(.system(.caption, design: .rounded).weight(.heavy))
                     .foregroundStyle(AppTheme.softText)
@@ -5454,23 +6907,12 @@ struct InsightStatTile: View {
                 .foregroundStyle(AppTheme.softText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.76)
-
-            Capsule()
-                .fill(accent.opacity(0.16))
-                .frame(height: 5)
-                .overlay(alignment: .leading) {
-                    Capsule()
-                        .fill(accent)
-                        .frame(width: 36)
-                }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 132, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.92))
-        )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(accent.opacity(0.14)))
+        .frame(maxWidth: .infinity, minHeight: 118, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.62)))
+        .shadow(color: AppTheme.shadow.opacity(0.42), radius: 10, x: 0, y: 6)
     }
 
     private var iconName: String {
@@ -5906,6 +7348,12 @@ struct CourseInsightsSection: View {
 struct ClubGappingSection: View {
     let clubs: [ClubYardage]
 
+    private let columns = [
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10),
+        GridItem(.flexible(), spacing: 10)
+    ]
+
     private var mappedClubs: [ClubYardage] {
         clubs
             .filter { $0.isInBag && $0.yards != nil }
@@ -5913,8 +7361,23 @@ struct ClubGappingSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Club Gapping", actionTitle: mappedClubs.isEmpty ? nil : "\(mappedClubs.count) mapped")
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Club Gapping")
+                        .font(.system(.title2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(mappedClubs.isEmpty ? "Add carries to build the ladder." : "\(mappedClubs.count) mapped carries")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer()
+                Image(systemName: "chart.bar.xaxis")
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundStyle(AppTheme.mint)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(AppTheme.mintWash))
+            }
 
             VStack(spacing: 8) {
                 if mappedClubs.count < 3 {
@@ -5923,22 +7386,52 @@ struct ClubGappingSection: View {
                         .foregroundStyle(AppTheme.softText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(14)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill.opacity(0.7)))
                 } else {
-                    VStack(spacing: 0) {
+                    LazyVGrid(columns: columns, spacing: 10) {
                         ForEach(mappedClubs) { club in
-                            YardageReferenceRow(club: club, maxYardage: mappedClubs.first?.yards ?? 1)
-                            if club.id != mappedClubs.last?.id {
-                                Divider()
-                                    .background(AppTheme.border)
-                            }
+                            YardageGapTile(club: club)
                         }
                     }
-                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
                 }
             }
         }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow.opacity(0.72), radius: 18, x: 0, y: 10)
+    }
+}
+
+struct YardageGapTile: View {
+    let club: ClubYardage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(club.name)
+                    .font(.system(size: 19, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+                Spacer(minLength: 4)
+                Text(club.yards.map { "\($0)" } ?? "-")
+                    .font(.system(size: 18, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.mint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+
+            Text("yds")
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.softText)
+                .textCase(.uppercase)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.72)))
+        .shadow(color: AppTheme.shadow.opacity(0.42), radius: 9, x: 0, y: 5)
     }
 }
 
@@ -6002,10 +7495,12 @@ struct TabBar: View {
 struct CounterButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 16, weight: .bold))
-            .foregroundStyle(AppTheme.ink)
-            .frame(width: 40, height: 40)
-            .background(Circle().fill(configuration.isPressed ? AppTheme.border : AppTheme.subtleFill))
+            .font(.system(size: 15, weight: .heavy))
+            .foregroundStyle(AppTheme.mint)
+            .frame(width: 42, height: 42)
+            .background(Circle().fill(configuration.isPressed ? AppTheme.mintWash : Color.white))
+            .overlay(Circle().stroke(AppTheme.border.opacity(0.82)))
+            .shadow(color: AppTheme.shadow.opacity(0.42), radius: 8, x: 0, y: 4)
     }
 }
 
@@ -6017,7 +7512,9 @@ struct RoundActionStyle: ButtonStyle {
             .font(.system(.headline, design: .rounded).weight(.bold))
             .foregroundStyle(isPrimary ? Color.white : AppTheme.ink)
             .frame(height: 52)
-            .background(RoundedRectangle(cornerRadius: 8).fill(isPrimary ? AppTheme.mint : AppTheme.subtleFill))
+            .background(RoundedRectangle(cornerRadius: 8).fill(isPrimary ? AppTheme.mint : Color.white))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(isPrimary ? AppTheme.mint.opacity(0.18) : AppTheme.border.opacity(0.9)))
+            .shadow(color: AppTheme.shadow.opacity(isPrimary ? 0.92 : 0.42), radius: 12, x: 0, y: 6)
             .opacity(configuration.isPressed ? 0.82 : 1)
     }
 }

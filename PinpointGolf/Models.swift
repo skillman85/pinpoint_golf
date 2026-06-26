@@ -441,6 +441,28 @@ enum FirstPuttDistance: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 }
 
+enum ApproachProximity: String, CaseIterable, Identifiable, Codable {
+    case feet0to5 = "0-5 ft"
+    case feet6to10 = "6-10 ft"
+    case feet11to15 = "11-15 ft"
+    case feet16to20 = "16-20 ft"
+    case feet21to25 = "21-25 ft"
+    case feet26to30 = "26-30 ft"
+
+    var id: String { rawValue }
+
+    var midpointFeet: Int {
+        switch self {
+        case .feet0to5: return 3
+        case .feet6to10: return 8
+        case .feet11to15: return 13
+        case .feet16to20: return 18
+        case .feet21to25: return 23
+        case .feet26to30: return 28
+        }
+    }
+}
+
 enum PenaltyType: String, CaseIterable, Identifiable, Codable {
     case none = "None"
     case water = "Water"
@@ -460,6 +482,7 @@ struct RoundHoleEntry: Identifiable, Equatable {
     var green: MissDirection
     var teeClub: TeeClub
     var approachRange: ApproachRange
+    var approachProximity: ApproachProximity?
     var firstPuttDistance: FirstPuttDistance
     var penalties: Int
     var penaltyType: PenaltyType
@@ -511,11 +534,24 @@ struct SavedRound: Identifiable, Codable {
     var fairwaysTotal: Int { holes.filter { $0.par > 3 && $0.fairway != .notTracked }.count }
     var greensInRegulation: Int { holes.filter { $0.green == .hit }.count }
     var greensTracked: Int { holes.filter { $0.green != .notTracked }.count }
+    var girProximities: [ApproachProximity] { holes.compactMap { $0.green == .hit ? $0.approachProximity : nil } }
+    var averageGirProximityFeet: Double? {
+        let proximities = girProximities
+        guard !proximities.isEmpty else { return nil }
+        return Double(proximities.reduce(0) { $0 + $1.midpointFeet }) / Double(proximities.count)
+    }
+    var bestGirProximity: ApproachProximity? {
+        girProximities.min { $0.midpointFeet < $1.midpointFeet }
+    }
     var onePutts: Int { holes.filter { $0.putts == 1 }.count }
     var twoPutts: Int { holes.filter { $0.putts == 2 }.count }
     var threePutts: Int { holes.filter { $0.putts >= 3 }.count }
     var scramblingOpportunities: Int { holes.filter { $0.green != .hit && $0.green != .notTracked }.count }
     var scrambles: Int { holes.filter { $0.green != .hit && $0.green != .notTracked && $0.score <= $0.par }.count }
+    var scramblePercent: Int {
+        guard scramblingOpportunities > 0 else { return 0 }
+        return Int((Double(scrambles) / Double(scramblingOpportunities) * 100).rounded())
+    }
     var penalties: Int { holes.reduce(0) { $0 + $1.penalties } }
     var holeInOnes: Int { holes.filter { $0.par == 3 && $0.score == 1 }.count }
     var eaglesOrBetter: Int { holes.filter { $0.score - $0.par <= -2 }.count }
@@ -574,6 +610,7 @@ struct SavedHoleEntry: Identifiable, Codable, Hashable {
     let green: MissDirection
     let teeClub: TeeClub?
     let approachRange: ApproachRange?
+    let approachProximity: ApproachProximity?
     let firstPuttDistance: FirstPuttDistance?
     let penalties: Int
     let penaltyType: PenaltyType?
@@ -855,12 +892,13 @@ final class RoundArchive: ObservableObject {
                     green: entry.green,
                     teeClub: entry.teeClub,
                     approachRange: entry.approachRange,
+                    approachProximity: entry.green == .hit ? entry.approachProximity : nil,
                     firstPuttDistance: entry.firstPuttDistance,
                     penalties: entry.penalties,
                     penaltyType: entry.penaltyType,
                     bunker: entry.bunker,
                     upAndDown: entry.upAndDown,
-                    sandSave: entry.sandSave,
+                    sandSave: entry.bunker && entry.score <= entry.hole.par,
                     recovery: entry.recovery,
                     note: entry.note
                 )

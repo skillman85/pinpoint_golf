@@ -198,8 +198,8 @@ final class PinpointDatabase {
                     try execute(
                         """
                         INSERT INTO round_holes
-                        (id, round_id, hole_number, par, yards, stroke_index, score, putts, fairway, green, tee_club, approach_range, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        (id, round_id, hole_number, par, yards, stroke_index, score, putts, fairway, green, tee_club, approach_range, approach_proximity, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                         """,
                         bindings: [
                             .text(hole.id.uuidString),
@@ -214,6 +214,7 @@ final class PinpointDatabase {
                             .text(hole.green.rawValue),
                             .nullableText(hole.teeClub?.rawValue),
                             .nullableText(hole.approachRange?.rawValue),
+                            .nullableText(hole.approachProximity?.rawValue),
                             .nullableText(hole.firstPuttDistance?.rawValue),
                             .int(hole.penalties),
                             .nullableText(hole.penaltyType?.rawValue),
@@ -271,8 +272,8 @@ final class PinpointDatabase {
             try execute(
                 """
                 INSERT INTO round_holes
-                (id, round_id, hole_number, par, yards, stroke_index, score, putts, fairway, green, tee_club, approach_range, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                (id, round_id, hole_number, par, yards, stroke_index, score, putts, fairway, green, tee_club, approach_range, approach_proximity, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 bindings: [
                     .text(hole.id.uuidString),
@@ -287,6 +288,7 @@ final class PinpointDatabase {
                     .text(hole.green.rawValue),
                     .nullableText(hole.teeClub?.rawValue),
                     .nullableText(hole.approachRange?.rawValue),
+                    .nullableText(hole.approachProximity?.rawValue),
                     .nullableText(hole.firstPuttDistance?.rawValue),
                     .int(hole.penalties),
                     .nullableText(hole.penaltyType?.rawValue),
@@ -370,7 +372,7 @@ final class PinpointDatabase {
     private func loadHoles(roundID: UUID) -> [SavedHoleEntry] {
         var holes: [SavedHoleEntry] = []
         let sql = """
-        SELECT id, hole_number, par, yards, stroke_index, score, putts, fairway, green, tee_club, approach_range, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note
+        SELECT id, hole_number, par, yards, stroke_index, score, putts, fairway, green, tee_club, approach_range, approach_proximity, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note
         FROM round_holes
         WHERE round_id = ?
         ORDER BY hole_number;
@@ -396,14 +398,15 @@ final class PinpointDatabase {
                     green: green,
                     teeClub: optionalColumnText(statement, 9).flatMap(TeeClub.init(rawValue:)),
                     approachRange: optionalColumnText(statement, 10).flatMap(ApproachRange.init(rawValue:)),
-                    firstPuttDistance: optionalColumnText(statement, 11).flatMap(FirstPuttDistance.init(rawValue:)),
-                    penalties: Int(sqlite3_column_int(statement, 12)),
-                    penaltyType: optionalColumnText(statement, 13).flatMap(PenaltyType.init(rawValue:)),
-                    bunker: optionalColumnBool(statement, 14),
-                    upAndDown: optionalColumnBool(statement, 15),
-                    sandSave: optionalColumnBool(statement, 16),
-                    recovery: optionalColumnBool(statement, 17),
-                    note: columnText(statement, 18)
+                    approachProximity: optionalColumnText(statement, 11).flatMap(ApproachProximity.init(rawValue:)),
+                    firstPuttDistance: optionalColumnText(statement, 12).flatMap(FirstPuttDistance.init(rawValue:)),
+                    penalties: Int(sqlite3_column_int(statement, 13)),
+                    penaltyType: optionalColumnText(statement, 14).flatMap(PenaltyType.init(rawValue:)),
+                    bunker: optionalColumnBool(statement, 15),
+                    upAndDown: optionalColumnBool(statement, 16),
+                    sandSave: optionalColumnBool(statement, 17),
+                    recovery: optionalColumnBool(statement, 18),
+                    note: columnText(statement, 19)
                 )
             )
         }
@@ -449,6 +452,7 @@ final class PinpointDatabase {
             green TEXT NOT NULL,
             tee_club TEXT,
             approach_range TEXT,
+            approach_proximity TEXT,
             first_putt_distance TEXT,
             penalties INTEGER NOT NULL,
             penalty_type TEXT,
@@ -470,6 +474,20 @@ final class PinpointDatabase {
         CREATE INDEX IF NOT EXISTS round_holes_round_id_index ON round_holes(round_id);
         CREATE INDEX IF NOT EXISTS rounds_date_index ON rounds(date DESC);
         """)
+
+        if !columnExists("approach_proximity", in: "round_holes") {
+            try execute("ALTER TABLE round_holes ADD COLUMN approach_proximity TEXT;")
+        }
+    }
+
+    private func columnExists(_ column: String, in table: String) -> Bool {
+        var exists = false
+        query("PRAGMA table_info(\(table));") { statement in
+            if columnText(statement, 1) == column {
+                exists = true
+            }
+        }
+        return exists
     }
 
     private func transaction(_ work: () throws -> Void) throws {

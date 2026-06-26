@@ -22,22 +22,7 @@
 		1A2B3C4D5E6F70000000011B /* WatchContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001B /* WatchContentView.swift */; };
 		1A2B3C4D5E6F70000000011C /* WatchRoundStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001C /* WatchRoundStore.swift */; };
 		1A2B3C4D5E6F70000000011D /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001D /* WatchModels.swift */; };
-		1A2B3C4D5E6F70000000011E /* PinpointGolfWatchApp.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000016 /* PinpointGolfWatchApp.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		1A2B3C4D5E6F700000000505 /* Embed Watch Content */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
-			dstSubfolderSpec = 16;
-			files = (
-				1A2B3C4D5E6F70000000011E /* PinpointGolfWatchApp.app in Embed Watch Content */,
-			);
-			name = "Embed Watch Content";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		1A2B3C4D5E6F700000000001 /* PinpointGolfApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinpointGolfApp.swift; sourceTree = "<group>"; };
@@ -139,7 +124,6 @@
 				1A2B3C4D5E6F700000000201 /* Frameworks */,
 				1A2B3C4D5E6F700000000502 /* Resources */,
 				1A2B3C4D5E6F700000000506 /* Build Watch App */,
-				1A2B3C4D5E6F700000000505 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
@@ -239,11 +223,10 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(BUILD_DIR)/$(CONFIGURATION)-watchos/PinpointGolfWatchApp.app",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"$PLATFORM_NAME\" = \"iphoneos\" ]; then\n  env -i \\\n    PATH=\"/usr/bin:/bin:/usr/sbin:/sbin\" \\\n    HOME=\"$HOME\" \\\n    TMPDIR=\"$TMPDIR\" \\\n    DEVELOPER_DIR=\"$DEVELOPER_DIR\" \\\n    /usr/bin/xcrun xcodebuild \\\n      -project \"$PROJECT_FILE_PATH\" \\\n      -target PinpointGolfWatchApp \\\n      -configuration \"$CONFIGURATION\" \\\n      -sdk watchos \\\n      CONFIGURATION_BUILD_DIR=\"$BUILD_DIR/$CONFIGURATION-watchos\" \\\n      OBJROOT=\"$OBJROOT/WatchProducts\" \\\n      SYMROOT=\"$SYMROOT\" \\\n      CODE_SIGNING_ALLOWED=\"${CODE_SIGNING_ALLOWED:-YES}\" \\\n      CODE_SIGN_STYLE=\"$CODE_SIGN_STYLE\" \\\n      DEVELOPMENT_TEAM=\"$DEVELOPMENT_TEAM\" \\\n      INFOPLIST_KEY_WKCompanionAppBundleIdentifier=\"com.pinpoint.golf\" \\\n      ENABLE_DEBUG_DYLIB=NO \\\n      build\nfi\n";
+			shellScript = "if [ \"$PLATFORM_NAME\" = \"iphoneos\" ]; then\n  WATCH_ROOT=\"$TARGET_TEMP_DIR/WatchProducts\"\n  WATCH_BUILD_DIR=\"$WATCH_ROOT/$CONFIGURATION-watchos\"\n  WATCH_APP=\"$WATCH_BUILD_DIR/PinpointGolfWatchApp.app\"\n  EMBED_DIR=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Watch\"\n\n  /bin/rm -rf \"$WATCH_ROOT\"\n  /bin/mkdir -p \"$WATCH_BUILD_DIR\"\n\n  env -i \\\n    PATH=\"/usr/bin:/bin:/usr/sbin:/sbin\" \\\n    HOME=\"$HOME\" \\\n    TMPDIR=\"$TMPDIR\" \\\n    DEVELOPER_DIR=\"$DEVELOPER_DIR\" \\\n    /usr/bin/xcrun xcodebuild \\\n      -project \"$PROJECT_FILE_PATH\" \\\n      -target PinpointGolfWatchApp \\\n      -configuration \"$CONFIGURATION\" \\\n      -sdk watchos \\\n      CONFIGURATION_BUILD_DIR=\"$WATCH_BUILD_DIR\" \\\n      OBJROOT=\"$TARGET_TEMP_DIR/WatchIntermediates\" \\\n      SYMROOT=\"$WATCH_ROOT\" \\\n      CODE_SIGNING_ALLOWED=\"${CODE_SIGNING_ALLOWED:-YES}\" \\\n      CODE_SIGN_STYLE=\"$CODE_SIGN_STYLE\" \\\n      DEVELOPMENT_TEAM=\"$DEVELOPMENT_TEAM\" \\\n      INFOPLIST_KEY_WKCompanionAppBundleIdentifier=\"com.pinpoint.golf\" \\\n      ENABLE_DEBUG_DYLIB=NO \\\n      build\n\n  if [ ! -d \"$WATCH_APP\" ]; then\n    echo \"error: Expected watchOS app was not built at $WATCH_APP\"\n    exit 1\n  fi\n\n  /bin/mkdir -p \"$EMBED_DIR\"\n  /bin/rm -rf \"$EMBED_DIR/PinpointGolfWatchApp.app\"\n  /usr/bin/ditto \"$WATCH_APP\" \"$EMBED_DIR/PinpointGolfWatchApp.app\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

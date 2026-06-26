@@ -30,16 +30,16 @@ struct UKGolfAPIClient {
         self.session = session
     }
 
-    func searchCourses(query: String) async throws -> [GolfCourse] {
+    func searchCourses(query: String, maxClubs: Int = 8, maxCoursesPerClub: Int = 3) async throws -> [GolfCourse] {
         let response: UKGolfClubSearchResponse = try await request(
             path: "/clubs",
             queryItems: [URLQueryItem(name: "search", value: query)]
         )
 
         var courses: [GolfCourse] = []
-        for club in response.clubs.prefix(8) {
+        for club in response.clubs.prefix(maxClubs) {
             let clubCourses = try await fetchCourses(clubID: club.id)
-            for courseSummary in clubCourses.prefix(3) {
+            for courseSummary in clubCourses.prefix(maxCoursesPerClub) {
                 if let scorecard = try? await scorecard(courseID: courseSummary.id) {
                     courses.append(scorecard.toGolfCourse(club: club))
                 }
@@ -49,14 +49,14 @@ struct UKGolfAPIClient {
         return courses
     }
 
-    func searchCourses(queries: [String], limit: Int) async throws -> [GolfCourse] {
+    func searchCourses(queries: [String], limit: Int, maxClubsPerQuery: Int = 8, maxCoursesPerClub: Int = 3) async throws -> [GolfCourse] {
         var courses: [GolfCourse] = []
         var seenKeys = Set<String>()
         var lastError: Error?
 
         for query in queries {
             do {
-                let matches = try await searchCourses(query: query)
+                let matches = try await searchCourses(query: query, maxClubs: maxClubsPerQuery, maxCoursesPerClub: maxCoursesPerClub)
                 for course in matches where !seenKeys.contains(course.favoriteKey) {
                     courses.append(course)
                     seenKeys.insert(course.favoriteKey)

@@ -11,6 +11,17 @@ enum WatchMissValue: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum WatchApproachProximity: String, Codable, CaseIterable, Identifiable {
+    case feet0to5 = "0-5 ft"
+    case feet6to10 = "6-10 ft"
+    case feet11to15 = "11-15 ft"
+    case feet16to20 = "16-20 ft"
+    case feet21to25 = "21-25 ft"
+    case feet26to30 = "26-30 ft"
+
+    var id: String { rawValue }
+}
+
 struct WatchHolePayload: Identifiable, Codable, Hashable {
     var id: Int { number }
     let number: Int
@@ -21,6 +32,7 @@ struct WatchHolePayload: Identifiable, Codable, Hashable {
     var putts: Int
     var fairway: WatchMissValue
     var green: WatchMissValue
+    var approachProximity: WatchApproachProximity?
 }
 
 struct WatchRoundPayload: Codable, Hashable {
