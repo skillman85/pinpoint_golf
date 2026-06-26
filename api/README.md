@@ -43,6 +43,7 @@ If Supabase env vars are missing, the API still works with in-memory cache only,
 ## Endpoints
 
 ```text
+GET /api/health
 GET /api/courses/search?q=wentworth&limit=8
 GET /api/courses/near?lat=51.60&lng=-0.40&queries=Sandy%20Lodge|Moor%20Park&limit=4
 GET /api/courses/scorecard?id=12345
