@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "npm run check",
     "dev": "vercel dev",
-    "check": "node --check api/courses/search.js && node --check api/courses/near.js && node --check api/courses/scorecard.js"
+    "check": "node --check api/health.js && node --check api/courses/search.js && node --check api/courses/near.js && node --check api/courses/scorecard.js"
   },
   "engines": {
     "node": ">=20"
