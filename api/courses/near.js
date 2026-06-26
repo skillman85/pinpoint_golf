@@ -44,5 +44,5 @@ function handleError(res, error) {
     sendError(res, error.status, error.message, error.code);
     return;
   }
-  sendError(res, 500, "Nearby course search failed.", "near_search_failed");
+  sendError(res, 500, error?.message || "Nearby course search failed.", "near_search_failed");
 }

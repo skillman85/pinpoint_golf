@@ -79,12 +79,22 @@ export async function setCached(cacheKey, payload, ttlSeconds) {
 }
 
 export async function cached(cacheKey, ttlSeconds, loader) {
-  const hit = await getCached(cacheKey);
+  let hit = null;
+  try {
+    hit = await getCached(cacheKey);
+  } catch {
+    hit = null;
+  }
+
   if (hit) {
     return { payload: hit, cache: "hit" };
   }
 
   const payload = await loader();
-  await setCached(cacheKey, payload, ttlSeconds);
+  try {
+    await setCached(cacheKey, payload, ttlSeconds);
+  } catch {
+    // Cache writes are best-effort. The API should still return live results.
+  }
   return { payload, cache: "miss" };
 }

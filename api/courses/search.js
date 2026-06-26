@@ -37,5 +37,5 @@ function handleError(res, error) {
     sendError(res, error.status, error.message, error.code);
     return;
   }
-  sendError(res, 500, "Course search failed.", "course_search_failed");
+  sendError(res, 500, error?.message || "Course search failed.", "course_search_failed");
 }

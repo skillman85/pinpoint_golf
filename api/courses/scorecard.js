@@ -32,5 +32,5 @@ function handleError(res, error) {
     sendError(res, error.status, error.message, error.code);
     return;
   }
-  sendError(res, 500, "Scorecard lookup failed.", "scorecard_lookup_failed");
+  sendError(res, 500, error?.message || "Scorecard lookup failed.", "scorecard_lookup_failed");
 }
