@@ -18,8 +18,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Pinpoint Golf uses your approximate location to search for nearby golf courses.</string>
-	<key>UKGolfAPIKey</key>
-	<string>$(UK_GOLF_API_KEY)</string>
+	<key>PinpointCourseAPIBaseURL</key>
+	<string>$(PINPOINT_COURSE_API_BASE_URL)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

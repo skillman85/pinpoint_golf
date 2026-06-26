@@ -1,8 +1,8 @@
 # Pinpoint Golf Course API
 
-Phase 1 backend proxy for UK golf course search.
+Backend proxy for UK golf course search.
 
-The iOS app should eventually call this API instead of calling RapidAPI directly. The backend keeps the RapidAPI key private and caches results in Supabase so repeated searches do not burn quota.
+The iOS app calls this API instead of calling RapidAPI directly. The backend keeps the RapidAPI key private and caches results in Supabase so repeated searches do not burn quota.
 
 ## Environment
 
@@ -15,6 +15,18 @@ SUPABASE_SERVICE_ROLE_KEY
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` must only live on the backend. Do not put it in the iOS app.
+
+## iOS App Configuration
+
+Set this Xcode build setting to your deployed backend URL:
+
+```text
+PINPOINT_COURSE_API_BASE_URL=https://your-vercel-app.vercel.app
+```
+
+The value is exposed to the app as `PinpointCourseAPIBaseURL` in `Info.plist`. It is not a secret.
+
+If this value is empty, the app falls back to bundled/local courses rather than calling RapidAPI from the phone.
 
 ## Supabase
 

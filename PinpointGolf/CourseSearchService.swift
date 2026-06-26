@@ -9,7 +9,7 @@ final class CourseSearchViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published private(set) var locationSearchLabel: String?
 
-    private let ukGolfAPI = UKGolfAPIClient()
+    private let courseAPI = PinpointCourseAPIClient()
     private let locationProvider = CourseLocationProvider()
     private var cachedLocationSearch: (label: String, date: Date, courses: [GolfCourse])?
     private let locationSearchCacheLifetime: TimeInterval = 10 * 60
@@ -27,19 +27,15 @@ final class CourseSearchViewModel: ObservableObject {
         defer { isSearching = false }
 
         do {
-            let courses = try await ukGolfAPI.searchCourses(query: trimmedQuery)
+            let courses = try await courseAPI.searchCourses(query: trimmedQuery)
             if !courses.isEmpty {
                 results = courses
                 return
             }
-        } catch UKGolfAPIError.missingAPIKey {
-            errorMessage = "RapidAPI key is missing. Falling back to saved courses."
-        } catch UKGolfAPIError.unauthorized {
-            errorMessage = "RapidAPI rejected the key. Falling back to saved courses."
-        } catch UKGolfAPIError.rateLimited {
-            errorMessage = "RapidAPI is rate limited. Try again shortly, or search by course name."
+        } catch PinpointCourseAPIError.missingBaseURL {
+            errorMessage = "Course API backend is not configured. Falling back to saved courses."
         } catch {
-            errorMessage = "RapidAPI course search failed. Falling back to saved courses."
+            errorMessage = "Course API search failed. Falling back to saved courses."
         }
 
         let localMatches = searchBundledCourses(query: trimmedQuery)
@@ -70,11 +66,10 @@ final class CourseSearchViewModel: ObservableObject {
             }
 
             let nearbyNames = try await locationProvider.nearbyGolfCourseNames(near: context.location)
-            let courses = try await ukGolfAPI.searchCourses(
+            let courses = try await courseAPI.searchNearbyCourses(
+                coordinate: context.location.coordinate,
                 queries: Array(nearbyNames.prefix(3)),
-                limit: 4,
-                maxClubsPerQuery: 2,
-                maxCoursesPerClub: 1
+                limit: 4
             )
             if !courses.isEmpty {
                 results = courses
@@ -82,11 +77,7 @@ final class CourseSearchViewModel: ObservableObject {
                 return
             }
 
-            let fallbackCourses = try await ukGolfAPI.searchCourses(
-                query: context.label,
-                maxClubs: 2,
-                maxCoursesPerClub: 1
-            )
+            let fallbackCourses = try await courseAPI.searchCourses(query: context.label, limit: 4)
             if !fallbackCourses.isEmpty {
                 results = fallbackCourses
                 cachedLocationSearch = (context.label, Date(), fallbackCourses)
@@ -99,8 +90,8 @@ final class CourseSearchViewModel: ObservableObject {
             }
         } catch CourseLocationError.permissionDenied {
             errorMessage = "Location permission is needed to search nearby courses. You can still search by town or county."
-        } catch UKGolfAPIError.rateLimited {
-            errorMessage = "RapidAPI is rate limited. Try again shortly, or search by course name."
+        } catch PinpointCourseAPIError.missingBaseURL {
+            errorMessage = "Course API backend is not configured. Search by course name or use favourites."
         } catch {
             errorMessage = "Could not find nearby courses. Search by course name, town, city or county instead."
         }
@@ -112,6 +103,134 @@ final class CourseSearchViewModel: ObservableObject {
             course.name.lowercased().contains(normalizedQuery)
                 || course.location.lowercased().contains(normalizedQuery)
         }
+    }
+}
+
+enum PinpointCourseAPIError: LocalizedError {
+    case missingBaseURL
+    case invalidResponse
+
+    var errorDescription: String? {
+        switch self {
+        case .missingBaseURL:
+            "Pinpoint course API base URL is missing."
+        case .invalidResponse:
+            "Pinpoint course API returned an unexpected response."
+        }
+    }
+}
+
+struct PinpointCourseAPIClient {
+    private let session: URLSession
+    private let baseURLString: String
+
+    init(
+        baseURLString: String? = Bundle.main.object(forInfoDictionaryKey: "PinpointCourseAPIBaseURL") as? String,
+        session: URLSession = .shared
+    ) {
+        self.baseURLString = baseURLString ?? ""
+        self.session = session
+    }
+
+    func searchCourses(query: String, limit: Int = 8) async throws -> [GolfCourse] {
+        let response: PinpointCourseSearchResponse = try await request(
+            path: "/api/courses/search",
+            queryItems: [
+                URLQueryItem(name: "q", value: query),
+                URLQueryItem(name: "limit", value: "\(limit)")
+            ]
+        )
+        return response.courses.map(\.golfCourse)
+    }
+
+    func searchNearbyCourses(coordinate: CLLocationCoordinate2D, queries: [String], limit: Int = 4) async throws -> [GolfCourse] {
+        let response: PinpointCourseSearchResponse = try await request(
+            path: "/api/courses/near",
+            queryItems: [
+                URLQueryItem(name: "lat", value: String(format: "%.5f", coordinate.latitude)),
+                URLQueryItem(name: "lng", value: String(format: "%.5f", coordinate.longitude)),
+                URLQueryItem(name: "queries", value: queries.joined(separator: "|")),
+                URLQueryItem(name: "limit", value: "\(limit)")
+            ]
+        )
+        return response.courses.map(\.golfCourse)
+    }
+
+    private func request<T: Decodable>(path: String, queryItems: [URLQueryItem]) async throws -> T {
+        let trimmedBaseURL = baseURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedBaseURL.isEmpty,
+              !trimmedBaseURL.hasPrefix("$("),
+              var components = URLComponents(string: trimmedBaseURL) else {
+            throw PinpointCourseAPIError.missingBaseURL
+        }
+
+        let basePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components.path = basePath.isEmpty ? path : "/\(basePath)\(path)"
+        components.queryItems = queryItems
+        guard let url = components.url else {
+            throw PinpointCourseAPIError.invalidResponse
+        }
+
+        let (data, response) = try await session.data(from: url)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw PinpointCourseAPIError.invalidResponse
+        }
+
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+}
+
+private struct PinpointCourseSearchResponse: Decodable {
+    let courses: [PinpointCourse]
+}
+
+private struct PinpointCourse: Decodable {
+    let name: String
+    let distance: String?
+    let location: String
+    let tees: [PinpointTee]
+    let hasVerifiedScorecard: Bool?
+
+    var golfCourse: GolfCourse {
+        GolfCourse(
+            name: name,
+            distance: distance ?? "Pinpoint API",
+            location: location,
+            tees: tees.map(\.teeBox),
+            hasVerifiedScorecard: hasVerifiedScorecard ?? !tees.isEmpty
+        )
+    }
+}
+
+private struct PinpointTee: Decodable {
+    let name: String
+    let yards: Int
+    let par: Int
+    let slope: Int
+    let rating: Double
+    let holes: [PinpointHole]
+
+    var teeBox: TeeBox {
+        TeeBox(
+            name: name,
+            yards: yards,
+            par: par,
+            slope: slope,
+            rating: rating,
+            holes: holes.map(\.hole).sorted { $0.number < $1.number }
+        )
+    }
+}
+
+private struct PinpointHole: Decodable {
+    let number: Int
+    let par: Int
+    let yards: Int
+    let strokeIndex: Int
+
+    var hole: Hole {
+        Hole(number: number, par: par, yards: yards, strokeIndex: strokeIndex)
     }
 }
 
