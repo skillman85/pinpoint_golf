@@ -9,7 +9,7 @@ export default async function handler(req, res) {
 
   const lat = numberParam(req.query.lat);
   const lng = numberParam(req.query.lng);
-  const queries = splitList(req.query.queries).slice(0, 10);
+  const queries = splitList(req.query.queries).slice(0, 25);
 
   if (queries.length === 0) {
     sendError(res, 400, "Missing queries parameter. Send nearby course names from the app.", "missing_queries");
@@ -33,7 +33,7 @@ export default async function handler(req, res) {
       courses: await searchNearbyCoursesByCoordinate(lat, lng, queries, {
         radiusMeters,
         limit,
-        maxClubSearches: 10,
+        maxClubSearches: 25,
         maxCoursesPerClub: 1,
         budget: { remaining: 5 }
       })

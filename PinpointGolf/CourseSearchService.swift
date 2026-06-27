@@ -73,7 +73,7 @@ final class CourseSearchViewModel: ObservableObject {
             )
             let courses = (try? await courseAPI.searchNearbyCourses(
                 coordinate: context.location.coordinate,
-                queries: Array(nearbyQueries.prefix(10)),
+                queries: Array(nearbyQueries.prefix(25)),
                 limit: 8
             )) ?? []
             let verifiedCourses = Self.verifiedCourses(courses)
@@ -179,6 +179,7 @@ struct PrecisionCourseAPIClient {
                 URLQueryItem(name: "lat", value: String(format: "%.5f", coordinate.latitude)),
                 URLQueryItem(name: "lng", value: String(format: "%.5f", coordinate.longitude)),
                 URLQueryItem(name: "queries", value: queries.joined(separator: "|")),
+                URLQueryItem(name: "radiusMeters", value: "45000"),
                 URLQueryItem(name: "limit", value: "\(limit)")
             ]
         )
@@ -340,7 +341,7 @@ final class CourseLocationProvider: NSObject, CLLocationManagerDelegate {
             seenNames.insert(key)
             return true
         }
-        .prefix(5)
+        .prefix(25)
 
         guard !uniqueNames.isEmpty else {
             throw CourseLocationError.noNearbyCourses
