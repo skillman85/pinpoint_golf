@@ -1,6 +1,6 @@
 import { cached, normalizeCacheKey } from "../lib/cache.js";
 import { numberParam, requireMethod, sendError, sendJson, splitList } from "../lib/http.js";
-import { RapidAPIError, searchMultipleQueries } from "../lib/rapidapi.js";
+import { RapidAPIError, searchNearbyCoursesByCoordinate } from "../lib/rapidapi.js";
 
 const NEAR_TTL_SECONDS = 14 * 24 * 60 * 60;
 
@@ -15,23 +15,27 @@ export default async function handler(req, res) {
     sendError(res, 400, "Missing queries parameter. Send nearby course names from the app.", "missing_queries");
     return;
   }
+  if (lat === null || lng === null) {
+    sendError(res, 400, "Missing lat/lng parameters for nearby course search.", "missing_location");
+    return;
+  }
 
-  const areaKey = lat !== null && lng !== null
-    ? `${lat.toFixed(2)},${lng.toFixed(2)}`
-    : "unknown-area";
+  const radiusMeters = Math.min(Math.max(Number(req.query.radiusMeters ?? 45_000), 5_000), 80_000);
+  const areaKey = `${lat.toFixed(2)},${lng.toFixed(2)}`;
   const limit = Math.min(Math.max(Number(req.query.limit ?? 4), 1), 8);
-  const cacheKey = normalizeCacheKey(["near", areaKey, queries.join("|"), limit]);
+  const cacheKey = normalizeCacheKey(["near", areaKey, radiusMeters, queries.join("|"), limit]);
 
   try {
     const { payload, cache, cacheWrite } = await cached(cacheKey, NEAR_TTL_SECONDS, async () => ({
       areaKey,
+      radiusMeters,
       queries,
-      courses: await searchMultipleQueries(queries, {
+      courses: await searchNearbyCoursesByCoordinate(lat, lng, queries, {
+        radiusMeters,
         limit,
-        maxClubs: 1,
+        maxClubSearches: 10,
         maxCoursesPerClub: 1,
-        budget: { remaining: 5 },
-        stopAfterFirstQueryWithResults: true
+        budget: { remaining: 5 }
       })
     }));
 

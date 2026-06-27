@@ -192,6 +192,83 @@ export async function searchMultipleQueries(queries, options = {}) {
   return results;
 }
 
+export async function searchNearbyCoursesByCoordinate(latitude, longitude, queries, options = {}) {
+  const {
+    radiusMeters = 45_000,
+    maxClubSearches = 10,
+    maxCoursesPerClub = 1,
+    limit = 8,
+    budget = null
+  } = options;
+  const origin = { latitude, longitude };
+  const clubsById = new Map();
+
+  for (const query of queries.slice(0, maxClubSearches)) {
+    if (clubsById.size > 0 && budget && budget.remaining <= 2) {
+      break;
+    }
+
+    let clubs = [];
+    try {
+      clubs = await searchClubs(query, { budget });
+    } catch (error) {
+      if (error instanceof RapidAPIError && error.code === "request_budget_reached") {
+        break;
+      }
+      throw error;
+    }
+
+    for (const club of clubs) {
+      const distanceMeters = distanceBetweenMeters(origin, club);
+      if (!Number.isFinite(distanceMeters) || distanceMeters > radiusMeters || clubsById.has(club.id)) {
+        continue;
+      }
+      clubsById.set(club.id, { ...club, distanceMeters });
+    }
+
+    if (clubsById.size > 0 && budget && budget.remaining <= 2) {
+      break;
+    }
+  }
+
+  const nearbyClubs = [...clubsById.values()]
+    .sort((a, b) => a.distanceMeters - b.distanceMeters);
+  const results = [];
+  const seen = new Set();
+
+  for (const club of nearbyClubs) {
+    let courses = [];
+    try {
+      courses = await fetchClubCourses(club.id, { budget });
+    } catch (error) {
+      if (error instanceof RapidAPIError && error.code === "request_budget_reached") {
+        return results;
+      }
+      throw error;
+    }
+
+    for (const course of courses.slice(0, maxCoursesPerClub)) {
+      try {
+        const scorecard = await fetchScorecard(course.id, { budget });
+        const normalized = toGolfCourse(club, course, scorecard, formatMiles(club.distanceMeters));
+        if (!seen.has(normalized.favoriteKey)) {
+          results.push(normalized);
+          seen.add(normalized.favoriteKey);
+        }
+        if (results.length >= limit) {
+          return results;
+        }
+      } catch (error) {
+        if (error instanceof RapidAPIError && error.code === "request_budget_reached") {
+          return results;
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
 function normalizeClub(raw) {
   return {
     id: `${firstPresent(raw, ["id", "club_id", "clubId"], "")}`,
@@ -242,7 +319,32 @@ function normalizeHole(raw, index) {
   };
 }
 
-function toGolfCourse(club, course, scorecard) {
+function distanceBetweenMeters(origin, club) {
+  if (!Number.isFinite(origin.latitude) || !Number.isFinite(origin.longitude) || !Number.isFinite(club.latitude) || !Number.isFinite(club.longitude)) {
+    return NaN;
+  }
+
+  const earthRadiusMeters = 6_371_000;
+  const originLat = toRadians(origin.latitude);
+  const clubLat = toRadians(club.latitude);
+  const deltaLat = toRadians(club.latitude - origin.latitude);
+  const deltaLon = toRadians(club.longitude - origin.longitude);
+  const a = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(originLat) * Math.cos(clubLat) * Math.sin(deltaLon / 2) ** 2;
+  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function toRadians(value) {
+  return value * Math.PI / 180;
+}
+
+function formatMiles(meters) {
+  if (!Number.isFinite(meters)) return undefined;
+  const miles = meters / 1609.344;
+  return miles < 10 ? `${miles.toFixed(1)} mi` : `${Math.round(miles)} mi`;
+}
+
+function toGolfCourse(club, course, scorecard, distanceOverride) {
   const courseName = scorecard.name && scorecard.name !== "Course" ? scorecard.name : course.name;
   const location = [club.county, club.postcode].filter(Boolean).join(", ") || "Verified UK scorecard";
   return {
@@ -251,7 +353,7 @@ function toGolfCourse(club, course, scorecard) {
     name: courseName,
     clubName: club.name,
     location,
-    distance: club.postcode || club.county || "UK",
+    distance: distanceOverride || club.postcode || club.county || "UK",
     source: "rapidapi",
     tees: scorecard.tees
   };
