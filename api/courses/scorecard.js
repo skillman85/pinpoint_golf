@@ -16,12 +16,12 @@ export default async function handler(req, res) {
   const cacheKey = normalizeCacheKey(["scorecard", id]);
 
   try {
-    const { payload, cache } = await cached(cacheKey, SCORECARD_TTL_SECONDS, async () => ({
+    const { payload, cache, cacheWrite } = await cached(cacheKey, SCORECARD_TTL_SECONDS, async () => ({
       id,
       scorecard: await fetchScorecard(id)
     }));
 
-    sendJson(res, 200, { ...payload, cache }, 60 * 60);
+    sendJson(res, 200, { ...payload, cache, ...(cacheWrite ? { cacheWrite } : {}) }, 60 * 60);
   } catch (error) {
     handleError(res, error);
   }

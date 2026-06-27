@@ -61,13 +61,13 @@ export async function setCached(cacheKey, payload, ttlSeconds) {
   const config = supabaseConfig();
   if (!config) return;
 
-  await fetch(`${config.url}/rest/v1/course_api_cache`, {
+  const response = await fetch(`${config.url}/rest/v1/course_api_cache?on_conflict=cache_key`, {
     method: "POST",
     headers: {
       apikey: config.key,
       Authorization: `Bearer ${config.key}`,
       "Content-Type": "application/json",
-      Prefer: "resolution=merge-duplicates"
+      Prefer: "resolution=merge-duplicates,return=minimal"
     },
     body: JSON.stringify({
       cache_key: cacheKey,
@@ -76,6 +76,11 @@ export async function setCached(cacheKey, payload, ttlSeconds) {
       updated_at: new Date().toISOString()
     })
   });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(`Supabase cache write failed: ${response.status} ${message}`);
+  }
 }
 
 export async function cached(cacheKey, ttlSeconds, loader) {
@@ -91,10 +96,13 @@ export async function cached(cacheKey, ttlSeconds, loader) {
   }
 
   const payload = await loader();
+  let cacheWrite = "skipped";
   try {
     await setCached(cacheKey, payload, ttlSeconds);
+    cacheWrite = supabaseConfig() ? "supabase" : "memory";
   } catch {
+    cacheWrite = "failed";
     // Cache writes are best-effort. The API should still return live results.
   }
-  return { payload, cache: "miss" };
+  return { payload, cache: "miss", cacheWrite };
 }

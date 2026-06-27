@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   const cacheKey = normalizeCacheKey(["search", query, limit]);
 
   try {
-    const { payload, cache } = await cached(cacheKey, SEARCH_TTL_SECONDS, async () => ({
+    const { payload, cache, cacheWrite } = await cached(cacheKey, SEARCH_TTL_SECONDS, async () => ({
       query,
       courses: await searchCourses(query, {
         limit,
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
       })
     }));
 
-    sendJson(res, 200, { ...payload, cache }, 60);
+    sendJson(res, 200, { ...payload, cache, ...(cacheWrite ? { cacheWrite } : {}) }, 60);
   } catch (error) {
     handleError(res, error);
   }

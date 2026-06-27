@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   const cacheKey = normalizeCacheKey(["near", areaKey, queries.join("|"), limit]);
 
   try {
-    const { payload, cache } = await cached(cacheKey, NEAR_TTL_SECONDS, async () => ({
+    const { payload, cache, cacheWrite } = await cached(cacheKey, NEAR_TTL_SECONDS, async () => ({
       areaKey,
       queries,
       courses: await searchMultipleQueries(queries, {
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
       })
     }));
 
-    sendJson(res, 200, { ...payload, cache }, 60);
+    sendJson(res, 200, { ...payload, cache, ...(cacheWrite ? { cacheWrite } : {}) }, 60);
   } catch (error) {
     handleError(res, error);
   }
