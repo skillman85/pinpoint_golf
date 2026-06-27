@@ -21,8 +21,9 @@ export default async function handler(req, res) {
       query,
       courses: await searchCourses(query, {
         limit,
-        maxClubs: 6,
-        maxCoursesPerClub: 2
+        maxClubs: 2,
+        maxCoursesPerClub: 1,
+        budget: { remaining: 5 }
       })
     }));
 

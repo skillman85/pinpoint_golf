@@ -198,8 +198,8 @@ final class PinpointDatabase {
                     try execute(
                         """
                         INSERT INTO round_holes
-                        (id, round_id, hole_number, par, yards, stroke_index, score, putts, fairway, green, tee_club, approach_range, approach_proximity, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        (id, round_id, hole_number, par, yards, stroke_index, score, putts, picked_up, fairway, green, tee_club, approach_range, approach_proximity, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                         """,
                         bindings: [
                             .text(hole.id.uuidString),
@@ -210,6 +210,7 @@ final class PinpointDatabase {
                             .int(hole.strokeIndex),
                             .int(hole.score),
                             .int(hole.putts),
+                            .bool(hole.pickedUp),
                             .text(hole.fairway.rawValue),
                             .text(hole.green.rawValue),
                             .nullableText(hole.teeClub?.rawValue),
@@ -272,8 +273,8 @@ final class PinpointDatabase {
             try execute(
                 """
                 INSERT INTO round_holes
-                (id, round_id, hole_number, par, yards, stroke_index, score, putts, fairway, green, tee_club, approach_range, approach_proximity, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                (id, round_id, hole_number, par, yards, stroke_index, score, putts, picked_up, fairway, green, tee_club, approach_range, approach_proximity, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 bindings: [
                     .text(hole.id.uuidString),
@@ -284,6 +285,7 @@ final class PinpointDatabase {
                     .int(hole.strokeIndex),
                     .int(hole.score),
                     .int(hole.putts),
+                    .bool(hole.pickedUp),
                     .text(hole.fairway.rawValue),
                     .text(hole.green.rawValue),
                     .nullableText(hole.teeClub?.rawValue),
@@ -372,7 +374,7 @@ final class PinpointDatabase {
     private func loadHoles(roundID: UUID) -> [SavedHoleEntry] {
         var holes: [SavedHoleEntry] = []
         let sql = """
-        SELECT id, hole_number, par, yards, stroke_index, score, putts, fairway, green, tee_club, approach_range, approach_proximity, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note
+        SELECT id, hole_number, par, yards, stroke_index, score, putts, picked_up, fairway, green, tee_club, approach_range, approach_proximity, first_putt_distance, penalties, penalty_type, bunker, up_and_down, sand_save, recovery, note
         FROM round_holes
         WHERE round_id = ?
         ORDER BY hole_number;
@@ -381,8 +383,8 @@ final class PinpointDatabase {
         query(sql, bindings: [.text(roundID.uuidString)]) { statement in
             guard
                 let id = UUID(uuidString: columnText(statement, 0)),
-                let fairway = MissDirection(rawValue: columnText(statement, 7)),
-                let green = MissDirection(rawValue: columnText(statement, 8))
+                let fairway = MissDirection(rawValue: columnText(statement, 8)),
+                let green = MissDirection(rawValue: columnText(statement, 9))
             else { return }
 
             holes.append(
@@ -394,19 +396,20 @@ final class PinpointDatabase {
                     strokeIndex: Int(sqlite3_column_int(statement, 4)),
                     score: Int(sqlite3_column_int(statement, 5)),
                     putts: Int(sqlite3_column_int(statement, 6)),
+                    pickedUp: sqlite3_column_int(statement, 7) == 1,
                     fairway: fairway,
                     green: green,
-                    teeClub: optionalColumnText(statement, 9).flatMap(TeeClub.init(rawValue:)),
-                    approachRange: optionalColumnText(statement, 10).flatMap(ApproachRange.init(rawValue:)),
-                    approachProximity: optionalColumnText(statement, 11).flatMap(ApproachProximity.init(rawValue:)),
-                    firstPuttDistance: optionalColumnText(statement, 12).flatMap(FirstPuttDistance.init(rawValue:)),
-                    penalties: Int(sqlite3_column_int(statement, 13)),
-                    penaltyType: optionalColumnText(statement, 14).flatMap(PenaltyType.init(rawValue:)),
-                    bunker: optionalColumnBool(statement, 15),
-                    upAndDown: optionalColumnBool(statement, 16),
-                    sandSave: optionalColumnBool(statement, 17),
-                    recovery: optionalColumnBool(statement, 18),
-                    note: columnText(statement, 19)
+                    teeClub: optionalColumnText(statement, 10).flatMap(TeeClub.init(rawValue:)),
+                    approachRange: optionalColumnText(statement, 11).flatMap(ApproachRange.init(rawValue:)),
+                    approachProximity: optionalColumnText(statement, 12).flatMap(ApproachProximity.init(rawValue:)),
+                    firstPuttDistance: optionalColumnText(statement, 13).flatMap(FirstPuttDistance.init(rawValue:)),
+                    penalties: Int(sqlite3_column_int(statement, 14)),
+                    penaltyType: optionalColumnText(statement, 15).flatMap(PenaltyType.init(rawValue:)),
+                    bunker: optionalColumnBool(statement, 16),
+                    upAndDown: optionalColumnBool(statement, 17),
+                    sandSave: optionalColumnBool(statement, 18),
+                    recovery: optionalColumnBool(statement, 19),
+                    note: columnText(statement, 20)
                 )
             )
         }
@@ -448,6 +451,7 @@ final class PinpointDatabase {
             stroke_index INTEGER NOT NULL,
             score INTEGER NOT NULL,
             putts INTEGER NOT NULL,
+            picked_up INTEGER NOT NULL DEFAULT 0,
             fairway TEXT NOT NULL,
             green TEXT NOT NULL,
             tee_club TEXT,
@@ -477,6 +481,9 @@ final class PinpointDatabase {
 
         if !columnExists("approach_proximity", in: "round_holes") {
             try execute("ALTER TABLE round_holes ADD COLUMN approach_proximity TEXT;")
+        }
+        if !columnExists("picked_up", in: "round_holes") {
+            try execute("ALTER TABLE round_holes ADD COLUMN picked_up INTEGER NOT NULL DEFAULT 0;")
         }
     }
 
@@ -605,6 +612,10 @@ private enum SQLiteValue {
 
     static func nullableBool(_ value: Bool?) -> SQLiteValue {
         value.map { .int($0 ? 1 : 0) } ?? .null
+    }
+
+    static func bool(_ value: Bool) -> SQLiteValue {
+        .int(value ? 1 : 0)
     }
 }
 

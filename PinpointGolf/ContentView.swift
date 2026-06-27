@@ -167,6 +167,7 @@ struct ContentView: View {
             hole: hole,
             score: 0,
             putts: 0,
+            pickedUp: false,
             fairway: .notTracked,
             green: .notTracked,
             teeClub: hole.par == 3 ? .iron : .driver,
@@ -251,6 +252,7 @@ struct ContentView: View {
 
         entries[entryIndex].score = update.hole.score
         entries[entryIndex].putts = update.hole.putts
+        entries[entryIndex].pickedUp = false
         entries[entryIndex].fairway = update.hole.fairway.appDirection
         entries[entryIndex].green = update.hole.green.appDirection
         if entries[entryIndex].green != .hit {
@@ -290,6 +292,7 @@ private struct ActiveRoundHoleDraft: Codable {
     let holeNumber: Int
     let score: Int
     let putts: Int
+    let pickedUp: Bool
     let fairway: MissDirection
     let green: MissDirection
     let teeClub: TeeClub
@@ -304,10 +307,31 @@ private struct ActiveRoundHoleDraft: Codable {
     let recovery: Bool
     let note: String
 
+    enum CodingKeys: String, CodingKey {
+        case holeNumber
+        case score
+        case putts
+        case pickedUp
+        case fairway
+        case green
+        case teeClub
+        case approachRange
+        case approachProximity
+        case firstPuttDistance
+        case penalties
+        case penaltyType
+        case bunker
+        case upAndDown
+        case sandSave
+        case recovery
+        case note
+    }
+
     init(entry: RoundHoleEntry) {
         holeNumber = entry.hole.number
         score = entry.score
         putts = entry.putts
+        pickedUp = entry.pickedUp
         fairway = entry.fairway
         green = entry.green
         teeClub = entry.teeClub
@@ -323,11 +347,33 @@ private struct ActiveRoundHoleDraft: Codable {
         note = entry.note
     }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        holeNumber = try container.decode(Int.self, forKey: .holeNumber)
+        score = try container.decode(Int.self, forKey: .score)
+        putts = try container.decode(Int.self, forKey: .putts)
+        pickedUp = try container.decodeIfPresent(Bool.self, forKey: .pickedUp) ?? false
+        fairway = try container.decode(MissDirection.self, forKey: .fairway)
+        green = try container.decode(MissDirection.self, forKey: .green)
+        teeClub = try container.decode(TeeClub.self, forKey: .teeClub)
+        approachRange = try container.decode(ApproachRange.self, forKey: .approachRange)
+        approachProximity = try container.decodeIfPresent(ApproachProximity.self, forKey: .approachProximity)
+        firstPuttDistance = try container.decode(FirstPuttDistance.self, forKey: .firstPuttDistance)
+        penalties = try container.decode(Int.self, forKey: .penalties)
+        penaltyType = try container.decode(PenaltyType.self, forKey: .penaltyType)
+        bunker = try container.decode(Bool.self, forKey: .bunker)
+        upAndDown = try container.decode(Bool.self, forKey: .upAndDown)
+        sandSave = try container.decode(Bool.self, forKey: .sandSave)
+        recovery = try container.decode(Bool.self, forKey: .recovery)
+        note = try container.decode(String.self, forKey: .note)
+    }
+
     func roundEntry(for hole: Hole) -> RoundHoleEntry {
         RoundHoleEntry(
             hole: hole,
             score: score,
             putts: putts,
+            pickedUp: pickedUp,
             fairway: fairway,
             green: green,
             teeClub: teeClub,
@@ -557,7 +603,7 @@ struct HomeHeader: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("Pinpoint Golf")
+                    Text("Precision Golf")
                         .font(.system(size: 34, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
                     Text("Good afternoon, James")
@@ -612,24 +658,34 @@ struct HomeFloatingRoundButton: View {
                 HStack(spacing: 10) {
                     Image(systemName: isRoundActive ? "flag.fill" : "plus")
                         .font(.system(size: 15, weight: .heavy))
-                        .foregroundStyle(AppTheme.mint)
+                        .foregroundStyle(isRoundActive ? Color(red: 0.02, green: 0.24, blue: 0.52) : Color(red: 0.57, green: 0.86, blue: 0.18))
                         .frame(width: 30, height: 30)
-                        .background(Circle().fill(AppTheme.mintWash))
+                        .background(Circle().fill(Color.white))
+                        .overlay(Circle().stroke(Color.white.opacity(0.72), lineWidth: 1))
                     Text(isRoundActive ? "Resume Round" : "New Round")
                         .font(.system(.subheadline, design: .rounded).weight(.heavy))
                         .lineLimit(1)
                         .minimumScaleFactor(0.82)
                 }
-                .foregroundStyle(AppTheme.ink)
+                .foregroundStyle(Color.white)
                 .padding(.leading, 12)
                 .padding(.trailing, 16)
                 .frame(height: 56)
                 .background(
                     Capsule()
-                        .fill(Color.white)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.03, green: 0.32, blue: 0.72),
+                                    Color(red: 0.00, green: 0.54, blue: 0.95)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                 )
-                .overlay(Capsule().stroke(AppTheme.mint.opacity(isRoundActive ? 0.32 : 0.18), lineWidth: 1))
-                .shadow(color: AppTheme.shadow.opacity(1.35), radius: 16, x: 0, y: 8)
+                .overlay(Capsule().stroke(Color.white.opacity(0.36), lineWidth: 1))
+                .shadow(color: Color(red: 0.02, green: 0.24, blue: 0.52).opacity(0.32), radius: 16, x: 0, y: 8)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isRoundActive ? "Resume current round" : "Start new round")
@@ -1623,6 +1679,8 @@ struct SavedRoundDetailView: View {
 
                     ShareableRoundSummaryCard(round: round)
 
+                    RoundShortGameSection(round: round)
+
                     RoundShotPatternSection(pattern: shotPattern)
 
                     RoundApproachProximitySection(round: round)
@@ -1861,6 +1919,165 @@ struct RoundShotPatternCard: View {
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.92)))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
+    }
+}
+
+struct RoundShortGameSection: View {
+    let round: SavedRound
+
+    private var missedGreenHoles: [SavedHoleEntry] {
+        round.holes.filter { $0.green != .hit && $0.green != .notTracked }
+    }
+
+    private var bogeyRecoveries: Int {
+        missedGreenHoles.filter { $0.score - $0.par == 1 }.count
+    }
+
+    private var costlyMisses: Int {
+        missedGreenHoles.filter { $0.score - $0.par >= 2 }.count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Short Game")
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("Scrambles, bunker saves and missed-green damage")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer()
+                Image(systemName: "flag.checkered")
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundStyle(AppTheme.mint)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(AppTheme.mintWash))
+            }
+
+            HStack(spacing: 8) {
+                RoundShortGameMetricTile(
+                    title: "Scramble",
+                    value: "\(round.scramblePercent)%",
+                    caption: "\(round.scrambles)/\(round.scramblingOpportunities)",
+                    accent: AppTheme.mint
+                )
+                RoundShortGameMetricTile(
+                    title: "Sand Save",
+                    value: "\(round.sandSavePercent)%",
+                    caption: "\(round.sandSaves)/\(round.bunkerHoles)",
+                    accent: AppTheme.gold
+                )
+                RoundShortGameMetricTile(
+                    title: "Bunkers",
+                    value: "\(round.bunkerHoles)",
+                    caption: round.bunkerHoles == 1 ? "visit" : "visits",
+                    accent: AppTheme.ink
+                )
+            }
+
+            VStack(spacing: 10) {
+                RoundShortGameBar(label: "Saved par or better", count: round.scrambles, total: round.scramblingOpportunities, color: AppTheme.mint)
+                RoundShortGameBar(label: "Dropped one", count: bogeyRecoveries, total: round.scramblingOpportunities, color: AppTheme.gold)
+                RoundShortGameBar(label: "Dropped two+", count: costlyMisses, total: round.scramblingOpportunities, color: .red)
+            }
+
+            if round.scramblingOpportunities == 0 {
+                Text("No tracked missed greens in this round.")
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.softText)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white, AppTheme.subtleFill.opacity(0.8), AppTheme.mintWash.opacity(0.75)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.75), radius: 14, x: 0, y: 7)
+    }
+}
+
+struct RoundShortGameMetricTile: View {
+    let title: String
+    let value: String
+    let caption: String
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+                .textCase(.uppercase)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text(value)
+                .font(.system(size: 25, weight: .heavy, design: .rounded))
+                .foregroundStyle(accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+            Text(caption)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.88)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
+    }
+}
+
+struct RoundShortGameBar: View {
+    let label: String
+    let count: Int
+    let total: Int
+    let color: Color
+
+    private var percent: Int {
+        guard total > 0 else { return 0 }
+        return Int((Double(count) / Double(total) * 100).rounded())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(label)
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text("\(count) - \(percent)%")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(count == 0 ? AppTheme.softText : color)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(AppTheme.subtleFill)
+                    Capsule()
+                        .fill(count == 0 ? AppTheme.border : color)
+                        .frame(width: barWidth(in: proxy.size.width))
+                }
+            }
+            .frame(height: 8)
+        }
+    }
+
+    private func barWidth(in width: CGFloat) -> CGFloat {
+        guard count > 0 else { return 0 }
+        return max(8, width * CGFloat(percent) / 100)
     }
 }
 
@@ -2150,6 +2367,7 @@ struct EditableSavedHole: Identifiable {
     let strokeIndex: Int
     var score: Int
     var putts: Int
+    var pickedUp: Bool
     var fairway: MissDirection
     var green: MissDirection
     let teeClub: TeeClub?
@@ -2172,6 +2390,7 @@ struct EditableSavedHole: Identifiable {
         strokeIndex = hole.strokeIndex
         score = hole.score
         putts = hole.putts
+        pickedUp = hole.pickedUp
         fairway = hole.fairway
         green = hole.green
         teeClub = hole.teeClub
@@ -2196,6 +2415,7 @@ struct EditableSavedHole: Identifiable {
             strokeIndex: strokeIndex,
             score: score,
             putts: putts,
+            pickedUp: pickedUp,
             fairway: fairway,
             green: green,
             teeClub: teeClub,
@@ -2233,6 +2453,12 @@ struct EditableHoleRow: View {
                 StepperMini(title: "Putts", value: $hole.putts, range: 0...6, accent: AppTheme.mint)
                 StepperMini(title: "Pen", value: $hole.penalties, range: 0...4, accent: AppTheme.gold)
             }
+            Toggle(isOn: $hole.pickedUp) {
+                Label("Picked up", systemImage: "flag.checkered")
+                    .font(.system(.caption, design: .rounded).weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+            }
+            .toggleStyle(.switch)
 
             HStack(spacing: 8) {
                 StatMenu(title: "Fairway", selection: $hole.fairway, choices: [.notTracked, .hit, .left, .right])
@@ -2378,7 +2604,7 @@ struct ShareableRoundSummaryCard: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("Pinpoint Golf")
+                    Text("Precision Golf")
                         .font(.system(.caption, design: .rounded).weight(.heavy))
                         .foregroundStyle(AppTheme.mint)
                         .textCase(.uppercase)
@@ -2540,7 +2766,7 @@ struct ScorecardTable: View {
             ScorecardInfoRow(label: "Par", values: holes.map { "\($0.par)" }, total: "\(holes.reduce(0) { $0 + $1.par })", metrics: metrics)
             ScorecardInfoRow(label: "Yds", values: holes.map { "\($0.yards)" }, total: "\(holes.reduce(0) { $0 + $1.yards })", metrics: metrics)
             ScorecardScoreRow(holes: holes, total: "\(holes.reduce(0) { $0 + $1.score })", metrics: metrics)
-            ScorecardInfoRow(label: "Putts", values: holes.map { "\($0.putts)" }, total: "\(holes.reduce(0) { $0 + $1.putts })", metrics: metrics)
+            ScorecardInfoRow(label: "Putts", values: holes.map { $0.pickedUp ? "-" : "\($0.putts)" }, total: "\(holes.reduce(0) { $0 + ($1.pickedUp ? 0 : $1.putts) })", metrics: metrics)
         }
         .padding(6)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill.opacity(0.7)))
@@ -2730,10 +2956,10 @@ struct HoleBreakdownRow: View {
                 .foregroundStyle(AppTheme.ink)
                 .frame(width: 32, alignment: .leading)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Score \(hole.score) on par \(hole.par)")
+                Text(hole.pickedUp ? "Picked up for \(hole.score)" : "Score \(hole.score) on par \(hole.par)")
                     .font(.system(.subheadline, design: .rounded).weight(.bold))
                     .foregroundStyle(AppTheme.ink)
-                Text("\(hole.yards) yds - SI \(hole.strokeIndex) - \(hole.putts) putts - \(hole.penalties) pen")
+                Text("\(hole.yards) yds - SI \(hole.strokeIndex) - \(hole.pickedUp ? "no putts" : "\(hole.putts) putts") - \(hole.penalties) pen")
                     .font(.system(.caption, design: .rounded).weight(.medium))
                     .foregroundStyle(AppTheme.softText)
                 Text(holeInsightLine)
@@ -3317,12 +3543,15 @@ struct CourseSetupCard: View {
 
             Button {
                 if course.hasVerifiedScorecard {
-                    if !isCourseSelected {
-                        selectedCourse = course
-                        selectedTee = course.tees[0]
-                    } else {
-                        startRound()
+                    guard let firstTee = course.tees.first else {
+                        setupScorecard(course)
+                        return
                     }
+                    selectedCourse = course
+                    if !isCourseSelected {
+                        selectedTee = firstTee
+                    }
+                    startRound()
                 } else {
                     setupScorecard(course)
                 }
@@ -3348,22 +3577,23 @@ struct CourseSetupCard: View {
     }
 
     private var isCourseSelected: Bool {
-        selectedCourse == course && course.tees.contains(selectedTee)
+        selectedCourse.favoriteKey == course.favoriteKey && course.tees.contains { $0.name == selectedTee.name }
     }
 
     private var primaryButtonTitle: String {
         if !course.hasVerifiedScorecard {
             return "Add Scorecard"
         }
-        return isCourseSelected ? "Start Round from \(selectedTee.name) Tees" : "Select Course and Tees"
+        let teeName = isCourseSelected ? selectedTee.name : course.tees.first?.name
+        return "Start Round\(teeName.map { " from \($0) Tees" } ?? "")"
     }
 
     private var primaryButtonIcon: String {
-        course.hasVerifiedScorecard && isCourseSelected ? "chevron.right" : "hand.tap.fill"
+        course.hasVerifiedScorecard ? "chevron.right" : "hand.tap.fill"
     }
 
     private func isSelected(_ tee: TeeBox) -> Bool {
-        isCourseSelected && selectedTee == tee
+        isCourseSelected && selectedTee.name == tee.name
     }
 }
 
@@ -4009,6 +4239,20 @@ struct LiveRoundView: View {
             get: { entries[currentHoleIndex] },
             set: { entries[currentHoleIndex] = $0 }
         )
+        let score = Binding<Int>(
+            get: { entry.wrappedValue.score },
+            set: { newValue in
+                entry.wrappedValue.score = newValue
+                entry.wrappedValue.pickedUp = false
+            }
+        )
+        let putts = Binding<Int>(
+            get: { entry.wrappedValue.putts },
+            set: { newValue in
+                entry.wrappedValue.putts = newValue
+                entry.wrappedValue.pickedUp = false
+            }
+        )
 
         VStack(spacing: 12) {
             LiveRoundHeaderCard(
@@ -4019,6 +4263,7 @@ struct LiveRoundView: View {
                 strokeIndex: entry.wrappedValue.hole.strokeIndex,
                 courseHandicap: courseHandicap,
                 gross: currentGross,
+                scoreToPar: scoreToParThroughCurrentHole,
                 stableford: currentStableford
             )
             .padding(.horizontal, 20)
@@ -4026,8 +4271,33 @@ struct LiveRoundView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 12) {
-                    StepperPanel(title: "Score", value: entry.score, range: 0...12, accent: AppTheme.gold, blankWhenZero: true)
-                    StepperPanel(title: "Putts", value: entry.putts, range: 0...6, accent: AppTheme.mint)
+                    StepperPanel(title: "Score", value: score, range: 0...12, accent: AppTheme.gold, blankWhenZero: true)
+                    StepperPanel(title: "Putts", value: putts, range: 0...6, accent: AppTheme.mint)
+
+                    Button {
+                        markCurrentHolePickedUp(entry)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: entry.wrappedValue.pickedUp ? "flag.checkered.circle.fill" : "flag.checkered")
+                                .font(.system(size: 20, weight: .bold))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(entry.wrappedValue.pickedUp ? "Picked Up" : "Pickup")
+                                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                                Text("Records \(pickupScore(for: entry.wrappedValue)) for 0 Stableford points")
+                                    .font(.system(.caption, design: .rounded).weight(.bold))
+                            }
+                            Spacer()
+                        }
+                        .foregroundStyle(entry.wrappedValue.pickedUp ? .white : AppTheme.ink)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(entry.wrappedValue.pickedUp ? AppTheme.ink : AppTheme.panel)
+                        )
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+                    }
+                    .buttonStyle(.plain)
 
                     QuickStatsPanel(
                         showFairway: entry.wrappedValue.hole.par > 3,
@@ -4101,10 +4371,27 @@ struct LiveRoundView: View {
     }
 
     private func stablefordPoints(for entry: RoundHoleEntry) -> Int {
+        if entry.pickedUp { return 0 }
         guard entry.score > 0 else { return 0 }
         let strokes = courseHandicap / 18 + (entry.hole.strokeIndex <= courseHandicap % 18 ? 1 : 0)
         let netScore = entry.score - strokes
         return max(0, 2 + (entry.hole.par - netScore))
+    }
+
+    private func markCurrentHolePickedUp(_ entry: Binding<RoundHoleEntry>) {
+        entry.wrappedValue.score = pickupScore(for: entry.wrappedValue)
+        entry.wrappedValue.putts = 0
+        entry.wrappedValue.green = .notTracked
+        entry.wrappedValue.approachProximity = nil
+        entry.wrappedValue.pickedUp = true
+    }
+
+    private func pickupScore(for entry: RoundHoleEntry) -> Int {
+        entry.hole.par + handicapStrokes(for: entry.hole) + 2
+    }
+
+    private func handicapStrokes(for hole: Hole) -> Int {
+        courseHandicap / 18 + (hole.strokeIndex <= courseHandicap % 18 ? 1 : 0)
     }
 
     private var courseHandicap: Int {
@@ -4116,8 +4403,16 @@ struct LiveRoundView: View {
         Array(entries.prefix(currentHoleIndex + 1))
     }
 
+    private var completedEntriesThroughCurrentHole: [RoundHoleEntry] {
+        scoredEntriesThroughCurrentHole.filter { $0.score > 0 }
+    }
+
     private var grossScoreThroughCurrentHole: Int {
         scoredEntriesThroughCurrentHole.reduce(0) { $0 + $1.score }
+    }
+
+    private var scoreToParThroughCurrentHole: Int {
+        completedEntriesThroughCurrentHole.reduce(0) { $0 + ($1.score - $1.hole.par) }
     }
 
     private var stablefordThroughCurrentHole: Int {
@@ -4215,17 +4510,18 @@ struct RoundReviewMetrics {
     var gross: Int { entries.reduce(0) { $0 + $1.score } }
     var par: Int { entries.reduce(0) { $0 + $1.hole.par } }
     var scoreToPar: Int { gross - par }
-    var putts: Int { entries.reduce(0) { $0 + $1.putts } }
+    var puttingEntries: [RoundHoleEntry] { entries.filter { !$0.pickedUp } }
+    var putts: Int { puttingEntries.reduce(0) { $0 + $1.putts } }
     var penalties: Int { entries.reduce(0) { $0 + $1.penalties } }
     var fairwaysHit: Int { drivingEntries.filter { $0.fairway == .hit }.count }
     var fairwaysTotal: Int { drivingEntries.filter { $0.fairway != .notTracked }.count }
     var greensHit: Int { entries.filter { $0.green == .hit }.count }
-    var threePutts: Int { entries.filter { $0.putts >= 3 }.count }
+    var threePutts: Int { puttingEntries.filter { $0.putts >= 3 }.count }
     var birdies: Int { entries.filter { $0.score - $0.hole.par == -1 }.count }
     var pars: Int { entries.filter { $0.score == $0.hole.par }.count }
     var bogeys: Int { entries.filter { $0.score - $0.hole.par == 1 }.count }
     var doublesOrWorse: Int { entries.filter { $0.score - $0.hole.par >= 2 }.count }
-    var puttsPerHole: Double { entries.isEmpty ? 0 : Double(putts) / Double(entries.count) }
+    var puttsPerHole: Double { puttingEntries.isEmpty ? 0 : Double(putts) / Double(puttingEntries.count) }
 
     var courseHandicap: Int {
         let adjusted = (handicap * Double(tee.slope) / 113.0) + (tee.rating - Double(tee.par))
@@ -4234,6 +4530,7 @@ struct RoundReviewMetrics {
 
     var stableford: Int {
         entries.reduce(0) { total, entry in
+            if entry.pickedUp { return total }
             guard entry.score > 0 else { return total }
             let strokes = courseHandicap / 18 + (entry.hole.strokeIndex <= courseHandicap % 18 ? 1 : 0)
             let netScore = entry.score - strokes
@@ -4545,6 +4842,7 @@ struct InsightsDashboardContent: View {
     private func snapshot(from savedRounds: [SavedRound]) -> InsightSnapshot {
         if !savedRounds.isEmpty {
             let holes = savedRounds.flatMap(\.holes)
+            let puttingHoles = holes.filter { !$0.pickedUp }
             let drivingHoles = holes.filter { $0.par > 3 }
             let trackedDrivingHoles = drivingHoles.filter { $0.fairway != .notTracked }
             let trackedGreens = holes.filter { $0.green != .notTracked }
@@ -4565,9 +4863,9 @@ struct InsightsDashboardContent: View {
                 fairwayMisses: trackedDrivingHoles.map(\.fairway).filter { $0 != .hit },
                 greenMisses: trackedGreens.map(\.green).filter { $0 != .hit },
                 girProximities: holes.compactMap { $0.green == .hit ? $0.approachProximity : nil },
-                threePutts: holes.filter { $0.putts >= 3 }.count,
-                onePutts: holes.filter { $0.putts == 1 }.count,
-                twoPutts: holes.filter { $0.putts == 2 }.count,
+                threePutts: puttingHoles.filter { $0.putts >= 3 }.count,
+                onePutts: puttingHoles.filter { $0.putts == 1 }.count,
+                twoPutts: puttingHoles.filter { $0.putts == 2 }.count,
                 scrambles: trackedGreens.filter { $0.green != .hit && $0.score <= $0.par }.count,
                 scrambleOpportunities: trackedGreens.filter { $0.green != .hit }.count,
                 sandSaves: holes.filter { $0.bunker == true && $0.score <= $0.par }.count,
@@ -4592,6 +4890,7 @@ struct InsightsDashboardContent: View {
 
     private var activeRoundSnapshot: InsightSnapshot {
         let drivingEntries = entries.filter { $0.hole.par > 3 }
+        let puttingEntries = entries.filter { !$0.pickedUp }
         let trackedDrivingEntries = drivingEntries.filter { $0.fairway != .notTracked }
         let trackedGreenEntries = entries.filter { $0.green != .notTracked }
         let par3s = entries.filter { $0.hole.par == 3 }
@@ -4602,7 +4901,7 @@ struct InsightsDashboardContent: View {
             par: entries.reduce(0) { $0 + $1.hole.par },
             roundCount: isRoundActive ? 1 : 0,
             holeCount: entries.count,
-            putts: entries.reduce(0) { $0 + $1.putts },
+            putts: puttingEntries.reduce(0) { $0 + $1.putts },
             fairwaysHit: drivingEntries.filter { $0.fairway == .hit }.count,
             fairwaysTotal: trackedDrivingEntries.count,
             greensHit: entries.filter { $0.green == .hit }.count,
@@ -4611,9 +4910,9 @@ struct InsightsDashboardContent: View {
             fairwayMisses: trackedDrivingEntries.map(\.fairway).filter { $0 != .hit },
             greenMisses: trackedGreenEntries.map(\.green).filter { $0 != .hit },
             girProximities: entries.compactMap { $0.green == .hit ? $0.approachProximity : nil },
-            threePutts: entries.filter { $0.putts >= 3 }.count,
-            onePutts: entries.filter { $0.putts == 1 }.count,
-            twoPutts: entries.filter { $0.putts == 2 }.count,
+            threePutts: puttingEntries.filter { $0.putts >= 3 }.count,
+            onePutts: puttingEntries.filter { $0.putts == 1 }.count,
+            twoPutts: puttingEntries.filter { $0.putts == 2 }.count,
             scrambles: trackedGreenEntries.filter { $0.green != .hit && $0.score <= $0.hole.par }.count,
             scrambleOpportunities: trackedGreenEntries.filter { $0.green != .hit }.count,
             sandSaves: entries.filter { $0.bunker && $0.score <= $0.hole.par }.count,
@@ -4938,30 +5237,39 @@ struct PremiumStatsCard<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(spacing: 0) {
-            Text(title)
-                .font(.system(size: 24, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white)
-                .lineLimit(2)
-                .minimumScaleFactor(0.82)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 18)
-                .background(
-                    UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 8)
-                        .fill(Color(red: 0.07, green: 0.67, blue: 0.35))
-                )
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(AppTheme.mint)
+                    .frame(width: 9, height: 9)
+                Text(title)
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 18)
 
             content
                 .padding(.horizontal, 20)
-                .padding(.top, 24)
                 .padding(.bottom, 22)
                 .frame(maxWidth: .infinity, minHeight: 410, alignment: .top)
-                .background(Color.white)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.55)))
-        .shadow(color: AppTheme.shadow.opacity(2.2), radius: 24, x: 0, y: 14)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white, AppTheme.subtleFill.opacity(0.8)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
+        .shadow(color: AppTheme.shadow.opacity(1.6), radius: 18, x: 0, y: 10)
         .padding(.horizontal, 2)
     }
 }
@@ -5165,7 +5473,8 @@ struct ShortGamePremiumCard: View {
 
                 HStack(spacing: 18) {
                     PremiumBottomMetric(title: "Scrambles", value: "\(snapshot.scrambles)/\(snapshot.scrambleOpportunities)", accent: AppTheme.mint)
-                    PremiumBottomMetric(title: "Sand Save", value: "\(snapshot.sandSavePercent)%", accent: AppTheme.mint)
+                    PremiumBottomMetric(title: "Sand Save", value: "\(snapshot.sandSavePercent)%", accent: AppTheme.gold)
+                    PremiumBottomMetric(title: "Bunkers", value: "\(snapshot.bunkerHoles)", accent: AppTheme.ink)
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
@@ -5518,12 +5827,12 @@ struct FairwayFanShape: Shape {
     }
 }
 
-struct PinpointBackupDocument: FileDocument {
+struct PrecisionBackupDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json] }
 
-    var backup: PinpointBackup
+    var backup: PrecisionBackup
 
-    init(backup: PinpointBackup) {
+    init(backup: PrecisionBackup) {
         self.backup = backup
     }
 
@@ -5533,7 +5842,7 @@ struct PinpointBackupDocument: FileDocument {
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        backup = try decoder.decode(PinpointBackup.self, from: data)
+        backup = try decoder.decode(PrecisionBackup.self, from: data)
     }
 
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
@@ -5554,10 +5863,10 @@ struct SettingsView: View {
     @ObservedObject var handicapHistory: HandicapHistoryStore
     @ObservedObject var scorecardStore: CourseScorecardStore
     @State private var handicapText = ""
-    @State private var backupDocument: PinpointBackupDocument?
+    @State private var backupDocument: PrecisionBackupDocument?
     @State private var isExportingBackup = false
     @State private var isImportingBackup = false
-    @State private var pendingBackup: PinpointBackup?
+    @State private var pendingBackup: PrecisionBackup?
     @State private var showRestoreConfirmation = false
     @State private var restoreMessage: String?
 
@@ -5709,7 +6018,7 @@ struct SettingsView: View {
                     }
 
                     Button {
-                        backupDocument = PinpointBackupDocument(backup: makeBackup())
+                        backupDocument = PrecisionBackupDocument(backup: makeBackup())
                         isExportingBackup = true
                     } label: {
                         HStack {
@@ -5761,7 +6070,7 @@ struct SettingsView: View {
             isPresented: $isExportingBackup,
             document: backupDocument,
             contentType: .json,
-            defaultFilename: "PinpointGolf-Backup"
+            defaultFilename: "PrecisionGolf-Backup"
         ) { _ in }
         .fileImporter(isPresented: $isImportingBackup, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
             importBackup(result)
@@ -5810,8 +6119,8 @@ struct SettingsView: View {
         playerSettings.handicap = min(54, max(0, value))
     }
 
-    private func makeBackup() -> PinpointBackup {
-        PinpointBackup(
+    private func makeBackup() -> PrecisionBackup {
+        PrecisionBackup(
             version: 1,
             exportedAt: Date(),
             handicap: playerSettings.handicap,
@@ -5834,10 +6143,10 @@ struct SettingsView: View {
             let data = try Data(contentsOf: url)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            pendingBackup = try decoder.decode(PinpointBackup.self, from: data)
+            pendingBackup = try decoder.decode(PrecisionBackup.self, from: data)
             showRestoreConfirmation = true
         } catch {
-            restoreMessage = "Backup import failed. Choose a Pinpoint Golf JSON backup."
+            restoreMessage = "Backup import failed. Choose a Precision Golf JSON backup."
         }
     }
 
@@ -6662,6 +6971,7 @@ struct LiveRoundHeaderCard: View {
     let strokeIndex: Int
     let courseHandicap: Int
     let gross: Int
+    let scoreToPar: Int
     let stableford: Int
 
     var body: some View {
@@ -6691,6 +7001,7 @@ struct LiveRoundHeaderCard: View {
 
             HStack(spacing: 10) {
                 LiveRoundHeaderMetric(title: "Gross", value: "\(gross)", accent: AppTheme.gold)
+                LiveRoundHeaderMetric(title: "To Par", value: scoreToParLabel, accent: scoreToPar <= 0 ? .white : AppTheme.gold)
                 LiveRoundHeaderMetric(title: "Points", value: "\(stableford)", accent: .white)
                 LiveRoundHeaderMetric(title: "CH", value: "\(courseHandicap)", accent: .white)
             }
@@ -6708,6 +7019,10 @@ struct LiveRoundHeaderCard: View {
         )
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.62)))
         .shadow(color: AppTheme.shadow.opacity(1.35), radius: 20, x: 0, y: 10)
+    }
+
+    private var scoreToParLabel: String {
+        scoreToPar == 0 ? "E" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
     }
 }
 

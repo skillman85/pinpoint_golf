@@ -222,9 +222,7 @@ private extension GolfCourse {
 
 private extension TeeBox {
     func applyingWergsScorecardCorrection() -> TeeBox {
-        guard normalizedName == "white" || normalizedName == "yellow" else { return self }
-
-        let correctedHoles = normalizedName == "white" ? DemoData.wergsWhiteHoles : DemoData.wergsYellowHoles
+        guard let correctedHoles = wergsCorrectedHoles else { return self }
 
         return TeeBox(
             name: name,
@@ -244,7 +242,7 @@ private extension TeeBox {
     func canProvideStrokeIndexes(for importedTee: TeeBox) -> Bool {
         holes.count == importedTee.holes.count
             && usesGeneratedStrokeIndexes == false
-            && normalizedName == importedTee.normalizedName
+            && matchesScorecardName(importedTee)
     }
 
     func withStrokeIndexes(from trustedTee: TeeBox) -> TeeBox {
@@ -273,6 +271,35 @@ private extension TeeBox {
         name
             .lowercased()
             .replacingOccurrences(of: "[^a-z0-9]+", with: "", options: .regularExpression)
+    }
+
+    var wergsCorrectedHoles: [Hole]? {
+        switch scorecardColorName {
+        case "white":
+            DemoData.wergsWhiteHoles
+        case "yellow":
+            DemoData.wergsYellowHoles
+        default:
+            nil
+        }
+    }
+
+    var scorecardColorName: String? {
+        let normalized = normalizedName
+        for color in ["black", "blue", "white", "yellow", "red", "green", "gold"] where normalized.contains(color) {
+            return color
+        }
+        return nil
+    }
+
+    func matchesScorecardName(_ other: TeeBox) -> Bool {
+        if normalizedName == other.normalizedName {
+            return true
+        }
+        guard let color = scorecardColorName else {
+            return false
+        }
+        return color == other.scorecardColorName
     }
 }
 
@@ -478,6 +505,7 @@ struct RoundHoleEntry: Identifiable, Equatable {
     let hole: Hole
     var score: Int
     var putts: Int
+    var pickedUp: Bool
     var fairway: MissDirection
     var green: MissDirection
     var teeClub: TeeClub
@@ -529,7 +557,7 @@ struct SavedRound: Identifiable, Codable {
 
     var totalScore: Int { holes.reduce(0) { $0 + $1.score } }
     var totalPar: Int { holes.reduce(0) { $0 + $1.par } }
-    var totalPutts: Int { holes.reduce(0) { $0 + $1.putts } }
+    var totalPutts: Int { holes.reduce(0) { $0 + ($1.pickedUp ? 0 : $1.putts) } }
     var fairwaysHit: Int { holes.filter { $0.par > 3 && $0.fairway == .hit }.count }
     var fairwaysTotal: Int { holes.filter { $0.par > 3 && $0.fairway != .notTracked }.count }
     var greensInRegulation: Int { holes.filter { $0.green == .hit }.count }
@@ -543,14 +571,21 @@ struct SavedRound: Identifiable, Codable {
     var bestGirProximity: ApproachProximity? {
         girProximities.min { $0.midpointFeet < $1.midpointFeet }
     }
-    var onePutts: Int { holes.filter { $0.putts == 1 }.count }
-    var twoPutts: Int { holes.filter { $0.putts == 2 }.count }
-    var threePutts: Int { holes.filter { $0.putts >= 3 }.count }
+    var puttingHoles: [SavedHoleEntry] { holes.filter { !$0.pickedUp } }
+    var onePutts: Int { puttingHoles.filter { $0.putts == 1 }.count }
+    var twoPutts: Int { puttingHoles.filter { $0.putts == 2 }.count }
+    var threePutts: Int { puttingHoles.filter { $0.putts >= 3 }.count }
     var scramblingOpportunities: Int { holes.filter { $0.green != .hit && $0.green != .notTracked }.count }
     var scrambles: Int { holes.filter { $0.green != .hit && $0.green != .notTracked && $0.score <= $0.par }.count }
     var scramblePercent: Int {
         guard scramblingOpportunities > 0 else { return 0 }
         return Int((Double(scrambles) / Double(scramblingOpportunities) * 100).rounded())
+    }
+    var bunkerHoles: Int { holes.filter { $0.bunker == true }.count }
+    var sandSaves: Int { holes.filter { $0.bunker == true && $0.score <= $0.par }.count }
+    var sandSavePercent: Int {
+        guard bunkerHoles > 0 else { return 0 }
+        return Int((Double(sandSaves) / Double(bunkerHoles) * 100).rounded())
     }
     var penalties: Int { holes.reduce(0) { $0 + $1.penalties } }
     var holeInOnes: Int { holes.filter { $0.par == 3 && $0.score == 1 }.count }
@@ -606,6 +641,7 @@ struct SavedHoleEntry: Identifiable, Codable, Hashable {
     let strokeIndex: Int
     let score: Int
     let putts: Int
+    let pickedUp: Bool
     let fairway: MissDirection
     let green: MissDirection
     let teeClub: TeeClub?
@@ -619,6 +655,101 @@ struct SavedHoleEntry: Identifiable, Codable, Hashable {
     let sandSave: Bool?
     let recovery: Bool?
     let note: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case holeNumber
+        case par
+        case yards
+        case strokeIndex
+        case score
+        case putts
+        case pickedUp
+        case fairway
+        case green
+        case teeClub
+        case approachRange
+        case approachProximity
+        case firstPuttDistance
+        case penalties
+        case penaltyType
+        case bunker
+        case upAndDown
+        case sandSave
+        case recovery
+        case note
+    }
+
+    init(
+        id: UUID,
+        holeNumber: Int,
+        par: Int,
+        yards: Int,
+        strokeIndex: Int,
+        score: Int,
+        putts: Int,
+        pickedUp: Bool = false,
+        fairway: MissDirection,
+        green: MissDirection,
+        teeClub: TeeClub?,
+        approachRange: ApproachRange?,
+        approachProximity: ApproachProximity?,
+        firstPuttDistance: FirstPuttDistance?,
+        penalties: Int,
+        penaltyType: PenaltyType?,
+        bunker: Bool?,
+        upAndDown: Bool?,
+        sandSave: Bool?,
+        recovery: Bool?,
+        note: String
+    ) {
+        self.id = id
+        self.holeNumber = holeNumber
+        self.par = par
+        self.yards = yards
+        self.strokeIndex = strokeIndex
+        self.score = score
+        self.putts = putts
+        self.pickedUp = pickedUp
+        self.fairway = fairway
+        self.green = green
+        self.teeClub = teeClub
+        self.approachRange = approachRange
+        self.approachProximity = approachProximity
+        self.firstPuttDistance = firstPuttDistance
+        self.penalties = penalties
+        self.penaltyType = penaltyType
+        self.bunker = bunker
+        self.upAndDown = upAndDown
+        self.sandSave = sandSave
+        self.recovery = recovery
+        self.note = note
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        holeNumber = try container.decode(Int.self, forKey: .holeNumber)
+        par = try container.decode(Int.self, forKey: .par)
+        yards = try container.decode(Int.self, forKey: .yards)
+        strokeIndex = try container.decode(Int.self, forKey: .strokeIndex)
+        score = try container.decode(Int.self, forKey: .score)
+        putts = try container.decode(Int.self, forKey: .putts)
+        pickedUp = try container.decodeIfPresent(Bool.self, forKey: .pickedUp) ?? false
+        fairway = try container.decode(MissDirection.self, forKey: .fairway)
+        green = try container.decode(MissDirection.self, forKey: .green)
+        teeClub = try container.decodeIfPresent(TeeClub.self, forKey: .teeClub)
+        approachRange = try container.decodeIfPresent(ApproachRange.self, forKey: .approachRange)
+        approachProximity = try container.decodeIfPresent(ApproachProximity.self, forKey: .approachProximity)
+        firstPuttDistance = try container.decodeIfPresent(FirstPuttDistance.self, forKey: .firstPuttDistance)
+        penalties = try container.decode(Int.self, forKey: .penalties)
+        penaltyType = try container.decodeIfPresent(PenaltyType.self, forKey: .penaltyType)
+        bunker = try container.decodeIfPresent(Bool.self, forKey: .bunker)
+        upAndDown = try container.decodeIfPresent(Bool.self, forKey: .upAndDown)
+        sandSave = try container.decodeIfPresent(Bool.self, forKey: .sandSave)
+        recovery = try container.decodeIfPresent(Bool.self, forKey: .recovery)
+        note = try container.decode(String.self, forKey: .note)
+    }
 
     func stablefordPoints(using handicap: Double) -> Int {
         let strokes = handicapStrokes(using: handicap)
@@ -641,7 +772,7 @@ struct CustomGoal: Identifiable, Codable, Hashable {
     let createdAt: Date
 }
 
-struct PinpointBackup: Codable {
+struct PrecisionBackup: Codable {
     let version: Int
     let exportedAt: Date
     let handicap: Double
@@ -888,6 +1019,7 @@ final class RoundArchive: ObservableObject {
                     strokeIndex: entry.hole.strokeIndex,
                     score: entry.score,
                     putts: entry.putts,
+                    pickedUp: entry.pickedUp,
                     fairway: entry.fairway,
                     green: entry.green,
                     teeClub: entry.teeClub,

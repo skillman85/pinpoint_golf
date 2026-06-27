@@ -7,7 +7,7 @@
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <scenes>
-        <scene sceneID="launch-scene">
+        <scene sceneID="precision-launch-scene">
             <objects>
                 <viewController id="launch-view-controller" sceneMemberID="viewController">
                     <view key="view" contentMode="scaleToFill" id="launch-root-view">
@@ -19,7 +19,7 @@
                             </imageView>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="launch-safe-area"/>
-                        <color key="backgroundColor" red="0.9568627451" green="0.9803921569" blue="0.9490196078" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <color key="backgroundColor" red="0.0078431373" green="0.0784313725" blue="0.0549019608" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                         <constraints>
                             <constraint firstItem="launch-image-view" firstAttribute="top" secondItem="launch-root-view" secondAttribute="top" id="launch-image-top"/>
                             <constraint firstItem="launch-image-view" firstAttribute="leading" secondItem="launch-root-view" secondAttribute="leading" id="launch-image-leading"/>

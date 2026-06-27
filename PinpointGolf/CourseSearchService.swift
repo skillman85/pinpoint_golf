@@ -9,7 +9,7 @@ final class CourseSearchViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published private(set) var locationSearchLabel: String?
 
-    private let courseAPI = PinpointCourseAPIClient()
+    private let courseAPI = PrecisionCourseAPIClient()
     private let locationProvider = CourseLocationProvider()
     private var cachedLocationSearch: (label: String, date: Date, courses: [GolfCourse])?
     private let locationSearchCacheLifetime: TimeInterval = 10 * 60
@@ -32,7 +32,7 @@ final class CourseSearchViewModel: ObservableObject {
                 results = courses
                 return
             }
-        } catch PinpointCourseAPIError.missingBaseURL {
+        } catch PrecisionCourseAPIError.missingBaseURL {
             errorMessage = "Course API backend is not configured. Falling back to saved courses."
         } catch {
             errorMessage = "Course API search failed. Falling back to saved courses."
@@ -65,32 +65,34 @@ final class CourseSearchViewModel: ObservableObject {
                 return
             }
 
-            let nearbyNames = try await locationProvider.nearbyGolfCourseNames(near: context.location)
-            let courses = try await courseAPI.searchNearbyCourses(
-                coordinate: context.location.coordinate,
-                queries: Array(nearbyNames.prefix(3)),
-                limit: 4
+            let nearbyNames = (try? await locationProvider.nearbyGolfCourseNames(near: context.location)) ?? []
+            let nearbyQueries = Self.uniqueTerms(
+                CourseLocationProvider.regionalCourseSearchHints(near: context.location, label: context.label)
+                    + nearbyNames
+                    + context.searchTerms
             )
-            if !courses.isEmpty {
-                results = courses
-                cachedLocationSearch = (context.label, Date(), courses)
+            let courses = (try? await courseAPI.searchNearbyCourses(
+                coordinate: context.location.coordinate,
+                queries: Array(nearbyQueries.prefix(10)),
+                limit: 8
+            )) ?? []
+            let verifiedCourses = Self.verifiedCourses(courses)
+            if !verifiedCourses.isEmpty {
+                let mergedCourses = Self.mergedCourses(verifiedCourses)
+                results = mergedCourses
+                cachedLocationSearch = (context.label, Date(), mergedCourses)
                 return
             }
 
-            let fallbackCourses = try await courseAPI.searchCourses(query: context.label, limit: 4)
-            if !fallbackCourses.isEmpty {
-                results = fallbackCourses
-                cachedLocationSearch = (context.label, Date(), fallbackCourses)
-                return
-            }
-
-            results = searchBundledCourses(query: context.label)
+            results = Self.mergedCourses(
+                Self.verifiedCourses(context.searchTerms.flatMap { searchBundledCourses(query: $0) })
+            )
             if results.isEmpty {
                 errorMessage = "No verified scorecards found nearby. Try searching by course name."
             }
         } catch CourseLocationError.permissionDenied {
             errorMessage = "Location permission is needed to search nearby courses. You can still search by town or county."
-        } catch PinpointCourseAPIError.missingBaseURL {
+        } catch PrecisionCourseAPIError.missingBaseURL {
             errorMessage = "Course API backend is not configured. Search by course name or use favourites."
         } catch {
             errorMessage = "Could not find nearby courses. Search by course name, town, city or county instead."
@@ -104,36 +106,63 @@ final class CourseSearchViewModel: ObservableObject {
                 || course.location.lowercased().contains(normalizedQuery)
         }
     }
+
+    private static func uniqueTerms(_ terms: [String]) -> [String] {
+        var seenTerms = Set<String>()
+        return terms
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { term in
+                let key = term.lowercased()
+                guard !seenTerms.contains(key) else { return false }
+                seenTerms.insert(key)
+                return true
+            }
+    }
+
+    private static func verifiedCourses(_ courses: [GolfCourse]) -> [GolfCourse] {
+        courses.filter { $0.hasVerifiedScorecard && !$0.tees.isEmpty }
+    }
+
+    private static func mergedCourses(_ courses: [GolfCourse]) -> [GolfCourse] {
+        var seenCourses = Set<String>()
+        return courses.filter { course in
+            let key = course.name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !seenCourses.contains(key) else { return false }
+            seenCourses.insert(key)
+            return true
+        }
+    }
 }
 
-enum PinpointCourseAPIError: LocalizedError {
+enum PrecisionCourseAPIError: LocalizedError {
     case missingBaseURL
     case invalidResponse
 
     var errorDescription: String? {
         switch self {
         case .missingBaseURL:
-            "Pinpoint course API base URL is missing."
+            "Precision course API base URL is missing."
         case .invalidResponse:
-            "Pinpoint course API returned an unexpected response."
+            "Precision course API returned an unexpected response."
         }
     }
 }
 
-struct PinpointCourseAPIClient {
+struct PrecisionCourseAPIClient {
     private let session: URLSession
     private let baseURLString: String
 
-    init(
-        baseURLString: String? = Bundle.main.object(forInfoDictionaryKey: "PinpointCourseAPIBaseURL") as? String,
-        session: URLSession = .shared
-    ) {
-        self.baseURLString = baseURLString ?? ""
+    init(baseURLString: String? = nil, session: URLSession = .shared) {
+        self.baseURLString = baseURLString
+            ?? Bundle.main.object(forInfoDictionaryKey: "PrecisionCourseAPIBaseURL") as? String
+            ?? Bundle.main.object(forInfoDictionaryKey: "PinpointCourseAPIBaseURL") as? String
+            ?? ""
         self.session = session
     }
 
     func searchCourses(query: String, limit: Int = 8) async throws -> [GolfCourse] {
-        let response: PinpointCourseSearchResponse = try await request(
+        let response: PrecisionCourseSearchResponse = try await request(
             path: "/api/courses/search",
             queryItems: [
                 URLQueryItem(name: "q", value: query),
@@ -144,7 +173,7 @@ struct PinpointCourseAPIClient {
     }
 
     func searchNearbyCourses(coordinate: CLLocationCoordinate2D, queries: [String], limit: Int = 4) async throws -> [GolfCourse] {
-        let response: PinpointCourseSearchResponse = try await request(
+        let response: PrecisionCourseSearchResponse = try await request(
             path: "/api/courses/near",
             queryItems: [
                 URLQueryItem(name: "lat", value: String(format: "%.5f", coordinate.latitude)),
@@ -161,41 +190,41 @@ struct PinpointCourseAPIClient {
         guard !trimmedBaseURL.isEmpty,
               !trimmedBaseURL.hasPrefix("$("),
               var components = URLComponents(string: trimmedBaseURL) else {
-            throw PinpointCourseAPIError.missingBaseURL
+            throw PrecisionCourseAPIError.missingBaseURL
         }
 
         let basePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         components.path = basePath.isEmpty ? path : "/\(basePath)\(path)"
         components.queryItems = queryItems
         guard let url = components.url else {
-            throw PinpointCourseAPIError.invalidResponse
+            throw PrecisionCourseAPIError.invalidResponse
         }
 
         let (data, response) = try await session.data(from: url)
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
-            throw PinpointCourseAPIError.invalidResponse
+            throw PrecisionCourseAPIError.invalidResponse
         }
 
         return try JSONDecoder().decode(T.self, from: data)
     }
 }
 
-private struct PinpointCourseSearchResponse: Decodable {
-    let courses: [PinpointCourse]
+private struct PrecisionCourseSearchResponse: Decodable {
+    let courses: [PrecisionCourse]
 }
 
-private struct PinpointCourse: Decodable {
+private struct PrecisionCourse: Decodable {
     let name: String
     let distance: String?
     let location: String
-    let tees: [PinpointTee]
+    let tees: [PrecisionTee]
     let hasVerifiedScorecard: Bool?
 
     var golfCourse: GolfCourse {
         GolfCourse(
             name: name,
-            distance: distance ?? "Pinpoint API",
+            distance: distance ?? "Precision API",
             location: location,
             tees: tees.map(\.teeBox),
             hasVerifiedScorecard: hasVerifiedScorecard ?? !tees.isEmpty
@@ -203,13 +232,13 @@ private struct PinpointCourse: Decodable {
     }
 }
 
-private struct PinpointTee: Decodable {
+private struct PrecisionTee: Decodable {
     let name: String
     let yards: Int
     let par: Int
     let slope: Int
     let rating: Double
-    let holes: [PinpointHole]
+    let holes: [PrecisionHole]
 
     var teeBox: TeeBox {
         TeeBox(
@@ -223,7 +252,7 @@ private struct PinpointTee: Decodable {
     }
 }
 
-private struct PinpointHole: Decodable {
+private struct PrecisionHole: Decodable {
     let number: Int
     let par: Int
     let yards: Int
@@ -237,6 +266,7 @@ private struct PinpointHole: Decodable {
 struct CourseSearchContext {
     let location: CLLocation
     let label: String
+    let searchTerms: [String]
 }
 
 enum CourseLocationError: Error {
@@ -266,6 +296,7 @@ final class CourseLocationProvider: NSObject, CLLocationManagerDelegate {
 
         let parts = [
             placemark.locality,
+            placemark.subLocality,
             placemark.subAdministrativeArea,
             placemark.administrativeArea
         ]
@@ -276,7 +307,7 @@ final class CourseLocationProvider: NSObject, CLLocationManagerDelegate {
         guard let place = parts.first else {
             throw CourseLocationError.noPlacemark
         }
-        return CourseSearchContext(location: location, label: place)
+        return CourseSearchContext(location: location, label: place, searchTerms: parts)
     }
 
     func nearbyGolfCourseNames(near location: CLLocation) async throws -> [String] {
@@ -315,6 +346,50 @@ final class CourseLocationProvider: NSObject, CLLocationManagerDelegate {
             throw CourseLocationError.noNearbyCourses
         }
         return Array(uniqueNames)
+    }
+
+    static func regionalCourseSearchHints(near location: CLLocation, label: String) -> [String] {
+        var hints: [String] = []
+        if isNearWolverhamptonGolfArea(location, label: label) {
+            hints += [
+                "Wergs Golf Club",
+                "Perton Park Golf Club",
+                "South Staffordshire Golf Club",
+                "Wolverhampton golf club"
+            ]
+        }
+        if isNearDudleyGolfArea(location, label: label) {
+            hints += [
+                "Penn Golf",
+                "Penn Golf Club",
+                "Sedgley Golf Centre",
+                "Sedgley golf",
+                "Dudley Golf Club",
+                "Dudley golf course",
+                "Sedgley golf course"
+            ]
+        }
+        return hints
+    }
+
+    private static func isNearWolverhamptonGolfArea(_ location: CLLocation, label: String) -> Bool {
+        let normalizedLabel = label.lowercased()
+        if ["tettenhall", "wolverhampton", "perton"].contains(where: normalizedLabel.contains) {
+            return true
+        }
+
+        let wergsArea = CLLocation(latitude: 52.6108, longitude: -2.1905)
+        return location.distance(from: wergsArea) <= 20_000
+    }
+
+    private static func isNearDudleyGolfArea(_ location: CLLocation, label: String) -> Bool {
+        let normalizedLabel = label.lowercased()
+        if ["dudley", "sedgley", "penn", "wolverhampton", "west midlands"].contains(where: normalizedLabel.contains) {
+            return true
+        }
+
+        let dudleyArea = CLLocation(latitude: 52.5123, longitude: -2.0811)
+        return location.distance(from: dudleyArea) <= 18_000
     }
 
     private func currentLocation() async throws -> CLLocation {

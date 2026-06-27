@@ -9,7 +9,7 @@ export default async function handler(req, res) {
 
   const lat = numberParam(req.query.lat);
   const lng = numberParam(req.query.lng);
-  const queries = splitList(req.query.queries).slice(0, 5);
+  const queries = splitList(req.query.queries).slice(0, 10);
 
   if (queries.length === 0) {
     sendError(res, 400, "Missing queries parameter. Send nearby course names from the app.", "missing_queries");
@@ -28,8 +28,10 @@ export default async function handler(req, res) {
       queries,
       courses: await searchMultipleQueries(queries, {
         limit,
-        maxClubs: 2,
-        maxCoursesPerClub: 1
+        maxClubs: 1,
+        maxCoursesPerClub: 1,
+        budget: { remaining: 5 },
+        stopAfterFirstQueryWithResults: true
       })
     }));
 

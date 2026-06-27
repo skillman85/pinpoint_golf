@@ -14,7 +14,8 @@
 		1A2B3C4D5E6F700000000106 /* UKGolfAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */; };
 		1A2B3C4D5E6F700000000107 /* CourseDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */; };
 		1A2B3C4D5E6F700000000109 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000012 /* LaunchScreen.storyboard */; };
-		1A2B3C4D5E6F70000000010A /* LaunchScreenImage.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000013 /* LaunchScreenImage.jpg */; };
+		1A2B3C4D5E6F70000000010A /* LaunchScreenImage.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000013 /* LaunchScreenImage.png */; };
+		1A2B3C4D5E6F70000000010F /* PrecisionLaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000018 /* PrecisionLaunchScreen.storyboard */; };
 		1A2B3C4D5E6F70000000010B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000004 /* Assets.xcassets */; };
 		1A2B3C4D5E6F70000000010C /* PinpointDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000014 /* PinpointDatabase.swift */; };
 		1A2B3C4D5E6F70000000010D /* WatchRoundSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000015 /* WatchRoundSync.swift */; };
@@ -35,7 +36,8 @@
 		1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UKGolfAPIClient.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseDatabase.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000012 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
-		1A2B3C4D5E6F700000000013 /* LaunchScreenImage.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = LaunchScreenImage.jpg; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000013 /* LaunchScreenImage.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = LaunchScreenImage.png; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000018 /* PrecisionLaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = PrecisionLaunchScreen.storyboard; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000014 /* PinpointDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinpointDatabase.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000015 /* WatchRoundSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRoundSync.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000016 /* PinpointGolfWatchApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PinpointGolfWatchApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -86,7 +88,8 @@
 				1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */,
 				1A2B3C4D5E6F700000000004 /* Assets.xcassets */,
 				1A2B3C4D5E6F700000000012 /* LaunchScreen.storyboard */,
-				1A2B3C4D5E6F700000000013 /* LaunchScreenImage.jpg */,
+				1A2B3C4D5E6F700000000018 /* PrecisionLaunchScreen.storyboard */,
+				1A2B3C4D5E6F700000000013 /* LaunchScreenImage.png */,
 				1A2B3C4D5E6F700000000005 /* Info.plist */,
 			);
 			path = PinpointGolf;
@@ -195,7 +198,8 @@
 			files = (
 				1A2B3C4D5E6F70000000010B /* Assets.xcassets in Resources */,
 				1A2B3C4D5E6F700000000109 /* LaunchScreen.storyboard in Resources */,
-				1A2B3C4D5E6F70000000010A /* LaunchScreenImage.jpg in Resources */,
+				1A2B3C4D5E6F70000000010F /* PrecisionLaunchScreen.storyboard in Resources */,
+				1A2B3C4D5E6F70000000010A /* LaunchScreenImage.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

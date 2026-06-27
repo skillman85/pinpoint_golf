@@ -1,6 +1,6 @@
-# Pinpoint Golf
+# Precision Golf
 
-Pinpoint Golf is a SwiftUI prototype for a live golf performance tracker.
+Precision Golf is a SwiftUI prototype for a live golf performance tracker.
 
 ## What is included
 

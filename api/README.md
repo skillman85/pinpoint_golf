@@ -1,4 +1,4 @@
-# Pinpoint Golf Course API
+# Precision Golf Course API
 
 Backend proxy for UK golf course search.
 
@@ -24,7 +24,7 @@ Set this Xcode build setting to your deployed backend URL:
 PINPOINT_COURSE_API_BASE_URL=https://your-vercel-app.vercel.app
 ```
 
-The value is exposed to the app as `PinpointCourseAPIBaseURL` in `Info.plist`. It is not a secret.
+The value is exposed to the app as `PrecisionCourseAPIBaseURL` in `Info.plist`. It is not a secret.
 
 If this value is empty, the app falls back to bundled/local courses rather than calling RapidAPI from the phone.
 

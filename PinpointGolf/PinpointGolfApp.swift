@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct PinpointGolfApp: App {
+struct PrecisionGolfApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
