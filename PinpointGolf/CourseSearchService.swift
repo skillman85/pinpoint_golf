@@ -350,15 +350,8 @@ final class CourseLocationProvider: NSObject, CLLocationManagerDelegate {
 
     static func regionalCourseSearchHints(near location: CLLocation, label: String) -> [String] {
         var hints: [String] = []
-        if isNearWolverhamptonGolfArea(location, label: label) {
-            hints += [
-                "Wergs Golf Club",
-                "Perton Park Golf Club",
-                "South Staffordshire Golf Club",
-                "Wolverhampton golf club"
-            ]
-        }
-        if isNearDudleyGolfArea(location, label: label) {
+        let isDudleyLabeled = hasDudleyAreaLabel(label)
+        if isDudleyLabeled || isNearDudleyGolfArea(location, label: label) {
             hints += [
                 "Penn Golf",
                 "Penn Golf Club",
@@ -367,6 +360,14 @@ final class CourseLocationProvider: NSObject, CLLocationManagerDelegate {
                 "Dudley Golf Club",
                 "Dudley golf course",
                 "Sedgley golf course"
+            ]
+        }
+        if !isDudleyLabeled && isNearWolverhamptonGolfArea(location, label: label) {
+            hints += [
+                "Wergs Golf Club",
+                "Perton Park Golf Club",
+                "South Staffordshire Golf Club",
+                "Wolverhampton golf club"
             ]
         }
         return hints
@@ -379,17 +380,21 @@ final class CourseLocationProvider: NSObject, CLLocationManagerDelegate {
         }
 
         let wergsArea = CLLocation(latitude: 52.6108, longitude: -2.1905)
-        return location.distance(from: wergsArea) <= 20_000
+        return location.distance(from: wergsArea) <= 12_000
     }
 
     private static func isNearDudleyGolfArea(_ location: CLLocation, label: String) -> Bool {
-        let normalizedLabel = label.lowercased()
-        if ["dudley", "sedgley", "penn", "wolverhampton", "west midlands"].contains(where: normalizedLabel.contains) {
+        if hasDudleyAreaLabel(label) {
             return true
         }
 
         let dudleyArea = CLLocation(latitude: 52.5123, longitude: -2.0811)
         return location.distance(from: dudleyArea) <= 18_000
+    }
+
+    private static func hasDudleyAreaLabel(_ label: String) -> Bool {
+        let normalizedLabel = label.lowercased()
+        return ["dudley", "sedgley", "penn", "west midlands"].contains(where: normalizedLabel.contains)
     }
 
     private func currentLocation() async throws -> CLLocation {
