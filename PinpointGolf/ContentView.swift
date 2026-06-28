@@ -13,6 +13,9 @@ struct ContentView: View {
     @StateObject private var scorecardStore = CourseScorecardStore()
     @StateObject private var watchRoundSession = WatchRoundSession()
     @AppStorage("pinpoint.profileImageData") private var profileImageData: Data = Data()
+    @AppStorage("precision.profileName") private var profileName = ""
+    @AppStorage("precision.profileHomeClub") private var profileHomeClub = ""
+    @AppStorage("precision.profileOnboardingComplete") private var profileOnboardingComplete = false
     @State private var selectedTab: Tab = .home
     @State private var selectedCourse = CourseDatabase.courses[0]
     @State private var selectedTee = CourseDatabase.courses[0].tees[0]
@@ -39,6 +42,17 @@ struct ContentView: View {
         .preferredColorScheme(.light)
         .fullScreenCover(isPresented: $isRoundFlowPresented) {
             roundFlow
+        }
+        .sheet(isPresented: onboardingBinding) {
+            ProfileOnboardingView(
+                profileName: $profileName,
+                profileHomeClub: $profileHomeClub,
+                playerSettings: playerSettings,
+                complete: {
+                    profileOnboardingComplete = true
+                }
+            )
+            .interactiveDismissDisabled()
         }
         .onAppear {
             watchRoundSession.applyUpdate = applyWatchHoleUpdate
@@ -70,6 +84,8 @@ struct ContentView: View {
                     recentRounds: recentRounds,
                     isRoundActive: isRoundActive,
                     currentHandicap: playerSettings.handicap,
+                    profileName: profileName,
+                    profileHomeClub: profileHomeClub,
                     profileImageData: $profileImageData,
                     startRound: {
                         openRoundFlow()
@@ -107,9 +123,22 @@ struct ContentView: View {
                 goalArchive: goalArchive,
                 clubYardages: clubYardages,
                 handicapHistory: handicapHistory,
-                scorecardStore: scorecardStore
+                scorecardStore: scorecardStore,
+                profileName: $profileName,
+                profileHomeClub: $profileHomeClub
             )
         }
+    }
+
+    private var onboardingBinding: Binding<Bool> {
+        Binding(
+            get: { !profileOnboardingComplete },
+            set: { isPresented in
+                if !isPresented {
+                    profileOnboardingComplete = true
+                }
+            }
+        )
     }
 
     private func beginRound() {
@@ -485,6 +514,8 @@ struct HomeView: View {
     let recentRounds: [RoundSummary]
     let isRoundActive: Bool
     let currentHandicap: Double
+    let profileName: String
+    let profileHomeClub: String
     @Binding var profileImageData: Data
     let startRound: () -> Void
     let discardRound: () -> Void
@@ -497,7 +528,12 @@ struct HomeView: View {
         ZStack(alignment: .bottomTrailing) {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 12) {
-                    PlayerProfileCard(rounds: savedRounds, profileImageData: $profileImageData)
+                    PlayerProfileCard(
+                        rounds: savedRounds,
+                        profileName: profileName,
+                        profileHomeClub: profileHomeClub,
+                        profileImageData: $profileImageData
+                    )
 
                     PerformanceOverview(rounds: savedRounds)
 
@@ -658,6 +694,8 @@ struct HomeFloatingRoundButton: View {
 
 struct PlayerProfileCard: View {
     let rounds: [SavedRound]
+    let profileName: String
+    let profileHomeClub: String
     @Binding var profileImageData: Data
     @State private var selectedPhoto: PhotosPickerItem?
 
@@ -679,7 +717,7 @@ struct PlayerProfileCard: View {
                 .buttonStyle(.plain)
 
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("James")
+                    Text(displayName)
                         .font(.system(size: 25, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.ink)
                     Text(homeClubText)
@@ -712,12 +750,21 @@ struct PlayerProfileCard: View {
     }
 
     private var homeClubText: String {
+        let trimmedHomeClub = profileHomeClub.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedHomeClub.isEmpty {
+            return trimmedHomeClub
+        }
         guard let mostPlayed = rounds.reduce(into: [String: Int](), { counts, round in
             counts[round.courseName, default: 0] += 1
         }).max(by: { $0.value < $1.value })?.key else {
             return "Build your playing profile"
         }
         return mostPlayed
+    }
+
+    private var displayName: String {
+        let trimmed = profileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Player" : trimmed
     }
 
     private var bestGross: String {
@@ -5897,6 +5944,8 @@ struct SettingsView: View {
     @ObservedObject var clubYardages: ClubYardageStore
     @ObservedObject var handicapHistory: HandicapHistoryStore
     @ObservedObject var scorecardStore: CourseScorecardStore
+    @Binding var profileName: String
+    @Binding var profileHomeClub: String
     @State private var handicapText = ""
     @State private var backupDocument: PrecisionBackupDocument?
     @State private var isExportingBackup = false
@@ -5909,6 +5958,24 @@ struct SettingsView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
                 HeaderBlock(title: "Settings", subtitle: "Set your handicap index for course-adjusted Stableford tracking.")
+
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Player Profile")
+                        .font(.system(.headline, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+
+                    ProfileTextField(title: "Name", placeholder: "Your name", text: $profileName)
+                    ProfileTextField(title: "Home Club", placeholder: "Optional", text: $profileHomeClub)
+
+                    Text("Profile details are stored locally on this phone and do not alter completed rounds.")
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                        .lineSpacing(3)
+                }
+                .padding(18)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
 
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Handicap Index")
@@ -6547,6 +6614,99 @@ struct HeaderBlock: View {
         case "Settings": return "gearshape.fill"
         case "Rounds": return "list.bullet.rectangle.portrait.fill"
         default: return "flag.fill"
+        }
+    }
+}
+
+struct ProfileOnboardingView: View {
+    @Binding var profileName: String
+    @Binding var profileHomeClub: String
+    @ObservedObject var playerSettings: PlayerSettings
+    let complete: () -> Void
+    @State private var nameText = ""
+    @State private var homeClubText = ""
+    @State private var handicapText = ""
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    HeaderBlock(title: "Your Profile", subtitle: "Set up Precision Golf for this player.")
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        ProfileTextField(title: "Name", placeholder: "Your name", text: $nameText)
+                        ProfileTextField(title: "Home Club", placeholder: "Optional", text: $homeClubText)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Handicap Index")
+                                .font(.system(.headline, design: .rounded).weight(.heavy))
+                                .foregroundStyle(AppTheme.ink)
+                            TextField("8.6", text: $handicapText)
+                                .keyboardType(.decimalPad)
+                                .font(.system(size: 30, weight: .heavy, design: .rounded))
+                                .foregroundStyle(AppTheme.ink)
+                                .padding(14)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                        }
+
+                        Text("This only personalises this phone. It will not change completed rounds or saved stats.")
+                            .font(.system(.caption, design: .rounded).weight(.semibold))
+                            .foregroundStyle(AppTheme.softText)
+                            .lineSpacing(3)
+                    }
+                    .padding(18)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                    .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+
+                    Button(action: saveProfile) {
+                        Label("Start Using Precision Golf", systemImage: "checkmark.circle.fill")
+                            .font(.system(.headline, design: .rounded).weight(.heavy))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mint))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(20)
+            }
+            .background(AppTheme.background.ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .onAppear {
+            nameText = profileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : profileName
+            homeClubText = profileHomeClub
+            handicapText = String(format: "%.1f", playerSettings.handicap)
+        }
+    }
+
+    private func saveProfile() {
+        let trimmedName = nameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        profileName = trimmedName.isEmpty ? "Player" : trimmedName
+        profileHomeClub = homeClubText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let handicap = Double(handicapText.replacingOccurrences(of: ",", with: ".")) {
+            playerSettings.replaceHandicap(handicap)
+        }
+        complete()
+    }
+}
+
+struct ProfileTextField: View {
+    let title: String
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(.headline, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.ink)
+            TextField(placeholder, text: $text)
+                .font(.system(.headline, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
         }
     }
 }

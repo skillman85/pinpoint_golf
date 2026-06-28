@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "1A2B3C4D5E6F700000000401"
-               BuildableName = "PinpointGolf.app"
-               BlueprintName = "PinpointGolf"
-               ReferencedContainer = "container:PinpointGolf.xcodeproj">
+               BuildableName = "Precision Golf.app"
+               BlueprintName = "Precision Golf"
+               ReferencedContainer = "container:Precision Golf.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -45,9 +45,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "1A2B3C4D5E6F700000000401"
-            BuildableName = "PinpointGolf.app"
-            BlueprintName = "PinpointGolf"
-            ReferencedContainer = "container:PinpointGolf.xcodeproj">
+            BuildableName = "Precision Golf.app"
+            BlueprintName = "Precision Golf"
+            ReferencedContainer = "container:Precision Golf.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -62,9 +62,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "1A2B3C4D5E6F700000000401"
-            BuildableName = "PinpointGolf.app"
-            BlueprintName = "PinpointGolf"
-            ReferencedContainer = "container:PinpointGolf.xcodeproj">
+            BuildableName = "Precision Golf.app"
+            BlueprintName = "Precision Golf"
+            ReferencedContainer = "container:Precision Golf.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
