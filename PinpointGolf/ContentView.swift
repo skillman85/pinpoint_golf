@@ -11,7 +11,6 @@ struct ContentView: View {
     @StateObject private var clubYardages = ClubYardageStore()
     @StateObject private var handicapHistory = HandicapHistoryStore()
     @StateObject private var scorecardStore = CourseScorecardStore()
-    @StateObject private var watchRoundSession = WatchRoundSession()
     @AppStorage("pinpoint.profileImageData") private var profileImageData: Data = Data()
     @AppStorage("precision.profileName") private var profileName = ""
     @AppStorage("precision.profileHomeClub") private var profileHomeClub = ""
@@ -55,17 +54,13 @@ struct ContentView: View {
             .interactiveDismissDisabled()
         }
         .onAppear {
-            watchRoundSession.applyUpdate = applyWatchHoleUpdate
             restoreActiveRoundDraft()
-            publishActiveRoundToWatch()
         }
         .onChange(of: entries) { _, _ in
             saveActiveRoundDraft()
-            publishActiveRoundToWatch()
         }
         .onChange(of: currentHoleIndex) { _, _ in
             saveActiveRoundDraft()
-            publishActiveRoundToWatch()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase != .active {
@@ -149,7 +144,6 @@ struct ContentView: View {
         isRoundActive = true
         isRoundFlowPresented = true
         saveActiveRoundDraft()
-        publishActiveRoundToWatch()
     }
 
     private func finishRound() {
@@ -165,7 +159,6 @@ struct ContentView: View {
         currentHoleIndex = 0
         selectedTab = .home
         clearActiveRoundDraft()
-        publishActiveRoundToWatch()
     }
 
     private func openRoundFlow() {
@@ -184,7 +177,6 @@ struct ContentView: View {
         }
         selectedTab = .home
         clearActiveRoundDraft()
-        publishActiveRoundToWatch()
     }
 
     private var recentRounds: [RoundSummary] {
@@ -252,46 +244,10 @@ struct ContentView: View {
         isRoundActive = true
         isRoundFlowPresented = false
         selectedTab = .home
-        publishActiveRoundToWatch()
     }
 
     private func clearActiveRoundDraft() {
         UserDefaults.standard.removeObject(forKey: activeRoundDraftKey)
-    }
-
-    private func publishActiveRoundToWatch() {
-        guard isRoundActive else {
-            watchRoundSession.publish(round: nil)
-            return
-        }
-
-        watchRoundSession.publish(
-            round: WatchRoundPayload(
-                course: selectedCourse,
-                tee: selectedTee,
-                handicap: roundHandicap,
-                currentHoleIndex: currentHoleIndex,
-                entries: entries
-            )
-        )
-    }
-
-    private func applyWatchHoleUpdate(_ update: WatchHoleUpdatePayload) {
-        guard let entryIndex = entries.firstIndex(where: { $0.hole.number == update.hole.number }) else { return }
-
-        entries[entryIndex].score = update.hole.score
-        entries[entryIndex].putts = update.hole.putts
-        entries[entryIndex].pickedUp = false
-        entries[entryIndex].fairway = update.hole.fairway.appDirection
-        entries[entryIndex].green = update.hole.green.appDirection
-        if entries[entryIndex].green != .hit {
-            entries[entryIndex].approachProximity = nil
-        } else {
-            entries[entryIndex].approachProximity = update.hole.approachProximity?.appProximity
-        }
-        currentHoleIndex = min(max(0, update.currentHoleIndex), max(0, entries.count - 1))
-        saveActiveRoundDraft()
-        publishActiveRoundToWatch()
     }
 
     private var availableCourses: [GolfCourse] {

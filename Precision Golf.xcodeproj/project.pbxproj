@@ -17,19 +17,7 @@
 		1A2B3C4D5E6F70000000010A /* LaunchScreenImage.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000013 /* LaunchScreenImage.png */; };
 		1A2B3C4D5E6F70000000010B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000004 /* Assets.xcassets */; };
 		1A2B3C4D5E6F70000000010C /* PinpointDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000014 /* PinpointDatabase.swift */; };
-		1A2B3C4D5E6F70000000010D /* WatchRoundSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000015 /* WatchRoundSync.swift */; };
 		1A2B3C4D5E6F70000000010F /* PrecisionLaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000018 /* PrecisionLaunchScreen.storyboard */; };
-		1A2B3C4D5E6F70000000011A /* PinpointGolfWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001A /* PinpointGolfWatchApp.swift */; };
-		1A2B3C4D5E6F70000000011B /* WatchContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001B /* WatchContentView.swift */; };
-		1A2B3C4D5E6F70000000011C /* WatchRoundStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001C /* WatchRoundStore.swift */; };
-		1A2B3C4D5E6F70000000011D /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001D /* WatchModels.swift */; };
-		1A2B3C4D5E6F70000000011E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001F /* Assets.xcassets */; };
-		1A2B3C4D5E6F700000000120 /* AppIcon40x40@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000020 /* AppIcon40x40@2x.png */; };
-		1A2B3C4D5E6F700000000121 /* AppIcon44x44@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000021 /* AppIcon44x44@2x.png */; };
-		1A2B3C4D5E6F700000000122 /* AppIcon50x50@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000022 /* AppIcon50x50@2x.png */; };
-		1A2B3C4D5E6F700000000123 /* AppIcon86x86@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000023 /* AppIcon86x86@2x.png */; };
-		1A2B3C4D5E6F700000000124 /* AppIcon98x98@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000024 /* AppIcon98x98@2x.png */; };
-		1A2B3C4D5E6F700000000125 /* AppIcon108x108@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000025 /* AppIcon108x108@2x.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -45,32 +33,11 @@
 		1A2B3C4D5E6F700000000012 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000013 /* LaunchScreenImage.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = LaunchScreenImage.png; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000014 /* PinpointDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinpointDatabase.swift; sourceTree = "<group>"; };
-		1A2B3C4D5E6F700000000015 /* WatchRoundSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRoundSync.swift; sourceTree = "<group>"; };
-		1A2B3C4D5E6F700000000016 /* Precision GolfWatchApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Precision GolfWatchApp.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A2B3C4D5E6F700000000018 /* PrecisionLaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = PrecisionLaunchScreen.storyboard; sourceTree = "<group>"; };
-		1A2B3C4D5E6F70000000001A /* PinpointGolfWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinpointGolfWatchApp.swift; sourceTree = "<group>"; };
-		1A2B3C4D5E6F70000000001B /* WatchContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchContentView.swift; sourceTree = "<group>"; };
-		1A2B3C4D5E6F70000000001C /* WatchRoundStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRoundStore.swift; sourceTree = "<group>"; };
-		1A2B3C4D5E6F70000000001D /* WatchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModels.swift; sourceTree = "<group>"; };
-		1A2B3C4D5E6F70000000001E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		1A2B3C4D5E6F70000000001F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		1A2B3C4D5E6F700000000020 /* AppIcon40x40@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LegacyWatchIcons/AppIcon40x40@2x.png"; sourceTree = "<group>"; };
-		1A2B3C4D5E6F700000000021 /* AppIcon44x44@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LegacyWatchIcons/AppIcon44x44@2x.png"; sourceTree = "<group>"; };
-		1A2B3C4D5E6F700000000022 /* AppIcon50x50@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LegacyWatchIcons/AppIcon50x50@2x.png"; sourceTree = "<group>"; };
-		1A2B3C4D5E6F700000000023 /* AppIcon86x86@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LegacyWatchIcons/AppIcon86x86@2x.png"; sourceTree = "<group>"; };
-		1A2B3C4D5E6F700000000024 /* AppIcon98x98@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LegacyWatchIcons/AppIcon98x98@2x.png"; sourceTree = "<group>"; };
-		1A2B3C4D5E6F700000000025 /* AppIcon108x108@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LegacyWatchIcons/AppIcon108x108@2x.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		1A2B3C4D5E6F700000000201 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		1A2B3C4D5E6F700000000202 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -84,7 +51,6 @@
 			isa = PBXGroup;
 			children = (
 				1A2B3C4D5E6F700000000302 /* PinpointGolf */,
-				1A2B3C4D5E6F700000000304 /* PinpointGolfWatchApp */,
 				1A2B3C4D5E6F700000000303 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -96,7 +62,6 @@
 				1A2B3C4D5E6F700000000002 /* ContentView.swift */,
 				1A2B3C4D5E6F700000000003 /* Models.swift */,
 				1A2B3C4D5E6F700000000014 /* PinpointDatabase.swift */,
-				1A2B3C4D5E6F700000000015 /* WatchRoundSync.swift */,
 				1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */,
 				1A2B3C4D5E6F700000000007 /* CourseSearchService.swift */,
 				1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */,
@@ -113,28 +78,8 @@
 			isa = PBXGroup;
 			children = (
 				1A2B3C4D5E6F700000000006 /* Precision Golf.app */,
-				1A2B3C4D5E6F700000000016 /* Precision GolfWatchApp.app */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		1A2B3C4D5E6F700000000304 /* PinpointGolfWatchApp */ = {
-			isa = PBXGroup;
-			children = (
-				1A2B3C4D5E6F70000000001A /* PinpointGolfWatchApp.swift */,
-				1A2B3C4D5E6F70000000001B /* WatchContentView.swift */,
-				1A2B3C4D5E6F70000000001C /* WatchRoundStore.swift */,
-				1A2B3C4D5E6F70000000001D /* WatchModels.swift */,
-				1A2B3C4D5E6F70000000001F /* Assets.xcassets */,
-				1A2B3C4D5E6F700000000020 /* AppIcon40x40@2x.png */,
-				1A2B3C4D5E6F700000000021 /* AppIcon44x44@2x.png */,
-				1A2B3C4D5E6F700000000022 /* AppIcon50x50@2x.png */,
-				1A2B3C4D5E6F700000000023 /* AppIcon86x86@2x.png */,
-				1A2B3C4D5E6F700000000024 /* AppIcon98x98@2x.png */,
-				1A2B3C4D5E6F700000000025 /* AppIcon108x108@2x.png */,
-				1A2B3C4D5E6F70000000001E /* Info.plist */,
-			);
-			path = PinpointGolfWatchApp;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -147,7 +92,6 @@
 				1A2B3C4D5E6F700000000501 /* Sources */,
 				1A2B3C4D5E6F700000000201 /* Frameworks */,
 				1A2B3C4D5E6F700000000502 /* Resources */,
-				1A2B3C4D5E6F700000000506 /* Build Watch App */,
 			);
 			buildRules = (
 			);
@@ -156,23 +100,6 @@
 			name = "Precision Golf";
 			productName = PinpointGolf;
 			productReference = 1A2B3C4D5E6F700000000006 /* Precision Golf.app */;
-			productType = "com.apple.product-type.application";
-		};
-		1A2B3C4D5E6F700000000402 /* Precision GolfWatchApp */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 1A2B3C4D5E6F700000000702 /* Build configuration list for PBXNativeTarget "Precision GolfWatchApp" */;
-			buildPhases = (
-				1A2B3C4D5E6F700000000503 /* Sources */,
-				1A2B3C4D5E6F700000000202 /* Frameworks */,
-				1A2B3C4D5E6F700000000504 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = "Precision GolfWatchApp";
-			productName = PinpointGolfWatchApp;
-			productReference = 1A2B3C4D5E6F700000000016 /* Precision GolfWatchApp.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -186,9 +113,6 @@
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					1A2B3C4D5E6F700000000401 = {
-						CreatedOnToolsVersion = 16.0;
-					};
-					1A2B3C4D5E6F700000000402 = {
 						CreatedOnToolsVersion = 16.0;
 					};
 				};
@@ -207,7 +131,6 @@
 			projectRoot = "";
 			targets = (
 				1A2B3C4D5E6F700000000401 /* Precision Golf */,
-				1A2B3C4D5E6F700000000402 /* Precision GolfWatchApp */,
 			);
 		};
 /* End PBXProject section */
@@ -224,43 +147,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		1A2B3C4D5E6F700000000504 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				1A2B3C4D5E6F70000000011E /* Assets.xcassets in Resources */,
-				1A2B3C4D5E6F700000000120 /* AppIcon40x40@2x.png in Resources */,
-				1A2B3C4D5E6F700000000121 /* AppIcon44x44@2x.png in Resources */,
-				1A2B3C4D5E6F700000000122 /* AppIcon50x50@2x.png in Resources */,
-				1A2B3C4D5E6F700000000123 /* AppIcon86x86@2x.png in Resources */,
-				1A2B3C4D5E6F700000000124 /* AppIcon98x98@2x.png in Resources */,
-				1A2B3C4D5E6F700000000125 /* AppIcon108x108@2x.png in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		1A2B3C4D5E6F700000000506 /* Build Watch App */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Build Watch App";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "if [ \"$PLATFORM_NAME\" = \"iphoneos\" ]; then\n  WATCH_ROOT=\"$TARGET_TEMP_DIR/WatchProducts\"\n  WATCH_BUILD_DIR=\"$WATCH_ROOT/$CONFIGURATION-watchos\"\n  WATCH_APP=\"$WATCH_BUILD_DIR/Precision GolfWatchApp.app\"\n  WATCH_DSYM=\"$WATCH_BUILD_DIR/Precision GolfWatchApp.app.dSYM\"\n  EMBED_DIR=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Watch\"\n\n  /bin/rm -rf \"$WATCH_ROOT\"\n  /bin/mkdir -p \"$WATCH_BUILD_DIR\"\n\n  env -i \\\n    PATH=\"/usr/bin:/bin:/usr/sbin:/sbin\" \\\n    HOME=\"$HOME\" \\\n    TMPDIR=\"$TMPDIR\" \\\n    DEVELOPER_DIR=\"$DEVELOPER_DIR\" \\\n    /usr/bin/xcrun xcodebuild \\\n      -project \"$PROJECT_FILE_PATH\" \\\n      -target \"Precision GolfWatchApp\" \\\n      -configuration \"$CONFIGURATION\" \\\n      -sdk watchos \\\n      CONFIGURATION_BUILD_DIR=\"$WATCH_BUILD_DIR\" \\\n      OBJROOT=\"$TARGET_TEMP_DIR/WatchIntermediates\" \\\n      SYMROOT=\"$WATCH_ROOT\" \\\n      CODE_SIGNING_ALLOWED=\"${CODE_SIGNING_ALLOWED:-YES}\" \\\n      CODE_SIGN_STYLE=\"$CODE_SIGN_STYLE\" \\\n      DEVELOPMENT_TEAM=\"$DEVELOPMENT_TEAM\" \\\n      INFOPLIST_KEY_WKCompanionAppBundleIdentifier=\"com.pinpoint.golf\" \\\n      ENABLE_DEBUG_DYLIB=NO \\\n      build\n\n  if [ ! -d \"$WATCH_APP\" ]; then\n    echo \"error: Expected watchOS app was not built at $WATCH_APP\"\n    exit 1\n  fi\n\n  /bin/mkdir -p \"$EMBED_DIR\"\n  /bin/rm -rf \"$EMBED_DIR/Precision GolfWatchApp.app\"\n  /usr/bin/ditto \"$WATCH_APP\" \"$EMBED_DIR/Precision GolfWatchApp.app\"\n\n  if [ -n \"$DWARF_DSYM_FOLDER_PATH\" ] && [ -d \"$WATCH_DSYM\" ]; then\n    /bin/mkdir -p \"$DWARF_DSYM_FOLDER_PATH\"\n    /bin/rm -rf \"$DWARF_DSYM_FOLDER_PATH/Precision GolfWatchApp.app.dSYM\"\n    /usr/bin/ditto \"$WATCH_DSYM\" \"$DWARF_DSYM_FOLDER_PATH/Precision GolfWatchApp.app.dSYM\"\n  fi\nfi\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		1A2B3C4D5E6F700000000501 /* Sources */ = {
@@ -271,21 +158,9 @@
 				1A2B3C4D5E6F700000000102 /* ContentView.swift in Sources */,
 				1A2B3C4D5E6F700000000103 /* Models.swift in Sources */,
 				1A2B3C4D5E6F70000000010C /* PinpointDatabase.swift in Sources */,
-				1A2B3C4D5E6F70000000010D /* WatchRoundSync.swift in Sources */,
 				1A2B3C4D5E6F700000000107 /* CourseDatabase.swift in Sources */,
 				1A2B3C4D5E6F700000000104 /* CourseSearchService.swift in Sources */,
 				1A2B3C4D5E6F700000000106 /* UKGolfAPIClient.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		1A2B3C4D5E6F700000000503 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				1A2B3C4D5E6F70000000011A /* PinpointGolfWatchApp.swift in Sources */,
-				1A2B3C4D5E6F70000000011B /* WatchContentView.swift in Sources */,
-				1A2B3C4D5E6F70000000011C /* WatchRoundStore.swift in Sources */,
-				1A2B3C4D5E6F70000000011D /* WatchModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -464,56 +339,6 @@
 			};
 			name = Release;
 		};
-		1A2B3C4D5E6F700000000805 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 3SN8VLC9JN;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = PinpointGolfWatchApp/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.pinpoint.golf.watchkitapp;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = watchos;
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 10.0;
-			};
-			name = Debug;
-		};
-		1A2B3C4D5E6F700000000806 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 3SN8VLC9JN;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = PinpointGolfWatchApp/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.pinpoint.golf.watchkitapp;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = watchos;
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 10.0;
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -531,15 +356,6 @@
 			buildConfigurations = (
 				1A2B3C4D5E6F700000000803 /* Debug */,
 				1A2B3C4D5E6F700000000804 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		1A2B3C4D5E6F700000000702 /* Build configuration list for PBXNativeTarget "Precision GolfWatchApp" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				1A2B3C4D5E6F700000000805 /* Debug */,
-				1A2B3C4D5E6F700000000806 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
