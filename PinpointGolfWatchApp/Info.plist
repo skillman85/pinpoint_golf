@@ -8,6 +8,28 @@
 	<string>Precision Golf</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIcons</key>
+	<dict>
+		<key>CFBundlePrimaryIcon</key>
+		<dict>
+			<key>CFBundleIconFiles</key>
+			<array>
+				<string>AppIcon40x40@2x</string>
+				<string>AppIcon44x44@2x</string>
+				<string>AppIcon50x50@2x</string>
+				<string>AppIcon86x86@2x</string>
+				<string>AppIcon98x98@2x</string>
+				<string>AppIcon108x108@2x</string>
+				<string>watch-notification-38mm-48</string>
+				<string>watch-notification-42mm-55</string>
+				<string>watch-companion-58</string>
+				<string>watch-companion-87</string>
+				<string>watch-marketing-1024</string>
+			</array>
+			<key>CFBundleIconName</key>
+			<string>AppIcon</string>
+		</dict>
+	</dict>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>

@@ -23,6 +23,13 @@
 		1A2B3C4D5E6F70000000011B /* WatchContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001B /* WatchContentView.swift */; };
 		1A2B3C4D5E6F70000000011C /* WatchRoundStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001C /* WatchRoundStore.swift */; };
 		1A2B3C4D5E6F70000000011D /* WatchModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001D /* WatchModels.swift */; };
+		1A2B3C4D5E6F70000000011E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F70000000001F /* Assets.xcassets */; };
+		1A2B3C4D5E6F700000000120 /* AppIcon40x40@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000020 /* AppIcon40x40@2x.png */; };
+		1A2B3C4D5E6F700000000121 /* AppIcon44x44@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000021 /* AppIcon44x44@2x.png */; };
+		1A2B3C4D5E6F700000000122 /* AppIcon50x50@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000022 /* AppIcon50x50@2x.png */; };
+		1A2B3C4D5E6F700000000123 /* AppIcon86x86@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000023 /* AppIcon86x86@2x.png */; };
+		1A2B3C4D5E6F700000000124 /* AppIcon98x98@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000024 /* AppIcon98x98@2x.png */; };
+		1A2B3C4D5E6F700000000125 /* AppIcon108x108@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000025 /* AppIcon108x108@2x.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +53,13 @@
 		1A2B3C4D5E6F70000000001C /* WatchRoundStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRoundStore.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000001D /* WatchModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchModels.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F70000000001E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1A2B3C4D5E6F70000000001F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000020 /* AppIcon40x40@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LegacyWatchIcons/AppIcon40x40@2x.png"; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000021 /* AppIcon44x44@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LegacyWatchIcons/AppIcon44x44@2x.png"; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000022 /* AppIcon50x50@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LegacyWatchIcons/AppIcon50x50@2x.png"; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000023 /* AppIcon86x86@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LegacyWatchIcons/AppIcon86x86@2x.png"; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000024 /* AppIcon98x98@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LegacyWatchIcons/AppIcon98x98@2x.png"; sourceTree = "<group>"; };
+		1A2B3C4D5E6F700000000025 /* AppIcon108x108@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "LegacyWatchIcons/AppIcon108x108@2x.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -111,6 +125,13 @@
 				1A2B3C4D5E6F70000000001B /* WatchContentView.swift */,
 				1A2B3C4D5E6F70000000001C /* WatchRoundStore.swift */,
 				1A2B3C4D5E6F70000000001D /* WatchModels.swift */,
+				1A2B3C4D5E6F70000000001F /* Assets.xcassets */,
+				1A2B3C4D5E6F700000000020 /* AppIcon40x40@2x.png */,
+				1A2B3C4D5E6F700000000021 /* AppIcon44x44@2x.png */,
+				1A2B3C4D5E6F700000000022 /* AppIcon50x50@2x.png */,
+				1A2B3C4D5E6F700000000023 /* AppIcon86x86@2x.png */,
+				1A2B3C4D5E6F700000000024 /* AppIcon98x98@2x.png */,
+				1A2B3C4D5E6F700000000025 /* AppIcon108x108@2x.png */,
 				1A2B3C4D5E6F70000000001E /* Info.plist */,
 			);
 			path = PinpointGolfWatchApp;
@@ -207,6 +228,13 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1A2B3C4D5E6F70000000011E /* Assets.xcassets in Resources */,
+				1A2B3C4D5E6F700000000120 /* AppIcon40x40@2x.png in Resources */,
+				1A2B3C4D5E6F700000000121 /* AppIcon44x44@2x.png in Resources */,
+				1A2B3C4D5E6F700000000122 /* AppIcon50x50@2x.png in Resources */,
+				1A2B3C4D5E6F700000000123 /* AppIcon86x86@2x.png in Resources */,
+				1A2B3C4D5E6F700000000124 /* AppIcon98x98@2x.png in Resources */,
+				1A2B3C4D5E6F700000000125 /* AppIcon108x108@2x.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -230,7 +258,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"$PLATFORM_NAME\" = \"iphoneos\" ]; then\n  WATCH_ROOT=\"$TARGET_TEMP_DIR/WatchProducts\"\n  WATCH_BUILD_DIR=\"$WATCH_ROOT/$CONFIGURATION-watchos\"\n  WATCH_APP=\"$WATCH_BUILD_DIR/Precision GolfWatchApp.app\"\n  EMBED_DIR=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Watch\"\n\n  /bin/rm -rf \"$WATCH_ROOT\"\n  /bin/mkdir -p \"$WATCH_BUILD_DIR\"\n\n  env -i \\\n    PATH=\"/usr/bin:/bin:/usr/sbin:/sbin\" \\\n    HOME=\"$HOME\" \\\n    TMPDIR=\"$TMPDIR\" \\\n    DEVELOPER_DIR=\"$DEVELOPER_DIR\" \\\n    /usr/bin/xcrun xcodebuild \\\n      -project \"$PROJECT_FILE_PATH\" \\\n      -target \"Precision GolfWatchApp\" \\\n      -configuration \"$CONFIGURATION\" \\\n      -sdk watchos \\\n      CONFIGURATION_BUILD_DIR=\"$WATCH_BUILD_DIR\" \\\n      OBJROOT=\"$TARGET_TEMP_DIR/WatchIntermediates\" \\\n      SYMROOT=\"$WATCH_ROOT\" \\\n      CODE_SIGNING_ALLOWED=\"${CODE_SIGNING_ALLOWED:-YES}\" \\\n      CODE_SIGN_STYLE=\"$CODE_SIGN_STYLE\" \\\n      DEVELOPMENT_TEAM=\"$DEVELOPMENT_TEAM\" \\\n      INFOPLIST_KEY_WKCompanionAppBundleIdentifier=\"com.pinpoint.golf\" \\\n      ENABLE_DEBUG_DYLIB=NO \\\n      build\n\n  if [ ! -d \"$WATCH_APP\" ]; then\n    echo \"error: Expected watchOS app was not built at $WATCH_APP\"\n    exit 1\n  fi\n\n  /bin/mkdir -p \"$EMBED_DIR\"\n  /bin/rm -rf \"$EMBED_DIR/Precision GolfWatchApp.app\"\n  /usr/bin/ditto \"$WATCH_APP\" \"$EMBED_DIR/Precision GolfWatchApp.app\"\nfi\n";
+			shellScript = "if [ \"$PLATFORM_NAME\" = \"iphoneos\" ]; then\n  WATCH_ROOT=\"$TARGET_TEMP_DIR/WatchProducts\"\n  WATCH_BUILD_DIR=\"$WATCH_ROOT/$CONFIGURATION-watchos\"\n  WATCH_APP=\"$WATCH_BUILD_DIR/Precision GolfWatchApp.app\"\n  WATCH_DSYM=\"$WATCH_BUILD_DIR/Precision GolfWatchApp.app.dSYM\"\n  EMBED_DIR=\"$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Watch\"\n\n  /bin/rm -rf \"$WATCH_ROOT\"\n  /bin/mkdir -p \"$WATCH_BUILD_DIR\"\n\n  env -i \\\n    PATH=\"/usr/bin:/bin:/usr/sbin:/sbin\" \\\n    HOME=\"$HOME\" \\\n    TMPDIR=\"$TMPDIR\" \\\n    DEVELOPER_DIR=\"$DEVELOPER_DIR\" \\\n    /usr/bin/xcrun xcodebuild \\\n      -project \"$PROJECT_FILE_PATH\" \\\n      -target \"Precision GolfWatchApp\" \\\n      -configuration \"$CONFIGURATION\" \\\n      -sdk watchos \\\n      CONFIGURATION_BUILD_DIR=\"$WATCH_BUILD_DIR\" \\\n      OBJROOT=\"$TARGET_TEMP_DIR/WatchIntermediates\" \\\n      SYMROOT=\"$WATCH_ROOT\" \\\n      CODE_SIGNING_ALLOWED=\"${CODE_SIGNING_ALLOWED:-YES}\" \\\n      CODE_SIGN_STYLE=\"$CODE_SIGN_STYLE\" \\\n      DEVELOPMENT_TEAM=\"$DEVELOPMENT_TEAM\" \\\n      INFOPLIST_KEY_WKCompanionAppBundleIdentifier=\"com.pinpoint.golf\" \\\n      ENABLE_DEBUG_DYLIB=NO \\\n      build\n\n  if [ ! -d \"$WATCH_APP\" ]; then\n    echo \"error: Expected watchOS app was not built at $WATCH_APP\"\n    exit 1\n  fi\n\n  /bin/mkdir -p \"$EMBED_DIR\"\n  /bin/rm -rf \"$EMBED_DIR/Precision GolfWatchApp.app\"\n  /usr/bin/ditto \"$WATCH_APP\" \"$EMBED_DIR/Precision GolfWatchApp.app\"\n\n  if [ -n \"$DWARF_DSYM_FOLDER_PATH\" ] && [ -d \"$WATCH_DSYM\" ]; then\n    /bin/mkdir -p \"$DWARF_DSYM_FOLDER_PATH\"\n    /bin/rm -rf \"$DWARF_DSYM_FOLDER_PATH/Precision GolfWatchApp.app.dSYM\"\n    /usr/bin/ditto \"$WATCH_DSYM\" \"$DWARF_DSYM_FOLDER_PATH/Precision GolfWatchApp.app.dSYM\"\n  fi\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
