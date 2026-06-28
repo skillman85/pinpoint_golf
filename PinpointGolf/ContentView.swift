@@ -473,6 +473,7 @@ struct AppTheme {
     static let softText = Color(red: 0.37, green: 0.45, blue: 0.40)
     static let mint = Color(red: 0.02, green: 0.43, blue: 0.24)
     static let mintWash = Color(red: 0.93, green: 0.97, blue: 0.95)
+    static let lime = Color(red: 0.70, green: 0.95, blue: 0.18)
     static let gold = Color(red: 0.72, green: 0.50, blue: 0.11)
     static let border = Color(red: 0.88, green: 0.895, blue: 0.89)
     static let shadow = Color.black.opacity(0.055)
@@ -496,8 +497,6 @@ struct HomeView: View {
         ZStack(alignment: .bottomTrailing) {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 12) {
-                    HomeHeader()
-
                     PlayerProfileCard(rounds: savedRounds, profileImageData: $profileImageData)
 
                     PerformanceOverview(rounds: savedRounds)
@@ -595,42 +594,6 @@ struct RecentRoundsView: View {
         .sheet(item: $selectedRound) { round in
             SavedRoundDetailView(round: round, currentHandicap: currentHandicap, updateRound: updateRound)
         }
-    }
-}
-
-struct HomeHeader: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("Precision Golf")
-                        .font(.system(size: 34, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
-                    Text("Good afternoon, James")
-                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.84))
-                }
-                Spacer()
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 22, weight: .heavy))
-                    .foregroundStyle(AppTheme.mint)
-                    .frame(width: 52, height: 52)
-                    .background(Circle().fill(Color.white))
-            }
-        }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(
-                    LinearGradient(
-                        colors: [Color(red: 0.07, green: 0.67, blue: 0.35), AppTheme.mint],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.62)))
-        .shadow(color: AppTheme.shadow.opacity(1.35), radius: 20, x: 0, y: 10)
     }
 }
 
@@ -1033,22 +996,23 @@ struct PerformanceOverview: View {
                     )
             )
 
-            VStack(spacing: 14) {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    CompactMetricPill(title: "Stableford", value: averageStableford, tint: AppTheme.mint)
-                    CompactMetricPill(title: "Putts", value: averagePutts, tint: AppTheme.gold)
-                    CompactMetricPill(title: "Penalties", value: averagePenalties, tint: Color(red: 0.82, green: 0.34, blue: 0.20))
-                    CompactMetricPill(title: "Fairways", value: "\(fairwayPercent)%", tint: AppTheme.mint)
-                    CompactMetricPill(title: "GIR", value: "\(girPercent)%", tint: Color(red: 0.11, green: 0.42, blue: 0.74))
-                    CompactMetricPill(title: "Scramble", value: "\(scramblePercent)%", tint: Color(red: 0.42, green: 0.22, blue: 0.58))
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Hole Scoring Stats")
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Spacer()
+                    Text("season avg")
+                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.softText)
+                        .textCase(.uppercase)
                 }
 
-                ScoringMixStrip(
-                    birdies: averageBirdies,
-                    pars: averagePars,
-                    bogeys: averageBogeys,
-                    doubles: averageDoublesOrWorse
-                )
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    HoleAverageCard(title: "Par 3s", value: par3Average, target: "3.0", tint: Color(red: 0.11, green: 0.42, blue: 0.74))
+                    HoleAverageCard(title: "Par 4s", value: par4Average, target: "4.0", tint: AppTheme.mint)
+                    HoleAverageCard(title: "Par 5s", value: par5Average, target: "5.0", tint: AppTheme.gold)
+                }
             }
             .padding(16)
             .background(Color.white)
@@ -1118,6 +1082,25 @@ struct PerformanceOverview: View {
         return String(format: "%.1f", average)
     }
 
+    private var par3Average: String {
+        averageScore(forPar: 3)
+    }
+
+    private var par4Average: String {
+        averageScore(forPar: 4)
+    }
+
+    private var par5Average: String {
+        averageScore(forPar: 5)
+    }
+
+    private func averageScore(forPar par: Int) -> String {
+        let holes = seasonRounds.flatMap(\.holes).filter { $0.par == par }
+        guard !holes.isEmpty else { return "-" }
+        let average = Double(holes.reduce(0) { $0 + $1.score }) / Double(holes.count)
+        return String(format: "%.2f", average)
+    }
+
     private var averageDoublesOrWorse: String {
         averageScoringHoles { $0.score >= $0.par + 2 }
     }
@@ -1170,6 +1153,61 @@ struct ScoringMixStrip: View {
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.82)))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
+    }
+}
+
+struct HoleAverageCard: View {
+    let title: String
+    let value: String
+    let target: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "flag.fill")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundStyle(tint)
+                    .frame(width: 25, height: 25)
+                    .background(Circle().fill(tint.opacity(0.12)))
+                Spacer()
+                Text(target)
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.softText)
+                    .padding(.horizontal, 7)
+                    .frame(height: 22)
+                    .background(Capsule().fill(AppTheme.subtleFill))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Text(value)
+                    .font(.system(size: 27, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: 118)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white, tint.opacity(0.08)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.18)))
+        .shadow(color: tint.opacity(0.12), radius: 14, x: 0, y: 8)
+        .shadow(color: AppTheme.shadow.opacity(0.7), radius: 8, x: 0, y: 4)
     }
 }
 
@@ -4229,6 +4267,7 @@ struct LiveRoundView: View {
     let handicap: Double
     let finishRound: () -> Void
     let discardRound: () -> Void
+    @State private var scoringStep: LiveScoringStep = .score
     @State private var showIncompleteScoreAlert = false
     @State private var showDiscardRoundAlert = false
 
@@ -4244,6 +4283,9 @@ struct LiveRoundView: View {
             set: { newValue in
                 entry.wrappedValue.score = newValue
                 entry.wrappedValue.pickedUp = false
+                if newValue > 0 {
+                    scoringStep = .stats
+                }
             }
         )
         let putts = Binding<Int>(
@@ -4254,7 +4296,7 @@ struct LiveRoundView: View {
             }
         )
 
-        VStack(spacing: 12) {
+        VStack(spacing: 6) {
             LiveRoundHeaderCard(
                 courseName: selectedCourse.name,
                 holeNumber: entry.wrappedValue.hole.number,
@@ -4266,77 +4308,84 @@ struct LiveRoundView: View {
                 scoreToPar: scoreToParThroughCurrentHole,
                 stableford: currentStableford
             )
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
 
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 12) {
-                    StepperPanel(title: "Score", value: score, range: 0...12, accent: AppTheme.gold, blankWhenZero: true)
-                    StepperPanel(title: "Putts", value: putts, range: 0...6, accent: AppTheme.mint)
+            LiveScoringStepPill(step: scoringStep)
+                .padding(.horizontal, 16)
 
-                    Button {
-                        markCurrentHolePickedUp(entry)
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: entry.wrappedValue.pickedUp ? "flag.checkered.circle.fill" : "flag.checkered")
-                                .font(.system(size: 20, weight: .bold))
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(entry.wrappedValue.pickedUp ? "Picked Up" : "Pickup")
-                                    .font(.system(.headline, design: .rounded).weight(.heavy))
-                                Text("Records \(pickupScore(for: entry.wrappedValue)) for 0 Stableford points")
-                                    .font(.system(.caption, design: .rounded).weight(.bold))
+            Group {
+                if scoringStep == .score {
+                    ScrollView(showsIndicators: false) {
+                        ScoreKeypadPanel(
+                            hole: entry.wrappedValue.hole,
+                            score: score,
+                            pickedUp: entry.wrappedValue.pickedUp,
+                            pickupScore: pickupScore(for: entry.wrappedValue),
+                            markPickedUp: {
+                                markCurrentHolePickedUp(entry)
+                                scoringStep = .stats
                             }
-                            Spacer()
-                        }
-                        .foregroundStyle(entry.wrappedValue.pickedUp ? .white : AppTheme.ink)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(entry.wrappedValue.pickedUp ? AppTheme.ink : AppTheme.panel)
                         )
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
                     }
-                    .buttonStyle(.plain)
-
-                    QuickStatsPanel(
-                        showFairway: entry.wrappedValue.hole.par > 3,
-                        fairway: entry.fairway,
-                        green: entry.green,
-                        approachProximity: entry.approachProximity,
-                        penalties: entry.penalties,
-                        penaltyType: entry.penaltyType,
-                        bunker: entry.bunker
-                    )
+                } else {
+                    VStack(spacing: 8) {
+                        CompactStepperPanel(title: "Putts", subtitle: "Total putts", value: putts, range: 0...6, accent: AppTheme.mint)
+                        QuickStatsPanel(
+                            showFairway: entry.wrappedValue.hole.par > 3,
+                            fairway: entry.fairway,
+                            green: entry.green,
+                            approachProximity: entry.approachProximity,
+                            penalties: entry.penalties,
+                            penaltyType: entry.penaltyType,
+                            bunker: entry.bunker
+                        )
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(maxHeight: .infinity, alignment: .top)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
             }
 
             Spacer(minLength: 0)
 
             HStack(spacing: 12) {
                 Button {
-                    currentHoleIndex = max(0, currentHoleIndex - 1)
+                    if scoringStep == .stats {
+                        scoringStep = .score
+                    } else {
+                        currentHoleIndex = max(0, currentHoleIndex - 1)
+                        scoringStep = entries[currentHoleIndex].score > 0 ? .stats : .score
+                    }
                 } label: {
                     Image(systemName: "chevron.left")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(RoundActionStyle(isPrimary: false))
-                .disabled(currentHoleIndex == 0)
+                .disabled(currentHoleIndex == 0 && scoringStep == .score)
 
                 Button {
-                    if currentHoleIndex == entries.count - 1 {
-                        if entries.contains(where: { $0.score == 0 }) {
+                    if scoringStep == .score {
+                        if entry.wrappedValue.score == 0 {
                             showIncompleteScoreAlert = true
                         } else {
-                            finishRound()
+                            scoringStep = .stats
                         }
                     } else {
-                        currentHoleIndex = min(entries.count - 1, currentHoleIndex + 1)
+                        if currentHoleIndex == entries.count - 1 {
+                            if entries.contains(where: { $0.score == 0 }) {
+                                showIncompleteScoreAlert = true
+                            } else {
+                                finishRound()
+                            }
+                        } else {
+                            currentHoleIndex = min(entries.count - 1, currentHoleIndex + 1)
+                            scoringStep = entries[currentHoleIndex].score > 0 ? .stats : .score
+                        }
                     }
                 } label: {
-                    Text(currentHoleIndex == entries.count - 1 ? "Finish Round" : "Next Hole")
+                    Text(primaryActionTitle)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(RoundActionStyle(isPrimary: true))
@@ -4358,7 +4407,7 @@ struct LiveRoundView: View {
         .alert("Scores missing", isPresented: $showIncompleteScoreAlert) {
             Button("OK", role: .cancel) { }
         } message: {
-            Text("Enter a score for every hole before finishing the round.")
+            Text(scoringStep == .score ? "Enter a score for this hole before adding stats." : "Enter a score for every hole before finishing the round.")
         }
         .alert("Delete current round?", isPresented: $showDiscardRoundAlert) {
             Button("Keep Round", role: .cancel) { }
@@ -4368,6 +4417,14 @@ struct LiveRoundView: View {
         } message: {
             Text("This will stop the live round and remove all unsaved scores and stats from this card.")
         }
+        .onChange(of: currentHoleIndex) { _, newValue in
+            scoringStep = entries[newValue].score > 0 ? .stats : .score
+        }
+    }
+
+    private var primaryActionTitle: String {
+        if scoringStep == .score { return "Stats" }
+        return currentHoleIndex == entries.count - 1 ? "Finish Round" : "Next Hole"
     }
 
     private func stablefordPoints(for entry: RoundHoleEntry) -> Int {
@@ -6626,6 +6683,186 @@ struct ScorecardPreview: View {
     }
 }
 
+enum LiveScoringStep {
+    case score
+    case stats
+}
+
+struct LiveScoringStepPill: View {
+    let step: LiveScoringStep
+
+    var body: some View {
+        HStack(spacing: 8) {
+            stepItem(title: "Score", icon: "number", isSelected: step == .score)
+            stepItem(title: "Stats", icon: "chart.bar.fill", isSelected: step == .stats)
+        }
+        .padding(5)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
+    }
+
+    private func stepItem(title: String, icon: String, isSelected: Bool) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .heavy))
+            Text(title)
+                .font(.system(.caption, design: .rounded).weight(.heavy))
+        }
+        .foregroundStyle(isSelected ? .white : AppTheme.softText)
+        .frame(maxWidth: .infinity)
+        .frame(height: 34)
+        .background(RoundedRectangle(cornerRadius: 7).fill(isSelected ? AppTheme.mint : Color.clear))
+    }
+}
+
+struct ScoreKeypadPanel: View {
+    let hole: Hole
+    @Binding var score: Int
+    let pickedUp: Bool
+    let pickupScore: Int
+    let markPickedUp: () -> Void
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Gross Score")
+                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text("Par \(hole.par)")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(Capsule().fill(AppTheme.subtleFill))
+            }
+
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(1...9, id: \.self) { value in
+                    ScoreKeypadButton(
+                        title: "\(value)",
+                        subtitle: scoreLabel(for: value),
+                        isSelected: score == value && !pickedUp,
+                        action: { score = value }
+                    )
+                }
+
+                ScoreKeypadButton(
+                    title: "Clear",
+                    subtitle: nil,
+                    isSelected: score == 0 && !pickedUp,
+                    isUtility: true,
+                    action: { score = 0 }
+                )
+
+                ScoreKeypadButton(
+                    title: "Pickup",
+                    subtitle: "\(pickupScore)",
+                    isSelected: pickedUp,
+                    isUtility: true,
+                    action: markPickedUp
+                )
+
+                ScoreKeypadButton(
+                    title: "10+",
+                    subtitle: score >= 10 && !pickedUp ? "\(score)" : nil,
+                    isSelected: score >= 10 && !pickedUp,
+                    isUtility: true,
+                    action: { score = max(score, 10) }
+                )
+            }
+
+            if score >= 10 && !pickedUp {
+                HStack(spacing: 10) {
+                    Button {
+                        score = max(10, score - 1)
+                    } label: {
+                        Image(systemName: "minus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(RoundActionStyle(isPrimary: false))
+
+                    Text("\(score)")
+                        .font(.system(size: 30, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
+                        .frame(width: 72)
+
+                    Button {
+                        score = min(12, score + 1)
+                    } label: {
+                        Image(systemName: "plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(RoundActionStyle(isPrimary: false))
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow.opacity(0.72), radius: 14, x: 0, y: 8)
+    }
+
+    private func scoreLabel(for value: Int) -> String? {
+        let relative = value - hole.par
+        switch relative {
+        case ...(-3): return "Albatross"
+        case -2: return "Eagle"
+        case -1: return "Birdie"
+        case 0: return "Par"
+        case 1: return "Bogey"
+        case 2: return "Double"
+        default: return nil
+        }
+    }
+}
+
+struct ScoreKeypadButton: View {
+    let title: String
+    let subtitle: String?
+    let isSelected: Bool
+    var isUtility = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Text(title)
+                    .font(.system(size: isUtility ? 19 : 34, weight: .heavy, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+            .foregroundStyle(isSelected ? .white : AppTheme.ink)
+            .frame(maxWidth: .infinity)
+            .frame(height: isUtility ? 58 : 70)
+            .background(RoundedRectangle(cornerRadius: 8).fill(background))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(border))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var background: Color {
+        if isSelected { return AppTheme.mint }
+        return isUtility ? AppTheme.subtleFill : AppTheme.panelStrong
+    }
+
+    private var border: Color {
+        if isSelected { return AppTheme.mint.opacity(0.22) }
+        return isUtility ? AppTheme.border.opacity(0.7) : AppTheme.border.opacity(0.95)
+    }
+}
+
 struct StepperPanel: View {
     let title: String
     @Binding var value: Int
@@ -6663,6 +6900,46 @@ struct StepperPanel: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
         .shadow(color: AppTheme.shadow.opacity(0.58), radius: 12, x: 0, y: 6)
+    }
+}
+
+struct CompactStepperPanel: View {
+    let title: String
+    let subtitle: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+    let accent: Color
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Text(subtitle)
+                    .font(.system(.caption2, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .textCase(.uppercase)
+            }
+            Spacer()
+            Button { value = max(range.lowerBound, value - 1) } label: {
+                Image(systemName: "minus")
+            }
+            .buttonStyle(CounterButtonStyle())
+            Text("\(value)")
+                .font(.system(size: 34, weight: .heavy, design: .rounded))
+                .foregroundStyle(accent)
+                .frame(width: 48)
+            Button { value = min(range.upperBound, value + 1) } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(CounterButtonStyle())
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow.opacity(0.46), radius: 10, x: 0, y: 5)
     }
 }
 
@@ -6776,7 +7053,7 @@ struct QuickStatsPanel: View {
     @Binding var bunker: Bool
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             if showFairway {
                 ShotOutcomePanel(
                     title: "Fairway",
@@ -6809,7 +7086,7 @@ struct QuickStatsPanel: View {
                         Text(value == 2 ? "2+" : "\(value)")
                             .font(.system(.caption, design: .rounded).weight(.bold))
                             .foregroundStyle(penalties == value ? .white : AppTheme.ink)
-                            .frame(width: 48, height: 38)
+                            .frame(width: 46, height: 34)
                             .background(RoundedRectangle(cornerRadius: 8).fill(penalties == value ? AppTheme.gold : AppTheme.subtleFill))
                             .overlay(RoundedRectangle(cornerRadius: 8).stroke(penalties == value ? AppTheme.gold.opacity(0.18) : AppTheme.border.opacity(0.62)))
                     }
@@ -6836,16 +7113,16 @@ struct QuickStatsPanel: View {
                     .font(.system(.caption, design: .rounded).weight(.bold))
                     .foregroundStyle(bunker ? .white : AppTheme.ink)
                     .padding(.horizontal, 13)
-                    .frame(height: 38)
+                    .frame(height: 34)
                     .background(RoundedRectangle(cornerRadius: 8).fill(bunker ? AppTheme.mint : AppTheme.subtleFill))
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(14)
+        .padding(10)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
-        .shadow(color: AppTheme.shadow.opacity(0.58), radius: 12, x: 0, y: 6)
+        .shadow(color: AppTheme.shadow.opacity(0.46), radius: 10, x: 0, y: 5)
         .onChange(of: green) { _, newValue in
             if newValue != .hit {
                 approachProximity = nil
@@ -6947,7 +7224,7 @@ struct RunningRoundStrip: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            RunningRoundValue(title: "Gross", value: "\(gross)", accent: AppTheme.gold)
+            RunningRoundValue(title: "Gross", value: "\(gross)", accent: AppTheme.lime)
 
             Rectangle()
                 .fill(AppTheme.border)
@@ -6975,38 +7252,36 @@ struct LiveRoundHeaderCard: View {
     let stableford: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(courseName)
                         .font(.system(.caption, design: .rounded).weight(.heavy))
                         .foregroundStyle(.white.opacity(0.78))
                         .lineLimit(1)
                         .minimumScaleFactor(0.74)
                     Text("Hole \(holeNumber)")
-                        .font(.system(size: 38, weight: .heavy, design: .rounded))
+                        .font(.system(size: 32, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
                 }
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 5) {
-                    Text("Par \(par)")
-                    Text("\(yards) yds")
-                    Text("SI \(strokeIndex)")
+                HStack(spacing: 6) {
+                    headerPill("Par \(par)")
+                    headerPill("\(yards) yds")
+                    headerPill("SI \(strokeIndex)")
                 }
-                .font(.system(.subheadline, design: .rounded).weight(.heavy))
-                .foregroundStyle(.white.opacity(0.86))
             }
 
-            HStack(spacing: 10) {
-                LiveRoundHeaderMetric(title: "Gross", value: "\(gross)", accent: AppTheme.gold)
+            HStack(spacing: 8) {
+                LiveRoundHeaderMetric(title: "Gross", value: "\(gross)", accent: AppTheme.lime)
                 LiveRoundHeaderMetric(title: "To Par", value: scoreToParLabel, accent: scoreToPar <= 0 ? .white : AppTheme.gold)
                 LiveRoundHeaderMetric(title: "Points", value: "\(stableford)", accent: .white)
                 LiveRoundHeaderMetric(title: "CH", value: "\(courseHandicap)", accent: .white)
             }
         }
-        .padding(18)
+        .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(
@@ -7018,11 +7293,22 @@ struct LiveRoundHeaderCard: View {
                 )
         )
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.62)))
-        .shadow(color: AppTheme.shadow.opacity(1.35), radius: 20, x: 0, y: 10)
+        .shadow(color: AppTheme.shadow.opacity(1.05), radius: 16, x: 0, y: 8)
     }
 
     private var scoreToParLabel: String {
         scoreToPar == 0 ? "E" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
+    }
+
+    private func headerPill(_ text: String) -> some View {
+        Text(text)
+            .font(.system(.caption, design: .rounded).weight(.heavy))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .padding(.horizontal, 8)
+            .frame(height: 28)
+            .background(Capsule().fill(Color.white.opacity(0.16)))
     }
 }
 
@@ -7032,17 +7318,18 @@ struct LiveRoundHeaderMetric: View {
     let accent: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.system(.caption2, design: .rounded).weight(.heavy))
                 .foregroundStyle(.white.opacity(0.72))
                 .textCase(.uppercase)
             Text(value)
-                .font(.system(size: 23, weight: .heavy, design: .rounded))
+                .font(.system(size: 20, weight: .heavy, design: .rounded))
                 .foregroundStyle(accent)
                 .lineLimit(1)
         }
-        .padding(12)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.14)))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.18)))
@@ -7073,8 +7360,8 @@ struct ShotOutcomePanel: View {
     let missChoices: [MissDirection]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
                 Text(title)
                     .font(.system(.subheadline, design: .rounded).weight(.heavy))
                     .foregroundStyle(AppTheme.ink)
@@ -7088,8 +7375,8 @@ struct ShotOutcomePanel: View {
                     }
                     .font(.system(.caption, design: .rounded).weight(.bold))
                     .foregroundStyle(selection == .hit ? .white : AppTheme.ink)
-                    .padding(.horizontal, 12)
-                    .frame(height: 34)
+                    .padding(.horizontal, 10)
+                    .frame(height: 30)
                     .background(RoundedRectangle(cornerRadius: 8).fill(selection == .hit ? AppTheme.mint : AppTheme.subtleFill))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection == .hit ? AppTheme.mint.opacity(0.18) : AppTheme.border.opacity(0.62)))
                 }
@@ -7108,7 +7395,7 @@ struct ShotOutcomePanel: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.8)
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 36)
+                                .frame(height: 32)
                                 .background(RoundedRectangle(cornerRadius: 8).fill(selection == choice ? AppTheme.gold.opacity(0.9) : AppTheme.subtleFill))
                                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(selection == choice ? AppTheme.gold.opacity(0.2) : AppTheme.border.opacity(0.62)))
                         }
