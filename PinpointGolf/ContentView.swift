@@ -996,23 +996,22 @@ struct PerformanceOverview: View {
                     )
             )
 
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Hole Scoring Stats")
-                        .font(.system(.headline, design: .rounded).weight(.heavy))
-                        .foregroundStyle(AppTheme.ink)
-                    Spacer()
-                    Text("season avg")
-                        .font(.system(.caption2, design: .rounded).weight(.heavy))
-                        .foregroundStyle(AppTheme.softText)
-                        .textCase(.uppercase)
+            VStack(spacing: 14) {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    CompactMetricPill(title: "Stableford", value: averageStableford, tint: AppTheme.mint)
+                    CompactMetricPill(title: "Putts", value: averagePutts, tint: AppTheme.gold)
+                    CompactMetricPill(title: "Penalties", value: averagePenalties, tint: Color(red: 0.82, green: 0.34, blue: 0.20))
+                    CompactMetricPill(title: "Fairways", value: "\(fairwayPercent)%", tint: AppTheme.mint)
+                    CompactMetricPill(title: "GIR", value: "\(girPercent)%", tint: Color(red: 0.11, green: 0.42, blue: 0.74))
+                    CompactMetricPill(title: "Scramble", value: "\(scramblePercent)%", tint: Color(red: 0.42, green: 0.22, blue: 0.58))
                 }
 
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    HoleAverageCard(title: "Par 3s", value: par3Average, target: "3.0", tint: Color(red: 0.11, green: 0.42, blue: 0.74))
-                    HoleAverageCard(title: "Par 4s", value: par4Average, target: "4.0", tint: AppTheme.mint)
-                    HoleAverageCard(title: "Par 5s", value: par5Average, target: "5.0", tint: AppTheme.gold)
-                }
+                ScoringMixStrip(
+                    birdies: averageBirdies,
+                    pars: averagePars,
+                    bogeys: averageBogeys,
+                    doubles: averageDoublesOrWorse
+                )
             }
             .padding(16)
             .background(Color.white)
@@ -1080,25 +1079,6 @@ struct PerformanceOverview: View {
         guard !seasonRounds.isEmpty else { return "-" }
         let average = Double(seasonRounds.reduce(0) { $0 + $1.penalties }) / Double(seasonRounds.count)
         return String(format: "%.1f", average)
-    }
-
-    private var par3Average: String {
-        averageScore(forPar: 3)
-    }
-
-    private var par4Average: String {
-        averageScore(forPar: 4)
-    }
-
-    private var par5Average: String {
-        averageScore(forPar: 5)
-    }
-
-    private func averageScore(forPar par: Int) -> String {
-        let holes = seasonRounds.flatMap(\.holes).filter { $0.par == par }
-        guard !holes.isEmpty else { return "-" }
-        let average = Double(holes.reduce(0) { $0 + $1.score }) / Double(holes.count)
-        return String(format: "%.2f", average)
     }
 
     private var averageDoublesOrWorse: String {
@@ -4843,16 +4823,14 @@ struct InsightsDashboardContent: View {
                 .frame(maxWidth: .infinity)
 
             VStack(alignment: .leading, spacing: 12) {
-                Text("Stat Cards")
+                Text("Hole Scoring Stats")
                     .font(.system(.title2, design: .rounded).weight(.heavy))
                     .foregroundStyle(AppTheme.ink)
 
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    PremiumMiniStat(title: "Birdies", value: formatAverage(snapshot.birdiesPerRound), caption: "\(snapshot.birdies) total", accent: AppTheme.mint)
-                    PremiumMiniStat(title: "Pars", value: formatAverage(snapshot.parsPerRound), caption: "\(snapshot.pars) total", accent: AppTheme.mint)
-                    PremiumMiniStat(title: "Doubles+", value: formatAverage(snapshot.doublesOrWorsePerRound), caption: "\(snapshot.doublesOrWorse) total", accent: .red)
-                    PremiumMiniStat(title: "Par 3 Avg", value: formatOptionalAverage(snapshot.par3Average), caption: "\(snapshot.par3Count) holes", accent: AppTheme.gold)
-                    PremiumMiniStat(title: "Par 4 Avg", value: formatOptionalAverage(snapshot.par4Average), caption: "\(snapshot.par4Count) holes", accent: AppTheme.mint)
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    HoleAverageCard(title: "Par 3s", value: formatOptionalAverage(snapshot.par3Average), target: "\(snapshot.par3Count) holes", tint: Color(red: 0.11, green: 0.42, blue: 0.74))
+                    HoleAverageCard(title: "Par 4s", value: formatOptionalAverage(snapshot.par4Average), target: "\(snapshot.par4Count) holes", tint: AppTheme.mint)
+                    HoleAverageCard(title: "Par 5s", value: formatOptionalAverage(snapshot.par5Average), target: "\(snapshot.par5Count) holes", tint: AppTheme.gold)
                 }
             }
         }
