@@ -1,7 +1,6 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
-import MapKit
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -12,7 +11,6 @@ struct ContentView: View {
     @StateObject private var clubYardages = ClubYardageStore()
     @StateObject private var handicapHistory = HandicapHistoryStore()
     @StateObject private var scorecardStore = CourseScorecardStore()
-    @StateObject private var holeGPSStore = HoleGPSStore()
     @AppStorage("pinpoint.profileImageData") private var profileImageData: Data = Data()
     @AppStorage("precision.profileName") private var profileName = ""
     @AppStorage("precision.profileHomeClub") private var profileHomeClub = ""
@@ -390,7 +388,6 @@ extension ContentView {
                         currentHoleIndex: $currentHoleIndex,
                         entries: $entries,
                         handicap: roundHandicap,
-                        holeGPSStore: holeGPSStore,
                         finishRound: finishRound,
                         discardRound: discardCurrentRound
                     )
@@ -4449,13 +4446,11 @@ struct LiveRoundView: View {
     @Binding var currentHoleIndex: Int
     @Binding var entries: [RoundHoleEntry]
     let handicap: Double
-    @ObservedObject var holeGPSStore: HoleGPSStore
     let finishRound: () -> Void
     let discardRound: () -> Void
     @State private var scoringStep: LiveScoringStep = .score
     @State private var showIncompleteScoreAlert = false
     @State private var showDiscardRoundAlert = false
-    @State private var showHoleMap = false
 
     var body: some View {
         let currentGross = grossScoreThroughCurrentHole
@@ -4505,10 +4500,8 @@ struct LiveRoundView: View {
             )
             .padding(.horizontal, 16)
 
-            LiveScoringStepPill(step: $scoringStep) {
-                showHoleMap = true
-            }
-            .padding(.horizontal, 16)
+            LiveScoringStepPill(step: $scoringStep)
+                .padding(.horizontal, 16)
 
             Group {
                 if scoringStep == .score {
@@ -4524,7 +4517,7 @@ struct LiveRoundView: View {
                     )
                     .padding(.horizontal, 16)
                     .frame(maxHeight: .infinity, alignment: .top)
-                } else if scoringStep == .stats {
+                } else {
                     VStack(spacing: 8) {
                         CompactStepperPanel(title: "Putts", subtitle: "Total putts", value: putts, range: 0...6, accent: AppTheme.mint)
                         QuickStatsPanel(
@@ -4608,15 +4601,6 @@ struct LiveRoundView: View {
             }
         } message: {
             Text("This will stop the live round and remove all unsaved scores and stats from this card.")
-        }
-        .fullScreenCover(isPresented: $showHoleMap) {
-            LiveHoleMapFullScreenView(
-                course: selectedCourse,
-                tee: selectedTee,
-                hole: entry.wrappedValue.hole,
-                courseHandicap: courseHandicap,
-                gpsStore: holeGPSStore
-            )
         }
         .onChange(of: currentHoleIndex) { _, newValue in
             if entries[newValue].score == 0 {
@@ -7197,7 +7181,6 @@ struct ScorecardPreview: View {
 enum LiveScoringStep {
     case score
     case stats
-    case map
 }
 
 struct LiveHoleNavigator: View {
@@ -7246,13 +7229,11 @@ struct LiveHoleNavButtonStyle: ButtonStyle {
 
 struct LiveScoringStepPill: View {
     @Binding var step: LiveScoringStep
-    let openMap: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
             stepItem(title: "Score", icon: "number", target: .score)
             stepItem(title: "Stats", icon: "chart.bar.fill", target: .stats)
-            stepItem(title: "Map", icon: "map.fill", target: .map)
         }
         .padding(5)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
@@ -7260,14 +7241,10 @@ struct LiveScoringStepPill: View {
     }
 
     private func stepItem(title: String, icon: String, target: LiveScoringStep) -> some View {
-        let isSelected = target != .map && step == target
+        let isSelected = step == target
 
         return Button {
-            if target == .map {
-                openMap()
-            } else {
-                step = target
-            }
+            step = target
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: icon)
@@ -7281,310 +7258,6 @@ struct LiveScoringStepPill: View {
             .background(RoundedRectangle(cornerRadius: 7).fill(isSelected ? AppTheme.mint : Color.clear))
         }
         .buttonStyle(.plain)
-    }
-}
-
-struct LiveHoleMapFullScreenView: View {
-    @Environment(\.dismiss) private var dismiss
-    let course: GolfCourse
-    let tee: TeeBox
-    let hole: Hole
-    let courseHandicap: Int
-    @ObservedObject var gpsStore: HoleGPSStore
-    @StateObject private var locationManager = HoleGPSLocationManager()
-    @State private var cameraPosition: MapCameraPosition = .automatic
-    @State private var shotStart: CLLocation?
-    @State private var statusMessage: String?
-
-    private var pins: HoleGPSPins {
-        gpsStore.pins(course: course, tee: tee, hole: hole)
-    }
-
-    var body: some View {
-        VStack(spacing: 14) {
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .heavy))
-                        .foregroundStyle(AppTheme.mint)
-                        .frame(width: 44, height: 44)
-                        .background(Circle().fill(AppTheme.panel))
-                        .overlay(Circle().stroke(AppTheme.border.opacity(0.82)))
-                }
-
-                Spacer()
-
-                Text("GPS Hole View")
-                    .font(.system(.headline, design: .rounded).weight(.heavy))
-                    .foregroundStyle(AppTheme.ink)
-
-                Spacer()
-
-                Text("CH \(courseHandicap)")
-                    .font(.system(.caption, design: .rounded).weight(.heavy))
-                    .foregroundStyle(AppTheme.softText)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(AppTheme.panel))
-                    .overlay(Circle().stroke(AppTheme.border.opacity(0.82)))
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 10)
-
-            VStack(alignment: .leading, spacing: 12) {
-                Text(course.name)
-                    .font(.system(.subheadline, design: .rounded).weight(.heavy))
-                    .foregroundStyle(AppTheme.softText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-
-                HStack(alignment: .firstTextBaseline) {
-                    Text("Hole \(hole.number)")
-                        .font(.system(size: 44, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppTheme.ink)
-
-                    Spacer()
-
-                    HStack(spacing: 8) {
-                        MapInfoPill(text: "Par \(hole.par)")
-                        MapInfoPill(text: "\(hole.yards) yds")
-                        MapInfoPill(text: "SI \(hole.strokeIndex)")
-                    }
-                }
-            }
-            .padding(.horizontal, 22)
-
-            ZStack {
-                Map(position: $cameraPosition) {
-                    UserAnnotation()
-                    ForEach(HoleGPSPinKind.allCases) { kind in
-                        if let coordinate = pins.coordinate(for: kind) {
-                            Marker(kind.rawValue, systemImage: "flag.fill", coordinate: coordinate.coordinate)
-                                .tint(kind == .middle ? AppTheme.mint : AppTheme.gold)
-                        }
-                    }
-                }
-                .mapStyle(.imagery(elevation: .flat))
-                .mapControls {
-                    MapUserLocationButton()
-                    MapCompass()
-                    MapScaleView()
-                }
-
-                if !pins.hasAnyPin {
-                    VStack(spacing: 12) {
-                        Image(systemName: "mappin.slash")
-                            .font(.system(size: 34, weight: .bold))
-                            .foregroundStyle(AppTheme.mint)
-                        Text("No GPS pins saved")
-                            .font(.system(.title3, design: .rounded).weight(.heavy))
-                            .foregroundStyle(AppTheme.ink)
-                        Text("Stand at the front, middle or back of the green and save each pin to unlock live yardages.")
-                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                            .foregroundStyle(AppTheme.softText)
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(20)
-                    .background(.regularMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .padding(22)
-                }
-
-                VStack {
-                    Spacer()
-                    if let statusMessage {
-                        Text(statusMessage)
-                            .font(.system(.caption, design: .rounded).weight(.heavy))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 9)
-                            .background(Capsule().fill(Color.black.opacity(0.52)))
-                            .padding(.bottom, 12)
-                    } else if let locationError = locationManager.locationError {
-                        Text(locationError)
-                            .font(.system(.caption, design: .rounded).weight(.heavy))
-                            .foregroundStyle(.white)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 9)
-                            .background(Capsule().fill(Color.black.opacity(0.52)))
-                            .padding(.bottom, 12)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
-            .padding(.horizontal, 18)
-
-            HStack(spacing: 10) {
-                ForEach(HoleGPSPinKind.allCases) { kind in
-                    MapDistanceTile(title: kind.shortTitle, value: distanceText(for: kind))
-                }
-            }
-            .padding(.horizontal, 18)
-
-            VStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    ForEach(HoleGPSPinKind.allCases) { kind in
-                        Button {
-                            savePin(kind)
-                        } label: {
-                            Label(kind.actionTitle, systemImage: "mappin.and.ellipse")
-                        }
-                        .buttonStyle(MapPrototypeButtonStyle(isPrimary: kind == .middle))
-                    }
-                }
-
-                HStack(spacing: 10) {
-                    Button {
-                        toggleShotMeasurement()
-                    } label: {
-                        Label(shotStart == nil ? "Start Shot" : "Reset Shot", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
-                    }
-                    .buttonStyle(MapPrototypeButtonStyle(isPrimary: false))
-
-                    MapDistanceTile(title: "SHOT", value: shotDistanceText)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .padding(.horizontal, 18)
-
-            Label(pins.hasAnyPin ? "Live GPS distances from saved green pins" : "Save pins while standing on the course", systemImage: "location.fill")
-                .font(.system(.caption, design: .rounded).weight(.heavy))
-                .foregroundStyle(AppTheme.softText)
-                .padding(.bottom, 18)
-        }
-        .background(AppTheme.background.ignoresSafeArea())
-        .onAppear {
-            locationManager.requestLocationUpdates()
-            updateCameraPosition()
-        }
-        .onReceive(locationManager.$currentLocation) { _ in
-            updateCameraPosition()
-        }
-    }
-
-    private func savePin(_ kind: HoleGPSPinKind) {
-        guard let location = locationManager.currentLocation else {
-            statusMessage = "Waiting for GPS location..."
-            return
-        }
-        gpsStore.save(HoleGPSCoordinate(location: location), for: kind, course: course, tee: tee, hole: hole)
-        statusMessage = "\(kind.rawValue) pin saved"
-        updateCameraPosition()
-    }
-
-    private func toggleShotMeasurement() {
-        guard let location = locationManager.currentLocation else {
-            statusMessage = "Waiting for GPS location..."
-            return
-        }
-        shotStart = shotStart == nil ? location : nil
-        statusMessage = shotStart == nil ? "Shot reset" : "Shot started"
-    }
-
-    private func distanceText(for kind: HoleGPSPinKind) -> String {
-        guard let currentLocation = locationManager.currentLocation else { return "--" }
-        guard let pinLocation = pins.coordinate(for: kind)?.location else { return "--" }
-        return "\(yards(from: currentLocation, to: pinLocation))"
-    }
-
-    private var shotDistanceText: String {
-        guard let currentLocation = locationManager.currentLocation,
-              let shotStart else {
-            return "--"
-        }
-        return "\(yards(from: shotStart, to: currentLocation))"
-    }
-
-    private func yards(from start: CLLocation, to end: CLLocation) -> Int {
-        Int((start.distance(from: end) * 1.09361).rounded())
-    }
-
-    private func updateCameraPosition() {
-        let coordinates = HoleGPSPinKind.allCases.compactMap { pins.coordinate(for: $0)?.coordinate }
-        if !coordinates.isEmpty {
-            cameraPosition = .region(region(fitting: coordinates))
-        } else if let coordinate = locationManager.currentLocation?.coordinate {
-            cameraPosition = .region(MKCoordinateRegion(
-                center: coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.004, longitudeDelta: 0.004)
-            ))
-        }
-    }
-
-    private func region(fitting coordinates: [CLLocationCoordinate2D]) -> MKCoordinateRegion {
-        let latitudes = coordinates.map(\.latitude)
-        let longitudes = coordinates.map(\.longitude)
-        guard let minLat = latitudes.min(),
-              let maxLat = latitudes.max(),
-              let minLon = longitudes.min(),
-              let maxLon = longitudes.max() else {
-            return MKCoordinateRegion()
-        }
-
-        let center = CLLocationCoordinate2D(
-            latitude: (minLat + maxLat) / 2,
-            longitude: (minLon + maxLon) / 2
-        )
-        let span = MKCoordinateSpan(
-            latitudeDelta: max(0.002, (maxLat - minLat) * 2.4),
-            longitudeDelta: max(0.002, (maxLon - minLon) * 2.4)
-        )
-        return MKCoordinateRegion(center: center, span: span)
-    }
-}
-
-struct MapInfoPill: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.system(.caption, design: .rounded).weight(.heavy))
-            .foregroundStyle(AppTheme.mint)
-            .lineLimit(1)
-            .minimumScaleFactor(0.78)
-            .padding(.horizontal, 10)
-            .frame(height: 32)
-            .background(Capsule().fill(AppTheme.mintWash))
-    }
-}
-
-struct MapDistanceTile: View {
-    let title: String
-    let value: String
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(title)
-                .font(.system(.caption2, design: .rounded).weight(.heavy))
-                .foregroundStyle(AppTheme.softText)
-                .textCase(.uppercase)
-            Text(value)
-                .font(.system(size: 24, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.ink)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 68)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.92)))
-    }
-}
-
-struct MapPrototypeButtonStyle: ButtonStyle {
-    let isPrimary: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(.caption, design: .rounded).weight(.heavy))
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
-            .foregroundStyle(isPrimary ? .white : AppTheme.ink)
-            .frame(maxWidth: .infinity)
-            .frame(height: 42)
-            .background(RoundedRectangle(cornerRadius: 8).fill(isPrimary ? AppTheme.mint : Color.white.opacity(0.92)))
-            .opacity(configuration.isPressed ? 0.82 : 1)
     }
 }
 

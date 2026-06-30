@@ -17,7 +17,7 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Precision Golf uses your location to find nearby golf courses and calculate live GPS distances during a round.</string>
+	<string>Precision Golf uses your approximate location to search for nearby golf courses.</string>
 	<key>PrecisionCourseAPIBaseURL</key>
 	<string>$(PINPOINT_COURSE_API_BASE_URL)</string>
 	<key>UIApplicationSceneManifest</key>
