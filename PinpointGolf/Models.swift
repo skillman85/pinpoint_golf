@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 import SwiftUI
 
 struct GolfCourse: Identifiable, Hashable {
@@ -100,6 +101,174 @@ struct CourseHoleOverride: Identifiable, Codable, Hashable {
 
     func toHole() -> Hole {
         Hole(number: number, par: par, yards: yards, strokeIndex: strokeIndex)
+    }
+}
+
+enum HoleGPSPinKind: String, CaseIterable, Identifiable, Codable {
+    case front = "Front"
+    case middle = "Middle"
+    case back = "Back"
+
+    var id: String { rawValue }
+
+    var shortTitle: String { rawValue.uppercased() }
+
+    var actionTitle: String {
+        "Set \(rawValue)"
+    }
+}
+
+struct HoleGPSCoordinate: Codable, Hashable {
+    var latitude: Double
+    var longitude: Double
+    var savedAt: Date
+
+    init(location: CLLocation, savedAt: Date = Date()) {
+        latitude = location.coordinate.latitude
+        longitude = location.coordinate.longitude
+        self.savedAt = savedAt
+    }
+
+    var location: CLLocation {
+        CLLocation(latitude: latitude, longitude: longitude)
+    }
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+}
+
+struct HoleGPSPins: Identifiable, Codable, Hashable {
+    var id: String { key }
+    var key: String
+    var courseKey: String
+    var teeKey: String
+    var holeNumber: Int
+    var front: HoleGPSCoordinate?
+    var middle: HoleGPSCoordinate?
+    var back: HoleGPSCoordinate?
+    var updatedAt: Date
+
+    func coordinate(for kind: HoleGPSPinKind) -> HoleGPSCoordinate? {
+        switch kind {
+        case .front: return front
+        case .middle: return middle
+        case .back: return back
+        }
+    }
+
+    mutating func set(_ coordinate: HoleGPSCoordinate, for kind: HoleGPSPinKind) {
+        switch kind {
+        case .front: front = coordinate
+        case .middle: middle = coordinate
+        case .back: back = coordinate
+        }
+        updatedAt = Date()
+    }
+
+    var hasAnyPin: Bool {
+        front != nil || middle != nil || back != nil
+    }
+}
+
+final class HoleGPSStore: ObservableObject {
+    @Published private(set) var pinsByKey: [String: HoleGPSPins]
+
+    private let storageKey = "precision.holeGPSPins.v1"
+
+    init() {
+        if let data = UserDefaults.standard.data(forKey: storageKey),
+           let pins = try? JSONDecoder().decode([HoleGPSPins].self, from: data) {
+            pinsByKey = Dictionary(uniqueKeysWithValues: pins.map { ($0.key, $0) })
+        } else {
+            pinsByKey = [:]
+        }
+    }
+
+    func key(course: GolfCourse, tee: TeeBox, hole: Hole) -> String {
+        [
+            course.favoriteKey,
+            tee.name.lowercased(),
+            "\(hole.number)"
+        ].joined(separator: "|")
+    }
+
+    func pins(course: GolfCourse, tee: TeeBox, hole: Hole) -> HoleGPSPins {
+        let pinKey = key(course: course, tee: tee, hole: hole)
+        return pinsByKey[pinKey] ?? HoleGPSPins(
+            key: pinKey,
+            courseKey: course.favoriteKey,
+            teeKey: tee.name.lowercased(),
+            holeNumber: hole.number,
+            front: nil,
+            middle: nil,
+            back: nil,
+            updatedAt: Date()
+        )
+    }
+
+    func save(_ coordinate: HoleGPSCoordinate, for kind: HoleGPSPinKind, course: GolfCourse, tee: TeeBox, hole: Hole) {
+        var updated = pins(course: course, tee: tee, hole: hole)
+        updated.set(coordinate, for: kind)
+        pinsByKey[updated.key] = updated
+        persist()
+    }
+
+    func deletePins(course: GolfCourse, tee: TeeBox, hole: Hole) {
+        pinsByKey.removeValue(forKey: key(course: course, tee: tee, hole: hole))
+        persist()
+    }
+
+    private func persist() {
+        let pins = pinsByKey.values
+            .filter(\.hasAnyPin)
+            .sorted { $0.key < $1.key }
+        guard let data = try? JSONEncoder().encode(pins) else { return }
+        UserDefaults.standard.set(data, forKey: storageKey)
+    }
+}
+
+final class HoleGPSLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    @Published var currentLocation: CLLocation?
+    @Published var authorizationStatus: CLAuthorizationStatus
+    @Published var locationError: String?
+
+    private let manager = CLLocationManager()
+
+    override init() {
+        authorizationStatus = manager.authorizationStatus
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.distanceFilter = 2
+    }
+
+    func requestLocationUpdates() {
+        locationError = nil
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        case .authorizedAlways, .authorizedWhenInUse:
+            manager.startUpdatingLocation()
+        case .denied, .restricted:
+            locationError = "Location permission is off for Precision Golf."
+        @unknown default:
+            locationError = "Location permission is unavailable."
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        authorizationStatus = manager.authorizationStatus
+        requestLocationUpdates()
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        currentLocation = location
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        locationError = error.localizedDescription
     }
 }
 

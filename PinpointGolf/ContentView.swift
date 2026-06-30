@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
+import MapKit
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -11,6 +12,7 @@ struct ContentView: View {
     @StateObject private var clubYardages = ClubYardageStore()
     @StateObject private var handicapHistory = HandicapHistoryStore()
     @StateObject private var scorecardStore = CourseScorecardStore()
+    @StateObject private var holeGPSStore = HoleGPSStore()
     @AppStorage("pinpoint.profileImageData") private var profileImageData: Data = Data()
     @AppStorage("precision.profileName") private var profileName = ""
     @AppStorage("precision.profileHomeClub") private var profileHomeClub = ""
@@ -388,6 +390,7 @@ extension ContentView {
                         currentHoleIndex: $currentHoleIndex,
                         entries: $entries,
                         handicap: roundHandicap,
+                        holeGPSStore: holeGPSStore,
                         finishRound: finishRound,
                         discardRound: discardCurrentRound
                     )
@@ -4446,6 +4449,7 @@ struct LiveRoundView: View {
     @Binding var currentHoleIndex: Int
     @Binding var entries: [RoundHoleEntry]
     let handicap: Double
+    @ObservedObject var holeGPSStore: HoleGPSStore
     let finishRound: () -> Void
     let discardRound: () -> Void
     @State private var scoringStep: LiveScoringStep = .score
@@ -4607,9 +4611,11 @@ struct LiveRoundView: View {
         }
         .fullScreenCover(isPresented: $showHoleMap) {
             LiveHoleMapFullScreenView(
-                courseName: selectedCourse.name,
+                course: selectedCourse,
+                tee: selectedTee,
                 hole: entry.wrappedValue.hole,
-                courseHandicap: courseHandicap
+                courseHandicap: courseHandicap,
+                gpsStore: holeGPSStore
             )
         }
         .onChange(of: currentHoleIndex) { _, newValue in
@@ -7280,9 +7286,19 @@ struct LiveScoringStepPill: View {
 
 struct LiveHoleMapFullScreenView: View {
     @Environment(\.dismiss) private var dismiss
-    let courseName: String
+    let course: GolfCourse
+    let tee: TeeBox
     let hole: Hole
     let courseHandicap: Int
+    @ObservedObject var gpsStore: HoleGPSStore
+    @StateObject private var locationManager = HoleGPSLocationManager()
+    @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var shotStart: CLLocation?
+    @State private var statusMessage: String?
+
+    private var pins: HoleGPSPins {
+        gpsStore.pins(course: course, tee: tee, hole: hole)
+    }
 
     var body: some View {
         VStack(spacing: 14) {
@@ -7317,7 +7333,7 @@ struct LiveHoleMapFullScreenView: View {
             .padding(.top, 10)
 
             VStack(alignment: .leading, spacing: 12) {
-                Text(courseName)
+                Text(course.name)
                     .font(.system(.subheadline, design: .rounded).weight(.heavy))
                     .foregroundStyle(AppTheme.softText)
                     .lineLimit(1)
@@ -7340,64 +7356,184 @@ struct LiveHoleMapFullScreenView: View {
             .padding(.horizontal, 22)
 
             ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(
-                        LinearGradient(
-                            colors: [AppTheme.mintWash.opacity(0.95), Color.white],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
+                Map(position: $cameraPosition) {
+                    UserAnnotation()
+                    ForEach(HoleGPSPinKind.allCases) { kind in
+                        if let coordinate = pins.coordinate(for: kind) {
+                            Marker(kind.rawValue, systemImage: "flag.fill", coordinate: coordinate.coordinate)
+                                .tint(kind == .middle ? AppTheme.mint : AppTheme.gold)
+                        }
+                    }
+                }
+                .mapStyle(.imagery(elevation: .flat))
+                .mapControls {
+                    MapUserLocationButton()
+                    MapCompass()
+                    MapScaleView()
+                }
 
-                VStack(spacing: 16) {
-                    Image(systemName: "map")
-                        .font(.system(size: 42, weight: .bold))
-                        .foregroundStyle(AppTheme.mint)
-
-                    VStack(spacing: 8) {
-                        Text("Map not set for this hole")
+                if !pins.hasAnyPin {
+                    VStack(spacing: 12) {
+                        Image(systemName: "mappin.slash")
+                            .font(.system(size: 34, weight: .bold))
+                            .foregroundStyle(AppTheme.mint)
+                        Text("No GPS pins saved")
                             .font(.system(.title3, design: .rounded).weight(.heavy))
                             .foregroundStyle(AppTheme.ink)
-                        Text("Once tee and green pins are saved, this screen can show the hole layout and GPS distances.")
+                        Text("Stand at the front, middle or back of the green and save each pin to unlock live yardages.")
                             .font(.system(.subheadline, design: .rounded).weight(.semibold))
                             .foregroundStyle(AppTheme.softText)
                             .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
+                    }
+                    .padding(20)
+                    .background(.regularMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(22)
+                }
+
+                VStack {
+                    Spacer()
+                    if let statusMessage {
+                        Text(statusMessage)
+                            .font(.system(.caption, design: .rounded).weight(.heavy))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(Capsule().fill(Color.black.opacity(0.52)))
+                            .padding(.bottom, 12)
+                    } else if let locationError = locationManager.locationError {
+                        Text(locationError)
+                            .font(.system(.caption, design: .rounded).weight(.heavy))
+                            .foregroundStyle(.white)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 9)
+                            .background(Capsule().fill(Color.black.opacity(0.52)))
+                            .padding(.bottom, 12)
                     }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
             .padding(.horizontal, 18)
 
             HStack(spacing: 10) {
-                MapDistanceTile(title: "Front", value: "--")
-                MapDistanceTile(title: "Middle", value: "--")
-                MapDistanceTile(title: "Back", value: "--")
+                ForEach(HoleGPSPinKind.allCases) { kind in
+                    MapDistanceTile(title: kind.shortTitle, value: distanceText(for: kind))
+                }
             }
             .padding(.horizontal, 18)
 
-            HStack(spacing: 10) {
-                Button {
-                } label: {
-                    Label("Set Green Pin", systemImage: "mappin.and.ellipse")
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    ForEach(HoleGPSPinKind.allCases) { kind in
+                        Button {
+                            savePin(kind)
+                        } label: {
+                            Label(kind.actionTitle, systemImage: "mappin.and.ellipse")
+                        }
+                        .buttonStyle(MapPrototypeButtonStyle(isPrimary: kind == .middle))
+                    }
                 }
-                .buttonStyle(MapPrototypeButtonStyle(isPrimary: true))
 
-                Button {
-                } label: {
-                    Label("Measure Shot", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                HStack(spacing: 10) {
+                    Button {
+                        toggleShotMeasurement()
+                    } label: {
+                        Label(shotStart == nil ? "Start Shot" : "Reset Shot", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                    }
+                    .buttonStyle(MapPrototypeButtonStyle(isPrimary: false))
+
+                    MapDistanceTile(title: "SHOT", value: shotDistanceText)
+                        .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(MapPrototypeButtonStyle(isPrimary: false))
             }
             .padding(.horizontal, 18)
 
-            Label("Prototype - no hole GPS saved", systemImage: "sparkles")
+            Label(pins.hasAnyPin ? "Live GPS distances from saved green pins" : "Save pins while standing on the course", systemImage: "location.fill")
                 .font(.system(.caption, design: .rounded).weight(.heavy))
                 .foregroundStyle(AppTheme.softText)
                 .padding(.bottom, 18)
         }
         .background(AppTheme.background.ignoresSafeArea())
+        .onAppear {
+            locationManager.requestLocationUpdates()
+            updateCameraPosition()
+        }
+        .onReceive(locationManager.$currentLocation) { _ in
+            updateCameraPosition()
+        }
+    }
+
+    private func savePin(_ kind: HoleGPSPinKind) {
+        guard let location = locationManager.currentLocation else {
+            statusMessage = "Waiting for GPS location..."
+            return
+        }
+        gpsStore.save(HoleGPSCoordinate(location: location), for: kind, course: course, tee: tee, hole: hole)
+        statusMessage = "\(kind.rawValue) pin saved"
+        updateCameraPosition()
+    }
+
+    private func toggleShotMeasurement() {
+        guard let location = locationManager.currentLocation else {
+            statusMessage = "Waiting for GPS location..."
+            return
+        }
+        shotStart = shotStart == nil ? location : nil
+        statusMessage = shotStart == nil ? "Shot reset" : "Shot started"
+    }
+
+    private func distanceText(for kind: HoleGPSPinKind) -> String {
+        guard let currentLocation = locationManager.currentLocation else { return "--" }
+        guard let pinLocation = pins.coordinate(for: kind)?.location else { return "--" }
+        return "\(yards(from: currentLocation, to: pinLocation))"
+    }
+
+    private var shotDistanceText: String {
+        guard let currentLocation = locationManager.currentLocation,
+              let shotStart else {
+            return "--"
+        }
+        return "\(yards(from: shotStart, to: currentLocation))"
+    }
+
+    private func yards(from start: CLLocation, to end: CLLocation) -> Int {
+        Int((start.distance(from: end) * 1.09361).rounded())
+    }
+
+    private func updateCameraPosition() {
+        let coordinates = HoleGPSPinKind.allCases.compactMap { pins.coordinate(for: $0)?.coordinate }
+        if !coordinates.isEmpty {
+            cameraPosition = .region(region(fitting: coordinates))
+        } else if let coordinate = locationManager.currentLocation?.coordinate {
+            cameraPosition = .region(MKCoordinateRegion(
+                center: coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.004, longitudeDelta: 0.004)
+            ))
+        }
+    }
+
+    private func region(fitting coordinates: [CLLocationCoordinate2D]) -> MKCoordinateRegion {
+        let latitudes = coordinates.map(\.latitude)
+        let longitudes = coordinates.map(\.longitude)
+        guard let minLat = latitudes.min(),
+              let maxLat = latitudes.max(),
+              let minLon = longitudes.min(),
+              let maxLon = longitudes.max() else {
+            return MKCoordinateRegion()
+        }
+
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
+        )
+        let span = MKCoordinateSpan(
+            latitudeDelta: max(0.002, (maxLat - minLat) * 2.4),
+            longitudeDelta: max(0.002, (maxLon - minLon) * 2.4)
+        )
+        return MKCoordinateRegion(center: center, span: span)
     }
 }
 
