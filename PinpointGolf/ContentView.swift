@@ -3245,6 +3245,10 @@ struct NewRoundSetupView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
             }
 
+            if !courseSearch.results.isEmpty {
+                CourseSearchSourceBadge(source: courseSearch.resultSource)
+            }
+
             SectionHeader(title: sectionTitle, actionTitle: filteredCourses.isEmpty ? nil : "\(filteredCourses.count)")
 
             if filteredCourses.isEmpty {
@@ -3272,6 +3276,7 @@ struct NewRoundSetupView: View {
                         selectedCourse: $selectedCourse,
                         selectedTee: $selectedTee,
                         isFavorite: courseFavorites.isFavorite(course),
+                        isCached: scorecardStore.override(for: course) != nil,
                         toggleFavorite: { toggleFavoriteCourse(course) },
                         startRound: startRound,
                         editScorecard: { editingCourse = course },
@@ -3466,11 +3471,92 @@ struct NewRoundSetupView: View {
     }
 }
 
+struct CourseSearchSourceBadge: View {
+    let source: CourseSearchSource
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .heavy))
+            Text(title)
+                .font(.system(.caption, design: .rounded).weight(.heavy))
+            Spacer(minLength: 8)
+            Text(detail)
+                .font(.system(.caption2, design: .rounded).weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(background))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.18)))
+    }
+
+    private var icon: String {
+        switch source {
+        case .onDevice:
+            return "checkmark.circle.fill"
+        case .sessionCache:
+            return "clock.arrow.circlepath"
+        case .api:
+            return "arrow.down.circle.fill"
+        case .none:
+            return "info.circle.fill"
+        }
+    }
+
+    private var title: String {
+        switch source {
+        case .onDevice:
+            return "Saved on device"
+        case .sessionCache:
+            return "Recent search"
+        case .api:
+            return "Fetched then saved"
+        case .none:
+            return "Search results"
+        }
+    }
+
+    private var detail: String {
+        switch source {
+        case .onDevice:
+            return "No API call"
+        case .sessionCache:
+            return "No new API call"
+        case .api:
+            return "Now cached"
+        case .none:
+            return "Verified"
+        }
+    }
+
+    private var tint: Color {
+        switch source {
+        case .api:
+            return AppTheme.gold
+        default:
+            return AppTheme.mint
+        }
+    }
+
+    private var background: Color {
+        switch source {
+        case .api:
+            return AppTheme.gold.opacity(0.12)
+        default:
+            return AppTheme.mintWash
+        }
+    }
+}
+
 struct CourseSetupCard: View {
     let course: GolfCourse
     @Binding var selectedCourse: GolfCourse
     @Binding var selectedTee: TeeBox
     let isFavorite: Bool
+    let isCached: Bool
     let toggleFavorite: () -> Void
     let startRound: () -> Void
     let editScorecard: () -> Void
@@ -3490,6 +3576,17 @@ struct CourseSetupCard: View {
                         .foregroundStyle(AppTheme.softText)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
+                    if isCached {
+                        HStack(spacing: 5) {
+                            Image(systemName: "checkmark.circle.fill")
+                            Text("Saved scorecard")
+                        }
+                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.mint)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(Capsule().fill(AppTheme.mintWash))
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Spacer()
@@ -4310,7 +4407,15 @@ struct LiveRoundView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
 
-            LiveScoringStepPill(step: scoringStep)
+            LiveHoleNavigator(
+                currentHole: currentHoleIndex + 1,
+                totalHoles: entries.count,
+                goPrevious: { moveToHole(currentHoleIndex - 1) },
+                goNext: { moveToHole(currentHoleIndex + 1) }
+            )
+            .padding(.horizontal, 16)
+
+            LiveScoringStepPill(step: $scoringStep)
                 .padding(.horizontal, 16)
 
             Group {
@@ -4354,8 +4459,7 @@ struct LiveRoundView: View {
                     if scoringStep == .stats {
                         scoringStep = .score
                     } else {
-                        currentHoleIndex = max(0, currentHoleIndex - 1)
-                        scoringStep = entries[currentHoleIndex].score > 0 ? .stats : .score
+                        moveToHole(currentHoleIndex - 1)
                     }
                 } label: {
                     Image(systemName: "chevron.left")
@@ -4379,8 +4483,7 @@ struct LiveRoundView: View {
                                 finishRound()
                             }
                         } else {
-                            currentHoleIndex = min(entries.count - 1, currentHoleIndex + 1)
-                            scoringStep = entries[currentHoleIndex].score > 0 ? .stats : .score
+                            moveToHole(currentHoleIndex + 1)
                         }
                     }
                 } label: {
@@ -4417,13 +4520,24 @@ struct LiveRoundView: View {
             Text("This will stop the live round and remove all unsaved scores and stats from this card.")
         }
         .onChange(of: currentHoleIndex) { _, newValue in
-            scoringStep = entries[newValue].score > 0 ? .stats : .score
+            if entries[newValue].score == 0 {
+                scoringStep = .score
+            }
         }
     }
 
     private var primaryActionTitle: String {
         if scoringStep == .score { return "Stats" }
         return currentHoleIndex == entries.count - 1 ? "Finish Round" : "Next Hole"
+    }
+
+    private func moveToHole(_ index: Int) {
+        let nextIndex = min(max(0, index), entries.count - 1)
+        guard nextIndex != currentHoleIndex else { return }
+        currentHoleIndex = nextIndex
+        if entries[nextIndex].score == 0 {
+            scoringStep = .score
+        }
     }
 
     private func stablefordPoints(for entry: RoundHoleEntry) -> Int {
@@ -6082,10 +6196,10 @@ struct SettingsView: View {
                     SectionHeader(title: "Data Backup", actionTitle: nil)
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Rounds are stored locally on this phone in the app database.")
+                        Text("Rounds and cached scorecards are stored locally on this phone in the app database.")
                             .font(.system(.subheadline, design: .rounded).weight(.semibold))
                             .foregroundStyle(AppTheme.ink)
-                        Text("Export before deleting the app or changing phone. The backup includes completed rounds, handicap, favourite courses, custom goals and yardages.")
+                        Text("Export before deleting the app or changing phone. The backup includes completed rounds, handicap, favourite courses, cached scorecards, custom goals and yardages.")
                             .font(.system(.caption, design: .rounded).weight(.medium))
                             .foregroundStyle(AppTheme.softText)
                             .lineSpacing(3)
@@ -6099,8 +6213,10 @@ struct SettingsView: View {
                             Image(systemName: "square.and.arrow.up.fill")
                             Text("Export Backup")
                             Spacer()
-                            Text("\(savedRounds.count) rounds")
+                            Text("\(savedRounds.count) rounds • \(scorecardStore.overrides.count) scorecards")
                                 .font(.system(.caption, design: .rounded).weight(.bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
                         }
                         .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundStyle(Color.white)
@@ -6233,8 +6349,9 @@ struct SettingsView: View {
         goalArchive.replace(with: backup.customGoals)
         clubYardages.replace(with: backup.clubYardages)
         handicapHistory.replace(with: backup.handicapHistory ?? [])
+        let restoredScorecards = backup.courseScorecards?.count ?? 0
         scorecardStore.replace(with: backup.courseScorecards ?? [])
-        restoreMessage = "Backup restored: \(backup.rounds.count) rounds imported."
+        restoreMessage = "Backup restored: \(backup.rounds.count) rounds and \(restoredScorecards) scorecards imported."
         pendingBackup = nil
     }
 
@@ -6798,30 +6915,81 @@ enum LiveScoringStep {
     case stats
 }
 
+struct LiveHoleNavigator: View {
+    let currentHole: Int
+    let totalHoles: Int
+    let goPrevious: () -> Void
+    let goNext: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: goPrevious) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 13, weight: .heavy))
+                    .frame(width: 42, height: 38)
+            }
+            .disabled(currentHole <= 1)
+
+            Text("Hole \(currentHole) of \(totalHoles)")
+                .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.ink)
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
+
+            Button(action: goNext) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .heavy))
+                    .frame(width: 42, height: 38)
+            }
+            .disabled(currentHole >= totalHoles)
+        }
+        .buttonStyle(LiveHoleNavButtonStyle())
+    }
+}
+
+struct LiveHoleNavButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(AppTheme.mint)
+            .background(RoundedRectangle(cornerRadius: 8).fill(configuration.isPressed ? AppTheme.mintWash : AppTheme.panel))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
+            .opacity(configuration.isPressed ? 0.78 : 1)
+    }
+}
+
 struct LiveScoringStepPill: View {
-    let step: LiveScoringStep
+    @Binding var step: LiveScoringStep
 
     var body: some View {
         HStack(spacing: 8) {
-            stepItem(title: "Score", icon: "number", isSelected: step == .score)
-            stepItem(title: "Stats", icon: "chart.bar.fill", isSelected: step == .stats)
+            stepItem(title: "Score", icon: "number", target: .score)
+            stepItem(title: "Stats", icon: "chart.bar.fill", target: .stats)
         }
         .padding(5)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
     }
 
-    private func stepItem(title: String, icon: String, isSelected: Bool) -> some View {
-        HStack(spacing: 7) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .heavy))
-            Text(title)
-                .font(.system(.caption, design: .rounded).weight(.heavy))
+    private func stepItem(title: String, icon: String, target: LiveScoringStep) -> some View {
+        let isSelected = step == target
+
+        return Button {
+            step = target
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .heavy))
+                Text(title)
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+            }
+            .foregroundStyle(isSelected ? .white : AppTheme.softText)
+            .frame(maxWidth: .infinity)
+            .frame(height: 34)
+            .background(RoundedRectangle(cornerRadius: 7).fill(isSelected ? AppTheme.mint : Color.clear))
         }
-        .foregroundStyle(isSelected ? .white : AppTheme.softText)
-        .frame(maxWidth: .infinity)
-        .frame(height: 34)
-        .background(RoundedRectangle(cornerRadius: 7).fill(isSelected ? AppTheme.mint : Color.clear))
+        .buttonStyle(.plain)
     }
 }
 
@@ -6943,12 +7111,12 @@ struct ScoreKeypadButton: View {
         Button(action: action) {
             VStack(spacing: 3) {
                 Text(title)
-                    .font(.system(size: isUtility ? 19 : 34, weight: .heavy, design: .rounded))
+                    .font(.system(size: isUtility ? 19 : 34, weight: .regular, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
@@ -7373,7 +7541,10 @@ struct LiveRoundHeaderCard: View {
                     Text("Hole \(holeNumber)")
                         .font(.system(size: 32, weight: .heavy, design: .rounded))
                         .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
                 }
+                .layoutPriority(1)
 
                 Spacer()
 
@@ -7382,6 +7553,7 @@ struct LiveRoundHeaderCard: View {
                     headerPill("\(yards) yds")
                     headerPill("SI \(strokeIndex)")
                 }
+                .layoutPriority(2)
             }
 
             HStack(spacing: 8) {
@@ -7412,11 +7584,11 @@ struct LiveRoundHeaderCard: View {
 
     private func headerPill(_ text: String) -> some View {
         Text(text)
-            .font(.system(.caption, design: .rounded).weight(.heavy))
+            .font(.system(.caption2, design: .rounded).weight(.heavy))
             .foregroundStyle(.white)
             .lineLimit(1)
-            .minimumScaleFactor(0.72)
-            .padding(.horizontal, 8)
+            .minimumScaleFactor(0.82)
+            .padding(.horizontal, 7)
             .frame(height: 28)
             .background(Capsule().fill(Color.white.opacity(0.16)))
     }

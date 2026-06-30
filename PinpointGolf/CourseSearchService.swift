@@ -2,12 +2,20 @@ import Foundation
 import CoreLocation
 import MapKit
 
+enum CourseSearchSource {
+    case none
+    case onDevice
+    case api
+    case sessionCache
+}
+
 @MainActor
 final class CourseSearchViewModel: ObservableObject {
     @Published private(set) var results: [GolfCourse] = []
     @Published private(set) var isSearching = false
     @Published var errorMessage: String?
     @Published private(set) var locationSearchLabel: String?
+    @Published private(set) var resultSource: CourseSearchSource = .none
 
     private let courseAPI = PrecisionCourseAPIClient()
     private let locationProvider = CourseLocationProvider()
@@ -19,6 +27,7 @@ final class CourseSearchViewModel: ObservableObject {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
             results = []
+            resultSource = .none
             return
         }
 
@@ -29,6 +38,7 @@ final class CourseSearchViewModel: ObservableObject {
         let localMatches = searchLocalCourses(query: trimmedQuery, in: localCourses)
         if !localMatches.isEmpty {
             results = localMatches
+            resultSource = .onDevice
             return
         }
 
@@ -36,6 +46,7 @@ final class CourseSearchViewModel: ObservableObject {
             let courses = try await courseAPI.searchCourses(query: trimmedQuery)
             if !courses.isEmpty {
                 results = courses
+                resultSource = .api
                 return
             }
         } catch PrecisionCourseAPIError.missingBaseURL {
@@ -45,6 +56,7 @@ final class CourseSearchViewModel: ObservableObject {
         }
 
         results = []
+        resultSource = .none
         errorMessage = "No verified scorecards found. Try course name, town, city or county."
     }
 
@@ -62,12 +74,14 @@ final class CourseSearchViewModel: ObservableObject {
                cachedLocationSearch.label == context.label,
                Date().timeIntervalSince(cachedLocationSearch.date) < locationSearchCacheLifetime {
                 results = cachedLocationSearch.courses
+                resultSource = .sessionCache
                 return
             }
 
             let localMatches = localLocationMatches(for: context, in: localCourses)
             if !localMatches.isEmpty {
                 results = localMatches
+                resultSource = .onDevice
                 cachedLocationSearch = (context.label, Date(), localMatches)
                 return
             }
@@ -87,6 +101,7 @@ final class CourseSearchViewModel: ObservableObject {
             if !verifiedCourses.isEmpty {
                 let mergedCourses = Self.mergedCourses(verifiedCourses)
                 results = mergedCourses
+                resultSource = .api
                 cachedLocationSearch = (context.label, Date(), mergedCourses)
                 return
             }
@@ -94,14 +109,18 @@ final class CourseSearchViewModel: ObservableObject {
             results = Self.mergedCourses(
                 Self.verifiedCourses(context.searchTerms.flatMap { searchLocalCourses(query: $0, in: localCourses) })
             )
+            resultSource = results.isEmpty ? .none : .onDevice
             if results.isEmpty {
                 errorMessage = "No verified scorecards found nearby. Try searching by course name."
             }
         } catch CourseLocationError.permissionDenied {
+            resultSource = .none
             errorMessage = "Location permission is needed to search nearby courses. You can still search by town or county."
         } catch PrecisionCourseAPIError.missingBaseURL {
+            resultSource = .none
             errorMessage = "Course API backend is not configured. Search by course name or use favourites."
         } catch {
+            resultSource = .none
             errorMessage = "Could not find nearby courses. Search by course name, town, city or county instead."
         }
     }
