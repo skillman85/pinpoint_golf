@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
+import MapKit
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -4517,7 +4518,7 @@ struct LiveRoundView: View {
                     )
                     .padding(.horizontal, 16)
                     .frame(maxHeight: .infinity, alignment: .top)
-                } else {
+                } else if scoringStep == .stats {
                     VStack(spacing: 8) {
                         CompactStepperPanel(title: "Putts", subtitle: "Total putts", value: putts, range: 0...6, accent: AppTheme.mint)
                         QuickStatsPanel(
@@ -4530,6 +4531,14 @@ struct LiveRoundView: View {
                             bunker: entry.bunker
                         )
                     }
+                    .padding(.horizontal, 16)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                } else {
+                    LiveHoleMapPrototypeView(
+                        courseName: selectedCourse.name,
+                        hole: entry.wrappedValue.hole,
+                        courseHandicap: courseHandicap
+                    )
                     .padding(.horizontal, 16)
                     .frame(maxHeight: .infinity, alignment: .top)
                 }
@@ -7181,6 +7190,7 @@ struct ScorecardPreview: View {
 enum LiveScoringStep {
     case score
     case stats
+    case map
 }
 
 struct LiveHoleNavigator: View {
@@ -7234,6 +7244,7 @@ struct LiveScoringStepPill: View {
         HStack(spacing: 8) {
             stepItem(title: "Score", icon: "number", target: .score)
             stepItem(title: "Stats", icon: "chart.bar.fill", target: .stats)
+            stepItem(title: "Map", icon: "map.fill", target: .map)
         }
         .padding(5)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
@@ -7258,6 +7269,146 @@ struct LiveScoringStepPill: View {
             .background(RoundedRectangle(cornerRadius: 7).fill(isSelected ? AppTheme.mint : Color.clear))
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct LiveHoleMapPrototypeView: View {
+    let courseName: String
+    let hole: Hole
+    let courseHandicap: Int
+    @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
+
+    var body: some View {
+        VStack(spacing: 10) {
+            ZStack(alignment: .top) {
+                Map(position: $position) {
+                    UserAnnotation()
+                }
+                .mapStyle(.imagery)
+                .overlay(
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.34), Color.clear, Color.black.opacity(0.48)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .allowsHitTesting(false)
+                )
+
+                VStack(spacing: 0) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(courseName)
+                                .font(.system(.caption, design: .rounded).weight(.heavy))
+                                .foregroundStyle(.white.opacity(0.82))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+                            Text("Hole \(hole.number)")
+                                .font(.system(size: 30, weight: .heavy, design: .rounded))
+                                .foregroundStyle(.white)
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("Par \(hole.par)")
+                            Text("\(hole.yards) yds")
+                            Text("SI \(hole.strokeIndex)")
+                        }
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundStyle(.white)
+                    }
+                    .padding(14)
+
+                    Spacer()
+
+                    VStack(spacing: 10) {
+                        HStack(spacing: 10) {
+                            MapDistanceTile(title: "Front", value: "--")
+                            MapDistanceTile(title: "Middle", value: "--")
+                            MapDistanceTile(title: "Back", value: "--")
+                        }
+
+                        HStack(spacing: 10) {
+                            Button {
+                            } label: {
+                                Label("Set Green Pin", systemImage: "mappin.and.ellipse")
+                            }
+                            .buttonStyle(MapPrototypeButtonStyle(isPrimary: true))
+
+                            Button {
+                            } label: {
+                                Label("Measure Shot", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                            }
+                            .buttonStyle(MapPrototypeButtonStyle(isPrimary: false))
+                        }
+                    }
+                    .padding(12)
+                    .background(.ultraThinMaterial)
+                }
+
+                VStack(spacing: 8) {
+                    Spacer()
+                    Text("GPS distances appear after a green pin is saved for this hole.")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(Capsule().fill(Color.black.opacity(0.34)))
+                        .padding(.bottom, 112)
+                }
+                .allowsHitTesting(false)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 430)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.4)))
+
+            HStack(spacing: 8) {
+                Label("Prototype", systemImage: "sparkles")
+                Spacer()
+                Text("CH \(courseHandicap)")
+            }
+            .font(.system(.caption, design: .rounded).weight(.heavy))
+            .foregroundStyle(AppTheme.softText)
+            .padding(.horizontal, 12)
+        }
+    }
+}
+
+struct MapDistanceTile: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+                .textCase(.uppercase)
+            Text(value)
+                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 68)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.92)))
+    }
+}
+
+struct MapPrototypeButtonStyle: ButtonStyle {
+    let isPrimary: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(.caption, design: .rounded).weight(.heavy))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .foregroundStyle(isPrimary ? .white : AppTheme.ink)
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
+            .background(RoundedRectangle(cornerRadius: 8).fill(isPrimary ? AppTheme.mint : Color.white.opacity(0.92)))
+            .opacity(configuration.isPressed ? 0.82 : 1)
     }
 }
 
