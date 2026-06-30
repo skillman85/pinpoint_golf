@@ -7307,7 +7307,7 @@ struct LiveHoleMapPrototypeView: View {
                     VStack(spacing: 12) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 8)
-                                .fill(AppTheme.lightGreen.opacity(0.72))
+                                .fill(AppTheme.mintWash.opacity(0.72))
                             VStack(spacing: 9) {
                                 Image(systemName: "map")
                                     .font(.system(size: 24, weight: .bold))
@@ -7351,7 +7351,7 @@ struct LiveHoleMapPrototypeView: View {
             .frame(height: 342)
             .background(
                 LinearGradient(
-                    colors: [Color.white, AppTheme.lightGreen.opacity(0.52)],
+                    colors: [Color.white, AppTheme.mintWash.opacity(0.52)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
