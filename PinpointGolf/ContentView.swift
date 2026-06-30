@@ -6185,6 +6185,7 @@ struct SettingsView: View {
     @State private var showRestoreConfirmation = false
     @State private var restoreMessage: String?
     @State private var scorecardPendingDelete: CourseScorecardOverride?
+    @State private var showAllCachedScorecards = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -6347,10 +6348,29 @@ struct SettingsView: View {
                             .foregroundStyle(AppTheme.softText)
                             .lineSpacing(3)
                     } else {
-                        ForEach(scorecardStore.overrides) { scorecard in
+                        ForEach(displayedScorecards) { scorecard in
                             CachedScorecardRow(scorecard: scorecard) {
                                 scorecardPendingDelete = scorecard
                             }
+                        }
+
+                        if scorecardStore.overrides.count > 5 {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    showAllCachedScorecards.toggle()
+                                }
+                            } label: {
+                                HStack {
+                                    Text(showAllCachedScorecards ? "Show Fewer" : "View \(scorecardStore.overrides.count - 5) More")
+                                    Spacer()
+                                    Image(systemName: showAllCachedScorecards ? "chevron.up" : "chevron.down")
+                                }
+                                .font(.system(.subheadline, design: .rounded).weight(.bold))
+                                .foregroundStyle(AppTheme.mint)
+                                .padding(13)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mintWash))
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -6473,6 +6493,10 @@ struct SettingsView: View {
         guard !points.isEmpty else { return "-" }
         let average = Double(points.reduce(0, +)) / Double(points.count)
         return String(format: "%.1f", average)
+    }
+
+    private var displayedScorecards: [CourseScorecardOverride] {
+        showAllCachedScorecards ? scorecardStore.overrides : Array(scorecardStore.overrides.prefix(5))
     }
 
     private func stablefordPointsText(for round: SavedRound) -> String {
