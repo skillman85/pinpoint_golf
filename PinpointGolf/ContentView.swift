@@ -3269,7 +3269,7 @@ struct NewRoundSetupView: View {
                         selectedCourse: $selectedCourse,
                         selectedTee: $selectedTee,
                         isFavorite: courseFavorites.isFavorite(course),
-                        toggleFavorite: { courseFavorites.toggle(course) },
+                        toggleFavorite: { toggleFavoriteCourse(course) },
                         startRound: startRound,
                         editScorecard: { editingCourse = course },
                         setupScorecard: prefillManualScorecard
@@ -3405,6 +3405,13 @@ struct NewRoundSetupView: View {
         manualPar = "72"
         manualHoles = Self.defaultManualHoles()
         entryMode = .manual
+    }
+
+    private func toggleFavoriteCourse(_ course: GolfCourse) {
+        if !courseFavorites.isFavorite(course) {
+            scorecardStore.save(CourseScorecardOverride(course: scorecardStore.courseWithKnownStrokeIndexes(course)))
+        }
+        courseFavorites.toggle(course)
     }
 
     private func createManualCourseAndStart() {

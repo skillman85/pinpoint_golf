@@ -114,9 +114,16 @@ final class CourseScorecardStore: ObservableObject {
 
     func courses(from baseCourses: [GolfCourse]) -> [GolfCourse] {
         let overridesByKey = Dictionary(uniqueKeysWithValues: overrides.map { ($0.courseKey, $0) })
-        return baseCourses.map { course in
+        let baseCourseKeys = Set(baseCourses.map(\.favoriteKey))
+        let mergedBaseCourses = baseCourses.map { course in
             courseWithKnownStrokeIndexes(overridesByKey[course.favoriteKey]?.toGolfCourse() ?? course)
         }
+        let savedOnlyCourses = overrides
+            .filter { !baseCourseKeys.contains($0.courseKey) }
+            .map { courseWithKnownStrokeIndexes($0.toGolfCourse()) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        return mergedBaseCourses + savedOnlyCourses
     }
 
     func courseWithKnownStrokeIndexes(_ course: GolfCourse) -> GolfCourse {
