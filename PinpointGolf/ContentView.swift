@@ -3087,6 +3087,9 @@ struct NewRoundSetupView: View {
         .onAppear {
             syncRoundHandicapText()
         }
+        .onChange(of: courseSearch.results) { _, results in
+            cacheVerifiedSearchResults(results)
+        }
         .sheet(item: $editingCourse) { course in
             CourseScorecardEditorView(
                 course: course,
@@ -3183,7 +3186,7 @@ struct NewRoundSetupView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
                 Button {
-                    Task { await courseSearch.search(query: searchText) }
+                    Task { await courseSearch.search(query: searchText, localCourses: courses) }
                 } label: {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(AppTheme.softText)
@@ -3193,7 +3196,7 @@ struct NewRoundSetupView: View {
                     .foregroundStyle(AppTheme.ink)
                     .submitLabel(.search)
                     .onSubmit {
-                        Task { await courseSearch.search(query: searchText) }
+                        Task { await courseSearch.search(query: searchText, localCourses: courses) }
                     }
             }
             .padding(15)
@@ -3201,7 +3204,7 @@ struct NewRoundSetupView: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
 
             Button {
-                Task { await courseSearch.searchNearCurrentLocation() }
+                Task { await courseSearch.searchNearCurrentLocation(localCourses: courses) }
             } label: {
                 HStack {
                     Image(systemName: "location.fill")
@@ -3412,6 +3415,12 @@ struct NewRoundSetupView: View {
             scorecardStore.save(CourseScorecardOverride(course: scorecardStore.courseWithKnownStrokeIndexes(course)))
         }
         courseFavorites.toggle(course)
+    }
+
+    private func cacheVerifiedSearchResults(_ results: [GolfCourse]) {
+        for course in results where course.hasVerifiedScorecard && !course.tees.isEmpty {
+            scorecardStore.save(CourseScorecardOverride(course: scorecardStore.courseWithKnownStrokeIndexes(course)))
+        }
     }
 
     private func createManualCourseAndStart() {

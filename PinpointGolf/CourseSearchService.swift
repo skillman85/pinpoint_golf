@@ -14,7 +14,7 @@ final class CourseSearchViewModel: ObservableObject {
     private var cachedLocationSearch: (label: String, date: Date, courses: [GolfCourse])?
     private let locationSearchCacheLifetime: TimeInterval = 10 * 60
 
-    func search(query: String) async {
+    func search(query: String, localCourses: [GolfCourse] = CourseDatabase.courses) async {
         guard !isSearching else { return }
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else {
@@ -25,6 +25,12 @@ final class CourseSearchViewModel: ObservableObject {
         isSearching = true
         errorMessage = nil
         defer { isSearching = false }
+
+        let localMatches = searchLocalCourses(query: trimmedQuery, in: localCourses)
+        if !localMatches.isEmpty {
+            results = localMatches
+            return
+        }
 
         do {
             let courses = try await courseAPI.searchCourses(query: trimmedQuery)
@@ -38,17 +44,11 @@ final class CourseSearchViewModel: ObservableObject {
             errorMessage = "Course API search failed. Falling back to saved courses."
         }
 
-        let localMatches = searchBundledCourses(query: trimmedQuery)
-        if !localMatches.isEmpty {
-            results = localMatches
-            return
-        }
-
         results = []
         errorMessage = "No verified scorecards found. Try course name, town, city or county."
     }
 
-    func searchNearCurrentLocation() async {
+    func searchNearCurrentLocation(localCourses: [GolfCourse] = CourseDatabase.courses) async {
         guard !isSearching else { return }
         isSearching = true
         errorMessage = nil
@@ -62,6 +62,13 @@ final class CourseSearchViewModel: ObservableObject {
                cachedLocationSearch.label == context.label,
                Date().timeIntervalSince(cachedLocationSearch.date) < locationSearchCacheLifetime {
                 results = cachedLocationSearch.courses
+                return
+            }
+
+            let localMatches = localLocationMatches(for: context, in: localCourses)
+            if !localMatches.isEmpty {
+                results = localMatches
+                cachedLocationSearch = (context.label, Date(), localMatches)
                 return
             }
 
@@ -85,7 +92,7 @@ final class CourseSearchViewModel: ObservableObject {
             }
 
             results = Self.mergedCourses(
-                Self.verifiedCourses(context.searchTerms.flatMap { searchBundledCourses(query: $0) })
+                Self.verifiedCourses(context.searchTerms.flatMap { searchLocalCourses(query: $0, in: localCourses) })
             )
             if results.isEmpty {
                 errorMessage = "No verified scorecards found nearby. Try searching by course name."
@@ -99,12 +106,21 @@ final class CourseSearchViewModel: ObservableObject {
         }
     }
 
-    private func searchBundledCourses(query: String) -> [GolfCourse] {
+    private func searchLocalCourses(query: String, in courses: [GolfCourse]) -> [GolfCourse] {
         let normalizedQuery = query.lowercased()
-        return CourseDatabase.courses.filter { course in
+        return Self.mergedCourses(courses.filter { course in
             course.name.lowercased().contains(normalizedQuery)
                 || course.location.lowercased().contains(normalizedQuery)
-        }
+        })
+    }
+
+    private func localLocationMatches(for context: CourseSearchContext, in courses: [GolfCourse]) -> [GolfCourse] {
+        let searchTerms = Self.uniqueTerms(
+            CourseLocationProvider.regionalCourseSearchHints(near: context.location, label: context.label)
+                + context.searchTerms
+        )
+        let matches = searchTerms.flatMap { searchLocalCourses(query: $0, in: courses) }
+        return Self.mergedCourses(Self.verifiedCourses(matches))
     }
 
     private static func uniqueTerms(_ terms: [String]) -> [String] {
