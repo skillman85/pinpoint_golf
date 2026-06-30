@@ -4420,20 +4420,18 @@ struct LiveRoundView: View {
 
             Group {
                 if scoringStep == .score {
-                    ScrollView(showsIndicators: false) {
-                        ScoreKeypadPanel(
-                            hole: entry.wrappedValue.hole,
-                            score: score,
-                            pickedUp: entry.wrappedValue.pickedUp,
-                            pickupScore: pickupScore(for: entry.wrappedValue),
-                            markPickedUp: {
-                                markCurrentHolePickedUp(entry)
-                                scoringStep = .stats
-                            }
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
-                    }
+                    ScoreKeypadPanel(
+                        hole: entry.wrappedValue.hole,
+                        score: score,
+                        pickedUp: entry.wrappedValue.pickedUp,
+                        pickupScore: pickupScore(for: entry.wrappedValue),
+                        markPickedUp: {
+                            markCurrentHolePickedUp(entry)
+                            scoringStep = .stats
+                        }
+                    )
+                    .padding(.horizontal, 16)
+                    .frame(maxHeight: .infinity, alignment: .top)
                 } else {
                     VStack(spacing: 8) {
                         CompactStepperPanel(title: "Putts", subtitle: "Total putts", value: putts, range: 0...6, accent: AppTheme.mint)
@@ -7558,7 +7556,7 @@ struct LiveRoundHeaderCard: View {
 
             HStack(spacing: 8) {
                 LiveRoundHeaderMetric(title: "Gross", value: "\(gross)", accent: AppTheme.lime)
-                LiveRoundHeaderMetric(title: "To Par", value: scoreToParLabel, accent: scoreToPar <= 0 ? .white : AppTheme.gold)
+                LiveRoundHeaderMetric(title: "To Par", value: scoreToParLabel, accent: scoreToParAccent)
                 LiveRoundHeaderMetric(title: "Points", value: "\(stableford)", accent: .white)
                 LiveRoundHeaderMetric(title: "CH", value: "\(courseHandicap)", accent: .white)
             }
@@ -7580,6 +7578,10 @@ struct LiveRoundHeaderCard: View {
 
     private var scoreToParLabel: String {
         scoreToPar == 0 ? "E" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
+    }
+
+    private var scoreToParAccent: Color {
+        scoreToPar <= 0 ? .white : Color(red: 1.0, green: 0.42, blue: 0.34)
     }
 
     private func headerPill(_ text: String) -> some View {
