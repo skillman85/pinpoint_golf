@@ -493,7 +493,7 @@ struct HomeView: View {
 
                     PerformanceOverview(rounds: savedRounds)
 
-                    InsightsDashboardContent(entries: entries, savedRounds: savedRounds, isRoundActive: isRoundActive)
+                    InsightsDashboardContent(entries: entries, savedRounds: savedRounds, isRoundActive: isRoundActive, currentHandicap: currentHandicap)
 
                 }
                 .padding(.horizontal, 20)
@@ -4912,6 +4912,7 @@ struct InsightsDashboardContent: View {
     let entries: [RoundHoleEntry]
     let savedRounds: [SavedRound]
     let isRoundActive: Bool
+    let currentHandicap: Double
     @State private var selectedRange: InsightRange = .all
     @State private var selectedInsightPage = 0
 
@@ -4931,7 +4932,7 @@ struct InsightsDashboardContent: View {
             PremiumInsightRangePicker(selection: $selectedRange)
 
             TabView(selection: $selectedInsightPage) {
-                StrengthWeaknessPremiumCard(snapshot: snapshot, averageScore: formatAverage(snapshot.averageScore), puttsPerRound: formatAverage(snapshot.puttsPerRound))
+                StrengthWeaknessPremiumCard(snapshot: snapshot, currentHandicap: currentHandicap, averageScore: formatAverage(snapshot.averageScore), puttsPerRound: formatAverage(snapshot.puttsPerRound))
                     .tag(0)
                 FairwayPremiumCard(snapshot: snapshot)
                     .tag(1)
@@ -5442,13 +5443,18 @@ struct PremiumStatsCard<Content: View>: View {
 
 struct StrengthWeaknessPremiumCard: View {
     let snapshot: InsightSnapshot
+    let currentHandicap: Double
     let averageScore: String
     let puttsPerRound: String
+
+    private var benchmark: HandicapBenchmark {
+        HandicapBenchmark(handicap: currentHandicap)
+    }
 
     var body: some View {
         PremiumStatsCard(title: "Strengths & Weaknesses") {
             VStack(alignment: .leading, spacing: 13) {
-                Text("Benchmarked against an average 8.8 handicap golfer.")
+                Text("Benchmarked against an average \(benchmark.handicapLabel) handicap golfer.")
                     .font(.system(.caption, design: .rounded).weight(.semibold))
                     .foregroundStyle(AppTheme.softText)
                     .multilineTextAlignment(.center)
@@ -5456,11 +5462,11 @@ struct StrengthWeaknessPremiumCard: View {
                     .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity)
 
-                PremiumBenchmarkRow(title: "Gross avg.", value: averageScore, percent: lowerIsBetterPercent(snapshot.averageScore, benchmark: 84, betterSpan: 6, worseSpan: 10), targetLabel: "84")
-                PremiumBenchmarkRow(title: "Fairways", value: "\(snapshot.fairwayPercent)%", percent: higherIsBetterPercent(Double(snapshot.fairwayPercent), benchmark: 50, worseSpan: 20, betterSpan: 12), targetLabel: "50%")
-                PremiumBenchmarkRow(title: "GIR", value: "\(snapshot.girPercent)%", percent: higherIsBetterPercent(Double(snapshot.girPercent), benchmark: 39, worseSpan: 18, betterSpan: 14), targetLabel: "39%")
-                PremiumBenchmarkRow(title: "Up & Downs", value: "\(snapshot.scramblePercent)%", percent: higherIsBetterPercent(Double(snapshot.scramblePercent), benchmark: 33, worseSpan: 18, betterSpan: 14), targetLabel: "33%")
-                PremiumBenchmarkRow(title: "Putts / round", value: puttsPerRound, percent: lowerIsBetterPercent(snapshot.puttsPerRound, benchmark: 33.5, betterSpan: 5, worseSpan: 8), targetLabel: "33.5")
+                PremiumBenchmarkRow(title: "Gross avg.", value: averageScore, percent: lowerIsBetterPercent(snapshot.averageScore, benchmark: benchmark.grossAverage, betterSpan: 6, worseSpan: 10), targetLabel: benchmark.grossAverageLabel)
+                PremiumBenchmarkRow(title: "Fairways", value: "\(snapshot.fairwayPercent)%", percent: higherIsBetterPercent(Double(snapshot.fairwayPercent), benchmark: benchmark.fairwayPercent, worseSpan: 20, betterSpan: 12), targetLabel: benchmark.fairwayPercentLabel)
+                PremiumBenchmarkRow(title: "GIR", value: "\(snapshot.girPercent)%", percent: higherIsBetterPercent(Double(snapshot.girPercent), benchmark: benchmark.girPercent, worseSpan: 18, betterSpan: 14), targetLabel: benchmark.girPercentLabel)
+                PremiumBenchmarkRow(title: "Up & Downs", value: "\(snapshot.scramblePercent)%", percent: higherIsBetterPercent(Double(snapshot.scramblePercent), benchmark: benchmark.scramblePercent, worseSpan: 18, betterSpan: 14), targetLabel: benchmark.scramblePercentLabel)
+                PremiumBenchmarkRow(title: "Putts / round", value: puttsPerRound, percent: lowerIsBetterPercent(snapshot.puttsPerRound, benchmark: benchmark.puttsPerRound, betterSpan: 5, worseSpan: 8), targetLabel: benchmark.puttsPerRoundLabel)
             }
         }
     }
@@ -5483,6 +5489,62 @@ struct StrengthWeaknessPremiumCard: View {
 
     private func clampPercent(_ value: Double) -> Int {
         max(0, min(100, Int(value.rounded())))
+    }
+}
+
+struct HandicapBenchmark {
+    let handicap: Double
+
+    init(handicap: Double) {
+        self.handicap = min(54, max(0, handicap))
+    }
+
+    var handicapLabel: String {
+        String(format: "%.1f", handicap)
+    }
+
+    var grossAverage: Double {
+        74.8 + handicap
+    }
+
+    var fairwayPercent: Double {
+        clamp(56.2 - (handicap * 0.70), lower: 24, upper: 62)
+    }
+
+    var girPercent: Double {
+        clamp(54.8 - (handicap * 1.80), lower: 8, upper: 62)
+    }
+
+    var scramblePercent: Double {
+        clamp(41.8 - handicap, lower: 10, upper: 52)
+    }
+
+    var puttsPerRound: Double {
+        clamp(31.7 + (handicap * 0.20), lower: 29.5, upper: 40)
+    }
+
+    var grossAverageLabel: String {
+        "\(Int(grossAverage.rounded()))"
+    }
+
+    var fairwayPercentLabel: String {
+        "\(Int(fairwayPercent.rounded()))%"
+    }
+
+    var girPercentLabel: String {
+        "\(Int(girPercent.rounded()))%"
+    }
+
+    var scramblePercentLabel: String {
+        "\(Int(scramblePercent.rounded()))%"
+    }
+
+    var puttsPerRoundLabel: String {
+        String(format: "%.1f", puttsPerRound)
+    }
+
+    private func clamp(_ value: Double, lower: Double, upper: Double) -> Double {
+        min(upper, max(lower, value))
     }
 }
 
