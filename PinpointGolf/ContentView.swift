@@ -1,7 +1,6 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
-import MapKit
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -7276,35 +7275,21 @@ struct LiveHoleMapPrototypeView: View {
     let courseName: String
     let hole: Hole
     let courseHandicap: Int
-    @State private var position: MapCameraPosition = .userLocation(fallback: .automatic)
 
     var body: some View {
         VStack(spacing: 10) {
-            ZStack(alignment: .top) {
-                Map(position: $position) {
-                    UserAnnotation()
-                }
-                .mapStyle(.imagery)
-                .overlay(
-                    LinearGradient(
-                        colors: [Color.black.opacity(0.34), Color.clear, Color.black.opacity(0.48)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .allowsHitTesting(false)
-                )
-
+            VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(courseName)
                                 .font(.system(.caption, design: .rounded).weight(.heavy))
-                                .foregroundStyle(.white.opacity(0.82))
+                                .foregroundStyle(AppTheme.softText)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.72)
                             Text("Hole \(hole.number)")
                                 .font(.system(size: 30, weight: .heavy, design: .rounded))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(AppTheme.ink)
                         }
 
                         Spacer()
@@ -7315,13 +7300,30 @@ struct LiveHoleMapPrototypeView: View {
                             Text("SI \(hole.strokeIndex)")
                         }
                         .font(.system(.caption, design: .rounded).weight(.heavy))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(AppTheme.softText)
                     }
                     .padding(14)
 
-                    Spacer()
+                    VStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(AppTheme.lightGreen.opacity(0.72))
+                            VStack(spacing: 9) {
+                                Image(systemName: "map")
+                                    .font(.system(size: 24, weight: .bold))
+                                    .foregroundStyle(AppTheme.mint)
+                                Text("Map not set for this hole")
+                                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                                    .foregroundStyle(AppTheme.ink)
+                                Text("Save tee and green pins before showing GPS distances or a hole layout.")
+                                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                                    .foregroundStyle(AppTheme.softText)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 12)
+                            }
+                        }
+                        .frame(height: 128)
 
-                    VStack(spacing: 10) {
                         HStack(spacing: 10) {
                             MapDistanceTile(title: "Front", value: "--")
                             MapDistanceTile(title: "Middle", value: "--")
@@ -7343,29 +7345,23 @@ struct LiveHoleMapPrototypeView: View {
                         }
                     }
                     .padding(12)
-                    .background(.ultraThinMaterial)
                 }
-
-                VStack(spacing: 8) {
-                    Spacer()
-                    Text("GPS distances appear after a green pin is saved for this hole.")
-                        .font(.system(.caption, design: .rounded).weight(.semibold))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .background(Capsule().fill(Color.black.opacity(0.34)))
-                        .padding(.bottom, 112)
-                }
-                .allowsHitTesting(false)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 430)
+            .frame(height: 342)
+            .background(
+                LinearGradient(
+                    colors: [Color.white, AppTheme.lightGreen.opacity(0.52)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
             .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.4)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+            .shadow(color: Color.black.opacity(0.06), radius: 14, x: 0, y: 8)
 
             HStack(spacing: 8) {
-                Label("Prototype", systemImage: "sparkles")
+                Label("Prototype - no hole GPS saved", systemImage: "sparkles")
                 Spacer()
                 Text("CH \(courseHandicap)")
             }
