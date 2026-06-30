@@ -4451,6 +4451,7 @@ struct LiveRoundView: View {
     @State private var scoringStep: LiveScoringStep = .score
     @State private var showIncompleteScoreAlert = false
     @State private var showDiscardRoundAlert = false
+    @State private var showHoleMap = false
 
     var body: some View {
         let currentGross = grossScoreThroughCurrentHole
@@ -4500,8 +4501,10 @@ struct LiveRoundView: View {
             )
             .padding(.horizontal, 16)
 
-            LiveScoringStepPill(step: $scoringStep)
-                .padding(.horizontal, 16)
+            LiveScoringStepPill(step: $scoringStep) {
+                showHoleMap = true
+            }
+            .padding(.horizontal, 16)
 
             Group {
                 if scoringStep == .score {
@@ -4530,14 +4533,6 @@ struct LiveRoundView: View {
                             bunker: entry.bunker
                         )
                     }
-                    .padding(.horizontal, 16)
-                    .frame(maxHeight: .infinity, alignment: .top)
-                } else {
-                    LiveHoleMapPrototypeView(
-                        courseName: selectedCourse.name,
-                        hole: entry.wrappedValue.hole,
-                        courseHandicap: courseHandicap
-                    )
                     .padding(.horizontal, 16)
                     .frame(maxHeight: .infinity, alignment: .top)
                 }
@@ -4609,6 +4604,13 @@ struct LiveRoundView: View {
             }
         } message: {
             Text("This will stop the live round and remove all unsaved scores and stats from this card.")
+        }
+        .fullScreenCover(isPresented: $showHoleMap) {
+            LiveHoleMapFullScreenView(
+                courseName: selectedCourse.name,
+                hole: entry.wrappedValue.hole,
+                courseHandicap: courseHandicap
+            )
         }
         .onChange(of: currentHoleIndex) { _, newValue in
             if entries[newValue].score == 0 {
@@ -7238,6 +7240,7 @@ struct LiveHoleNavButtonStyle: ButtonStyle {
 
 struct LiveScoringStepPill: View {
     @Binding var step: LiveScoringStep
+    let openMap: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
@@ -7251,10 +7254,14 @@ struct LiveScoringStepPill: View {
     }
 
     private func stepItem(title: String, icon: String, target: LiveScoringStep) -> some View {
-        let isSelected = step == target
+        let isSelected = target != .map && step == target
 
         return Button {
-            step = target
+            if target == .map {
+                openMap()
+            } else {
+                step = target
+            }
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: icon)
@@ -7271,104 +7278,141 @@ struct LiveScoringStepPill: View {
     }
 }
 
-struct LiveHoleMapPrototypeView: View {
+struct LiveHoleMapFullScreenView: View {
+    @Environment(\.dismiss) private var dismiss
     let courseName: String
     let hole: Hole
     let courseHandicap: Int
 
     var body: some View {
-        VStack(spacing: 10) {
-            VStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(courseName)
-                                .font(.system(.caption, design: .rounded).weight(.heavy))
-                                .foregroundStyle(AppTheme.softText)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.72)
-                            Text("Hole \(hole.number)")
-                                .font(.system(size: 30, weight: .heavy, design: .rounded))
-                                .foregroundStyle(AppTheme.ink)
-                        }
+        VStack(spacing: 14) {
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .heavy))
+                        .foregroundStyle(AppTheme.mint)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(AppTheme.panel))
+                        .overlay(Circle().stroke(AppTheme.border.opacity(0.82)))
+                }
 
-                        Spacer()
+                Spacer()
 
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Text("Par \(hole.par)")
-                            Text("\(hole.yards) yds")
-                            Text("SI \(hole.strokeIndex)")
-                        }
-                        .font(.system(.caption, design: .rounded).weight(.heavy))
-                        .foregroundStyle(AppTheme.softText)
+                Text("GPS Hole View")
+                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+
+                Spacer()
+
+                Text("CH \(courseHandicap)")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(AppTheme.panel))
+                    .overlay(Circle().stroke(AppTheme.border.opacity(0.82)))
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 10)
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text(courseName)
+                    .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Hole \(hole.number)")
+                        .font(.system(size: 44, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
+
+                    Spacer()
+
+                    HStack(spacing: 8) {
+                        MapInfoPill(text: "Par \(hole.par)")
+                        MapInfoPill(text: "\(hole.yards) yds")
+                        MapInfoPill(text: "SI \(hole.strokeIndex)")
                     }
-                    .padding(14)
-
-                    VStack(spacing: 12) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(AppTheme.mintWash.opacity(0.72))
-                            VStack(spacing: 9) {
-                                Image(systemName: "map")
-                                    .font(.system(size: 24, weight: .bold))
-                                    .foregroundStyle(AppTheme.mint)
-                                Text("Map not set for this hole")
-                                    .font(.system(.headline, design: .rounded).weight(.heavy))
-                                    .foregroundStyle(AppTheme.ink)
-                                Text("Save tee and green pins before showing GPS distances or a hole layout.")
-                                    .font(.system(.caption, design: .rounded).weight(.semibold))
-                                    .foregroundStyle(AppTheme.softText)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 12)
-                            }
-                        }
-                        .frame(height: 128)
-
-                        HStack(spacing: 10) {
-                            MapDistanceTile(title: "Front", value: "--")
-                            MapDistanceTile(title: "Middle", value: "--")
-                            MapDistanceTile(title: "Back", value: "--")
-                        }
-
-                        HStack(spacing: 10) {
-                            Button {
-                            } label: {
-                                Label("Set Green Pin", systemImage: "mappin.and.ellipse")
-                            }
-                            .buttonStyle(MapPrototypeButtonStyle(isPrimary: true))
-
-                            Button {
-                            } label: {
-                                Label("Measure Shot", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
-                            }
-                            .buttonStyle(MapPrototypeButtonStyle(isPrimary: false))
-                        }
-                    }
-                    .padding(12)
                 }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 342)
-            .background(
-                LinearGradient(
-                    colors: [Color.white, AppTheme.mintWash.opacity(0.52)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
-            .shadow(color: Color.black.opacity(0.06), radius: 14, x: 0, y: 8)
+            .padding(.horizontal, 22)
 
-            HStack(spacing: 8) {
-                Label("Prototype - no hole GPS saved", systemImage: "sparkles")
-                Spacer()
-                Text("CH \(courseHandicap)")
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(
+                        LinearGradient(
+                            colors: [AppTheme.mintWash.opacity(0.95), Color.white],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
+
+                VStack(spacing: 16) {
+                    Image(systemName: "map")
+                        .font(.system(size: 42, weight: .bold))
+                        .foregroundStyle(AppTheme.mint)
+
+                    VStack(spacing: 8) {
+                        Text("Map not set for this hole")
+                            .font(.system(.title3, design: .rounded).weight(.heavy))
+                            .foregroundStyle(AppTheme.ink)
+                        Text("Once tee and green pins are saved, this screen can show the hole layout and GPS distances.")
+                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                            .foregroundStyle(AppTheme.softText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    }
+                }
             }
-            .font(.system(.caption, design: .rounded).weight(.heavy))
-            .foregroundStyle(AppTheme.softText)
-            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 18)
+
+            HStack(spacing: 10) {
+                MapDistanceTile(title: "Front", value: "--")
+                MapDistanceTile(title: "Middle", value: "--")
+                MapDistanceTile(title: "Back", value: "--")
+            }
+            .padding(.horizontal, 18)
+
+            HStack(spacing: 10) {
+                Button {
+                } label: {
+                    Label("Set Green Pin", systemImage: "mappin.and.ellipse")
+                }
+                .buttonStyle(MapPrototypeButtonStyle(isPrimary: true))
+
+                Button {
+                } label: {
+                    Label("Measure Shot", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                }
+                .buttonStyle(MapPrototypeButtonStyle(isPrimary: false))
+            }
+            .padding(.horizontal, 18)
+
+            Label("Prototype - no hole GPS saved", systemImage: "sparkles")
+                .font(.system(.caption, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+                .padding(.bottom, 18)
         }
+        .background(AppTheme.background.ignoresSafeArea())
+    }
+}
+
+struct MapInfoPill: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(.caption, design: .rounded).weight(.heavy))
+            .foregroundStyle(AppTheme.mint)
+            .lineLimit(1)
+            .minimumScaleFactor(0.78)
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .background(Capsule().fill(AppTheme.mintWash))
     }
 }
 
