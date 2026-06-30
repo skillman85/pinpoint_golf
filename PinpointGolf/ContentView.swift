@@ -3247,6 +3247,12 @@ struct NewRoundSetupView: View {
 
             if !courseSearch.results.isEmpty {
                 CourseSearchSourceBadge(source: courseSearch.resultSource)
+                if let diagnostics = courseSearch.diagnostics {
+                    CourseSearchDebugPanel(
+                        diagnostics: diagnostics,
+                        cachedResultCount: courseSearch.results.filter { scorecardStore.override(for: $0) != nil }.count
+                    )
+                }
             }
 
             SectionHeader(title: sectionTitle, actionTitle: filteredCourses.isEmpty ? nil : "\(filteredCourses.count)")
@@ -3548,6 +3554,85 @@ struct CourseSearchSourceBadge: View {
         default:
             return AppTheme.mintWash
         }
+    }
+}
+
+struct CourseSearchDebugPanel: View {
+    let diagnostics: CourseSearchDiagnostics
+    let cachedResultCount: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Search Details", systemImage: "info.circle.fill")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text(sourceLabel)
+                    .font(.system(.caption2, design: .rounded).weight(.heavy))
+                    .foregroundStyle(sourceTint)
+                    .padding(.horizontal, 8)
+                    .frame(height: 24)
+                    .background(Capsule().fill(sourceTint.opacity(0.12)))
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                SearchDebugMetric(title: "Area", value: diagnostics.searchLabel)
+                SearchDebugMetric(title: "Range", value: radiusText)
+                SearchDebugMetric(title: "Queries", value: "\(diagnostics.queryCount)")
+                SearchDebugMetric(title: "Results", value: "\(diagnostics.resultCount)")
+                SearchDebugMetric(title: "Verified", value: "\(diagnostics.verifiedCount)")
+                SearchDebugMetric(title: "Cached", value: "\(cachedResultCount)")
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
+    }
+
+    private var sourceLabel: String {
+        switch diagnostics.source {
+        case .onDevice:
+            return "Device"
+        case .api:
+            return "API"
+        case .sessionCache:
+            return "Recent"
+        case .none:
+            return "None"
+        }
+    }
+
+    private var sourceTint: Color {
+        diagnostics.source == .api ? AppTheme.gold : AppTheme.mint
+    }
+
+    private var radiusText: String {
+        guard let radiusMeters = diagnostics.radiusMeters else { return "Course name" }
+        let miles = Double(radiusMeters) / 1609.344
+        return "\(Int(miles.rounded())) mi"
+    }
+}
+
+struct SearchDebugMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+                .textCase(.uppercase)
+            Text(value)
+                .font(.system(.caption, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.68)
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
     }
 }
 
@@ -6099,6 +6184,7 @@ struct SettingsView: View {
     @State private var pendingBackup: PrecisionBackup?
     @State private var showRestoreConfirmation = false
     @State private var restoreMessage: String?
+    @State private var scorecardPendingDelete: CourseScorecardOverride?
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -6253,6 +6339,27 @@ struct SettingsView: View {
                 .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
 
                 VStack(alignment: .leading, spacing: 14) {
+                    SectionHeader(title: "Saved Scorecards", actionTitle: scorecardStore.overrides.isEmpty ? nil : "\(scorecardStore.overrides.count)")
+
+                    if scorecardStore.overrides.isEmpty {
+                        Text("Search for verified courses or star a course to cache its scorecard here.")
+                            .font(.system(.subheadline, design: .rounded).weight(.medium))
+                            .foregroundStyle(AppTheme.softText)
+                            .lineSpacing(3)
+                    } else {
+                        ForEach(scorecardStore.overrides) { scorecard in
+                            CachedScorecardRow(scorecard: scorecard) {
+                                scorecardPendingDelete = scorecard
+                            }
+                        }
+                    }
+                }
+                .padding(18)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+
+                VStack(alignment: .leading, spacing: 14) {
                     SectionHeader(title: "Data Backup", actionTitle: nil)
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -6334,6 +6441,26 @@ struct SettingsView: View {
             }
         } message: {
             Text("This will replace the local app data with the selected backup. Export your current data first if you want to keep a separate copy.")
+        }
+        .alert("Delete saved scorecard?", isPresented: Binding(
+            get: { scorecardPendingDelete != nil },
+            set: { isPresented in
+                if !isPresented {
+                    scorecardPendingDelete = nil
+                }
+            }
+        )) {
+            Button("Cancel", role: .cancel) {
+                scorecardPendingDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let scorecardPendingDelete {
+                    scorecardStore.delete(scorecardPendingDelete)
+                }
+                scorecardPendingDelete = nil
+            }
+        } message: {
+            Text("This removes the locally cached scorecard only. Your completed rounds are not changed.")
         }
     }
 
@@ -6422,6 +6549,63 @@ struct SettingsView: View {
     }()
 
     private static let longDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
+}
+
+struct CachedScorecardRow: View {
+    let scorecard: CourseScorecardOverride
+    let delete: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(scorecard.name)
+                    .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(scorecard.location)
+                    .font(.system(.caption, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                HStack(spacing: 8) {
+                    Label("\(scorecard.tees.count) tees", systemImage: "flag.fill")
+                    Label("\(holeCount) holes", systemImage: "list.number")
+                    Label(Self.dateFormatter.string(from: scorecard.updatedAt), systemImage: "clock")
+                }
+                .font(.system(.caption2, design: .rounded).weight(.bold))
+                .foregroundStyle(AppTheme.softText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+            }
+
+            Spacer(minLength: 8)
+
+            Button(role: .destructive, action: delete) {
+                Image(systemName: "trash")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(Color.red)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Color.red.opacity(0.08)))
+            }
+            .accessibilityLabel("Delete cached scorecard")
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+    }
+
+    private var holeCount: Int {
+        scorecard.tees.map { $0.holes.count }.max() ?? 0
+    }
+
+    private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .none

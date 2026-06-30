@@ -168,6 +168,11 @@ final class CourseScorecardStore: ObservableObject {
         database.saveCourseScorecardOverrides(overrides)
     }
 
+    func delete(_ override: CourseScorecardOverride) {
+        overrides.removeAll { $0.courseKey == override.courseKey }
+        database.saveCourseScorecardOverrides(overrides)
+    }
+
     func replace(with restored: [CourseScorecardOverride]) {
         overrides = restored
         database.saveCourseScorecardOverrides(restored)

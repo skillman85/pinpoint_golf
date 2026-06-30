@@ -9,6 +9,16 @@ enum CourseSearchSource {
     case sessionCache
 }
 
+struct CourseSearchDiagnostics {
+    let source: CourseSearchSource
+    let searchLabel: String
+    let queryCount: Int
+    let radiusMeters: Int?
+    let resultCount: Int
+    let verifiedCount: Int
+    let searchedAt: Date
+}
+
 @MainActor
 final class CourseSearchViewModel: ObservableObject {
     @Published private(set) var results: [GolfCourse] = []
@@ -16,11 +26,13 @@ final class CourseSearchViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published private(set) var locationSearchLabel: String?
     @Published private(set) var resultSource: CourseSearchSource = .none
+    @Published private(set) var diagnostics: CourseSearchDiagnostics?
 
     private let courseAPI = PrecisionCourseAPIClient()
     private let locationProvider = CourseLocationProvider()
     private var cachedLocationSearch: (label: String, date: Date, courses: [GolfCourse])?
     private let locationSearchCacheLifetime: TimeInterval = 10 * 60
+    private let nearbySearchRadiusMeters = 45_000
 
     func search(query: String, localCourses: [GolfCourse] = CourseDatabase.courses) async {
         guard !isSearching else { return }
@@ -28,6 +40,7 @@ final class CourseSearchViewModel: ObservableObject {
         guard !trimmedQuery.isEmpty else {
             results = []
             resultSource = .none
+            diagnostics = nil
             return
         }
 
@@ -39,6 +52,7 @@ final class CourseSearchViewModel: ObservableObject {
         if !localMatches.isEmpty {
             results = localMatches
             resultSource = .onDevice
+            diagnostics = makeDiagnostics(source: .onDevice, label: trimmedQuery, queryCount: 1, radiusMeters: nil, courses: localMatches)
             return
         }
 
@@ -47,6 +61,7 @@ final class CourseSearchViewModel: ObservableObject {
             if !courses.isEmpty {
                 results = courses
                 resultSource = .api
+                diagnostics = makeDiagnostics(source: .api, label: trimmedQuery, queryCount: 1, radiusMeters: nil, courses: courses)
                 return
             }
         } catch PrecisionCourseAPIError.missingBaseURL {
@@ -57,6 +72,7 @@ final class CourseSearchViewModel: ObservableObject {
 
         results = []
         resultSource = .none
+        diagnostics = makeDiagnostics(source: .none, label: trimmedQuery, queryCount: 1, radiusMeters: nil, courses: [])
         errorMessage = "No verified scorecards found. Try course name, town, city or county."
     }
 
@@ -75,6 +91,7 @@ final class CourseSearchViewModel: ObservableObject {
                Date().timeIntervalSince(cachedLocationSearch.date) < locationSearchCacheLifetime {
                 results = cachedLocationSearch.courses
                 resultSource = .sessionCache
+                diagnostics = makeDiagnostics(source: .sessionCache, label: context.label, queryCount: context.searchTerms.count, radiusMeters: nearbySearchRadiusMeters, courses: cachedLocationSearch.courses)
                 return
             }
 
@@ -82,6 +99,7 @@ final class CourseSearchViewModel: ObservableObject {
             if !localMatches.isEmpty {
                 results = localMatches
                 resultSource = .onDevice
+                diagnostics = makeDiagnostics(source: .onDevice, label: context.label, queryCount: context.searchTerms.count, radiusMeters: nearbySearchRadiusMeters, courses: localMatches)
                 cachedLocationSearch = (context.label, Date(), localMatches)
                 return
             }
@@ -92,9 +110,10 @@ final class CourseSearchViewModel: ObservableObject {
                     + nearbyNames
                     + context.searchTerms
             )
+            let apiQueries = Array(nearbyQueries.prefix(25))
             let courses = (try? await courseAPI.searchNearbyCourses(
                 coordinate: context.location.coordinate,
-                queries: Array(nearbyQueries.prefix(25)),
+                queries: apiQueries,
                 limit: 8
             )) ?? []
             let verifiedCourses = Self.verifiedCourses(courses)
@@ -102,6 +121,7 @@ final class CourseSearchViewModel: ObservableObject {
                 let mergedCourses = Self.mergedCourses(verifiedCourses)
                 results = mergedCourses
                 resultSource = .api
+                diagnostics = makeDiagnostics(source: .api, label: context.label, queryCount: apiQueries.count, radiusMeters: nearbySearchRadiusMeters, courses: mergedCourses)
                 cachedLocationSearch = (context.label, Date(), mergedCourses)
                 return
             }
@@ -110,17 +130,21 @@ final class CourseSearchViewModel: ObservableObject {
                 Self.verifiedCourses(context.searchTerms.flatMap { searchLocalCourses(query: $0, in: localCourses) })
             )
             resultSource = results.isEmpty ? .none : .onDevice
+            diagnostics = makeDiagnostics(source: resultSource, label: context.label, queryCount: context.searchTerms.count, radiusMeters: nearbySearchRadiusMeters, courses: results)
             if results.isEmpty {
                 errorMessage = "No verified scorecards found nearby. Try searching by course name."
             }
         } catch CourseLocationError.permissionDenied {
             resultSource = .none
+            diagnostics = nil
             errorMessage = "Location permission is needed to search nearby courses. You can still search by town or county."
         } catch PrecisionCourseAPIError.missingBaseURL {
             resultSource = .none
+            diagnostics = nil
             errorMessage = "Course API backend is not configured. Search by course name or use favourites."
         } catch {
             resultSource = .none
+            diagnostics = nil
             errorMessage = "Could not find nearby courses. Search by course name, town, city or county instead."
         }
     }
@@ -167,6 +191,18 @@ final class CourseSearchViewModel: ObservableObject {
             seenCourses.insert(key)
             return true
         }
+    }
+
+    private func makeDiagnostics(source: CourseSearchSource, label: String, queryCount: Int, radiusMeters: Int?, courses: [GolfCourse]) -> CourseSearchDiagnostics {
+        CourseSearchDiagnostics(
+            source: source,
+            searchLabel: label,
+            queryCount: max(0, queryCount),
+            radiusMeters: radiusMeters,
+            resultCount: courses.count,
+            verifiedCount: Self.verifiedCourses(courses).count,
+            searchedAt: Date()
+        )
     }
 }
 
