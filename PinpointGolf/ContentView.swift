@@ -48,6 +48,7 @@ struct ContentView: View {
                 profileName: $profileName,
                 profileHomeClub: $profileHomeClub,
                 playerSettings: playerSettings,
+                firebaseAccount: firebaseAccount,
                 complete: {
                     profileOnboardingComplete = true
                 }
@@ -7130,7 +7131,9 @@ struct ProfileOnboardingView: View {
     @Binding var profileName: String
     @Binding var profileHomeClub: String
     @ObservedObject var playerSettings: PlayerSettings
+    @ObservedObject var firebaseAccount: FirebaseAccountService
     let complete: () -> Void
+    @State private var step: OnboardingStep = .account
     @State private var nameText = ""
     @State private var homeClubText = ""
     @State private var handicapText = ""
@@ -7139,43 +7142,18 @@ struct ProfileOnboardingView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
-                    HeaderBlock(title: "Your Profile", subtitle: "Set up Precision Golf for this player.")
+                    HeaderBlock(title: step.title, subtitle: step.subtitle)
 
-                    VStack(alignment: .leading, spacing: 14) {
-                        ProfileTextField(title: "Name", placeholder: "Your name", text: $nameText)
-                        ProfileTextField(title: "Home Club", placeholder: "Optional", text: $homeClubText)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Handicap Index")
-                                .font(.system(.headline, design: .rounded).weight(.heavy))
-                                .foregroundStyle(AppTheme.ink)
-                            TextField("8.6", text: $handicapText)
-                                .keyboardType(.decimalPad)
-                                .font(.system(size: 30, weight: .heavy, design: .rounded))
-                                .foregroundStyle(AppTheme.ink)
-                                .padding(14)
-                                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
-                        }
-
-                        Text("This only personalises this phone. It will not change completed rounds or saved stats.")
-                            .font(.system(.caption, design: .rounded).weight(.semibold))
-                            .foregroundStyle(AppTheme.softText)
-                            .lineSpacing(3)
+                    HStack(spacing: 8) {
+                        OnboardingStepPill(title: "Account", isActive: step == .account, isComplete: firebaseAccount.user != nil)
+                        OnboardingStepPill(title: "Profile", isActive: step == .profile, isComplete: false)
                     }
-                    .padding(18)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-                    .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
 
-                    Button(action: saveProfile) {
-                        Label("Start Using Precision Golf", systemImage: "checkmark.circle.fill")
-                            .font(.system(.headline, design: .rounded).weight(.heavy))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 54)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mint))
+                    if step == .account {
+                        accountStep
+                    } else {
+                        profileStep
                     }
-                    .buttonStyle(.plain)
                 }
                 .padding(20)
             }
@@ -7189,14 +7167,228 @@ struct ProfileOnboardingView: View {
         }
     }
 
-    private func saveProfile() {
+    private var accountStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: firebaseAccount.user == nil ? "person.crop.circle.badge.plus" : "checkmark.seal.fill")
+                    .font(.system(size: 27, weight: .bold))
+                    .foregroundStyle(firebaseAccount.user == nil ? AppTheme.mint : AppTheme.mint)
+                    .frame(width: 42, height: 42)
+                    .background(Circle().fill(AppTheme.mintWash))
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(firebaseAccount.user == nil ? "Create your free account" : "Account connected")
+                        .font(.system(.title3, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(firebaseAccount.user == nil ? "Use email and password so your profile can support friends, groups and shared rounds later." : "You can now finish your player profile and sync it to Firebase.")
+                        .font(.system(.subheadline, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                        .lineSpacing(3)
+                }
+            }
+
+            if let user = firebaseAccount.user {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(user.email ?? "Signed in")
+                        .font(.system(.headline, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("This account will be used for future friend features.")
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+            } else {
+                VStack(spacing: 10) {
+                    TextField("Email", text: $firebaseAccount.email)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+                        .autocorrectionDisabled()
+                        .font(.system(.headline, design: .rounded).weight(.semibold))
+                        .padding(14)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+
+                    SecureField("Password", text: $firebaseAccount.password)
+                        .font(.system(.headline, design: .rounded).weight(.semibold))
+                        .padding(14)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task {
+                            await firebaseAccount.signIn()
+                            if firebaseAccount.user != nil {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    step = .profile
+                                }
+                            }
+                        }
+                    } label: {
+                        Text("Sign In")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FirebaseAccountButtonStyle(isPrimary: false))
+                    .disabled(firebaseAccount.isWorking)
+
+                    Button {
+                        Task {
+                            await firebaseAccount.createAccount()
+                            if firebaseAccount.user != nil {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    step = .profile
+                                }
+                            }
+                        }
+                    } label: {
+                        Text("Create Account")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
+                    .disabled(firebaseAccount.isWorking)
+                }
+            }
+
+            if firebaseAccount.isWorking {
+                ProgressView()
+                    .tint(AppTheme.mint)
+            }
+
+            if let status = firebaseAccount.statusMessage {
+                Text(status)
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(status.localizedCaseInsensitiveContains("error") ? Color.red : AppTheme.softText)
+                    .lineSpacing(3)
+            }
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    step = .profile
+                }
+            } label: {
+                Text(firebaseAccount.user == nil ? "Continue without account" : "Continue to Profile")
+                    .font(.system(.headline, design: .rounded).weight(.bold))
+                    .foregroundStyle(firebaseAccount.user == nil ? AppTheme.softText : .white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(firebaseAccount.user == nil ? AppTheme.subtleFill : AppTheme.mint))
+            }
+            .buttonStyle(.plain)
+            .disabled(firebaseAccount.isWorking)
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var profileStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ProfileTextField(title: "Name", placeholder: "Your name", text: $nameText)
+            ProfileTextField(title: "Home Club", placeholder: "Optional", text: $homeClubText)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Handicap Index")
+                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                TextField("8.6", text: $handicapText)
+                    .keyboardType(.decimalPad)
+                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .padding(14)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+            }
+
+            Text(firebaseAccount.user == nil ? "This stays local until you create an account in Settings." : "This will be stored locally and synced to your Firebase profile.")
+                .font(.system(.caption, design: .rounded).weight(.semibold))
+                .foregroundStyle(AppTheme.softText)
+                .lineSpacing(3)
+
+            HStack(spacing: 10) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        step = .account
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(FirebaseAccountButtonStyle(isPrimary: false))
+
+                Button {
+                    Task {
+                        await saveProfile()
+                    }
+                } label: {
+                    Label("Start Using Precision Golf", systemImage: "checkmark.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
+                .disabled(firebaseAccount.isWorking)
+            }
+
+            if firebaseAccount.isWorking {
+                ProgressView()
+                    .tint(AppTheme.mint)
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private func saveProfile() async {
         let trimmedName = nameText.trimmingCharacters(in: .whitespacesAndNewlines)
         profileName = trimmedName.isEmpty ? "Player" : trimmedName
         profileHomeClub = homeClubText.trimmingCharacters(in: .whitespacesAndNewlines)
         if let handicap = Double(handicapText.replacingOccurrences(of: ",", with: ".")) {
             playerSettings.replaceHandicap(handicap)
         }
+        if firebaseAccount.user != nil {
+            await firebaseAccount.saveProfile(displayName: profileName, handicap: playerSettings.handicap, homeClub: profileHomeClub)
+        }
         complete()
+    }
+
+    private enum OnboardingStep {
+        case account
+        case profile
+
+        var title: String {
+            switch self {
+            case .account: return "Create Account"
+            case .profile: return "Your Profile"
+            }
+        }
+
+        var subtitle: String {
+            switch self {
+            case .account: return "Set up Precision Golf for groups and shared rounds."
+            case .profile: return "Tell Precision Golf who is playing."
+            }
+        }
+    }
+}
+
+struct OnboardingStepPill: View {
+    let title: String
+    let isActive: Bool
+    let isComplete: Bool
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: isComplete ? "checkmark.circle.fill" : "circle.fill")
+                .font(.system(size: 9, weight: .bold))
+            Text(title)
+                .font(.system(.caption, design: .rounded).weight(.heavy))
+        }
+        .foregroundStyle(isActive || isComplete ? AppTheme.mint : AppTheme.softText)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(isActive ? AppTheme.mintWash : AppTheme.subtleFill))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(isActive ? AppTheme.mint.opacity(0.35) : AppTheme.border.opacity(0.65)))
     }
 }
 

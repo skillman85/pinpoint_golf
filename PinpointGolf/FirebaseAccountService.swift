@@ -49,6 +49,21 @@ final class FirebaseAccountService: ObservableObject {
         isWorking = false
     }
 
+    func createAccount() async {
+        guard validateCredentials() else { return }
+        isWorking = true
+        statusMessage = nil
+        do {
+            let result = try await Auth.auth().createUser(withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
+            user = result.user
+            await loadProfile(for: result.user.uid)
+            statusMessage = "Account created"
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+        isWorking = false
+    }
+
     func createAccount(displayName: String, handicap: Double, homeClub: String) async {
         guard validateCredentials() else { return }
         isWorking = true
