@@ -255,6 +255,33 @@ final class FirebaseSocialService: ObservableObject {
             if let stablefordPoints = round.stablefordPoints {
                 payload["stableford"] = stablefordPoints
             }
+            payload["holes"] = round.holes.map { hole -> [String: Any] in
+                var holePayload: [String: Any] = [
+                    "holeNumber": hole.holeNumber,
+                    "par": hole.par,
+                    "yards": hole.yards,
+                    "strokeIndex": hole.strokeIndex,
+                    "score": hole.score,
+                    "putts": hole.putts,
+                    "pickedUp": hole.pickedUp,
+                    "fairway": hole.fairway.rawValue,
+                    "green": hole.green.rawValue,
+                    "penalties": hole.penalties
+                ]
+                if let bunker = hole.bunker {
+                    holePayload["bunker"] = bunker
+                }
+                if let upAndDown = hole.upAndDown {
+                    holePayload["upAndDown"] = upAndDown
+                }
+                if let sandSave = hole.sandSave {
+                    holePayload["sandSave"] = sandSave
+                }
+                if let recovery = hole.recovery {
+                    holePayload["recovery"] = recovery
+                }
+                return holePayload
+            }
 
             try await database.collection("sharedRounds").document(documentId).setData(payload, merge: true)
 
@@ -415,10 +442,9 @@ final class FirebaseSocialService: ObservableObject {
 
     private func loadSharedRounds(for uid: String) async throws -> [FirebaseSharedRound] {
         let friendIds = try await loadFriends(for: uid).map(\.uid)
-        let visibleOwnerIds = Array(Set(friendIds + [uid]))
         var rounds: [FirebaseSharedRound] = []
 
-        for ownerId in visibleOwnerIds {
+        for ownerId in friendIds {
             let snapshot = try await database.collection("sharedRounds")
                 .whereField("ownerId", isEqualTo: ownerId)
                 .limit(to: 20)
@@ -511,6 +537,7 @@ struct FirebaseSharedRound: Identifiable {
     var pars: Int
     var putts: Int
     var penalties: Int
+    var holes: [FirebaseSharedHoleEntry]
 
     init?(document: QueryDocumentSnapshot) {
         let data = document.data()
@@ -541,8 +568,60 @@ struct FirebaseSharedRound: Identifiable {
         self.pars = data["pars"] as? Int ?? 0
         self.putts = data["putts"] as? Int ?? 0
         self.penalties = data["penalties"] as? Int ?? 0
+        self.holes = (data["holes"] as? [[String: Any]] ?? [])
+            .compactMap(FirebaseSharedHoleEntry.init(data:))
+            .sorted { $0.holeNumber < $1.holeNumber }
     }
 
+    var scoreToParLabel: String {
+        scoreToPar == 0 ? "E" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
+    }
+}
+
+struct FirebaseSharedHoleEntry: Identifiable {
+    var id: Int { holeNumber }
+    var holeNumber: Int
+    var par: Int
+    var yards: Int
+    var strokeIndex: Int
+    var score: Int
+    var putts: Int
+    var pickedUp: Bool
+    var fairway: MissDirection
+    var green: MissDirection
+    var penalties: Int
+    var bunker: Bool?
+    var upAndDown: Bool?
+    var sandSave: Bool?
+    var recovery: Bool?
+
+    init?(data: [String: Any]) {
+        guard
+            let holeNumber = data["holeNumber"] as? Int,
+            let par = data["par"] as? Int,
+            let yards = data["yards"] as? Int,
+            let strokeIndex = data["strokeIndex"] as? Int,
+            let score = data["score"] as? Int,
+            let putts = data["putts"] as? Int
+        else { return nil }
+
+        self.holeNumber = holeNumber
+        self.par = par
+        self.yards = yards
+        self.strokeIndex = strokeIndex
+        self.score = score
+        self.putts = putts
+        self.pickedUp = data["pickedUp"] as? Bool ?? false
+        self.fairway = MissDirection(rawValue: data["fairway"] as? String ?? "") ?? .notTracked
+        self.green = MissDirection(rawValue: data["green"] as? String ?? "") ?? .notTracked
+        self.penalties = data["penalties"] as? Int ?? 0
+        self.bunker = data["bunker"] as? Bool
+        self.upAndDown = data["upAndDown"] as? Bool
+        self.sandSave = data["sandSave"] as? Bool
+        self.recovery = data["recovery"] as? Bool
+    }
+
+    var scoreToPar: Int { score - par }
     var scoreToParLabel: String {
         scoreToPar == 0 ? "E" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
     }

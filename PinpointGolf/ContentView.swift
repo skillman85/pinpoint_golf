@@ -6829,6 +6829,8 @@ struct FriendCodeSettingsCard: View {
 struct FriendsView: View {
     @ObservedObject var account: FirebaseAccountService
     @ObservedObject var social: FirebaseSocialService
+    @State private var selectedFriend: FirebaseFriendProfile?
+    @State private var selectedRound: FirebaseSharedRound?
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -6855,6 +6857,12 @@ struct FriendsView: View {
         }
         .refreshable {
             await social.refresh()
+        }
+        .sheet(item: $selectedFriend) { friend in
+            FriendProfileDetailView(friend: friend, rounds: rounds(for: friend))
+        }
+        .sheet(item: $selectedRound) { round in
+            SharedRoundDetailView(round: round)
         }
     }
 
@@ -6965,13 +6973,18 @@ struct FriendsView: View {
             SectionHeader(title: "Friend Rounds", actionTitle: social.sharedRounds.isEmpty ? nil : "\(social.sharedRounds.count)")
 
             if social.sharedRounds.isEmpty {
-                Text("Completed rounds from you and your friends will appear here automatically.")
+                Text("Completed rounds from friends will appear here automatically.")
                     .font(.system(.subheadline, design: .rounded).weight(.medium))
                     .foregroundStyle(AppTheme.softText)
                     .lineSpacing(3)
             } else {
                 ForEach(social.sharedRounds) { round in
-                    SharedRoundRow(round: round)
+                    Button {
+                        selectedRound = round
+                    } label: {
+                        SharedRoundRow(round: round)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -7012,7 +7025,12 @@ struct FriendsView: View {
                     .lineSpacing(3)
             } else {
                 ForEach(social.friends) { friend in
-                    FriendProfileRow(friend: friend)
+                    Button {
+                        selectedFriend = friend
+                    } label: {
+                        FriendProfileRow(friend: friend)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -7020,6 +7038,12 @@ struct FriendsView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
         .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private func rounds(for friend: FirebaseFriendProfile) -> [FirebaseSharedRound] {
+        social.sharedRounds
+            .filter { $0.ownerId == friend.uid }
+            .sorted { $0.date > $1.date }
     }
 }
 
@@ -7056,6 +7080,10 @@ struct SharedRoundRow: View {
                         .font(.system(.headline, design: .rounded).weight(.heavy))
                         .foregroundStyle(AppTheme.mint)
                 }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText.opacity(0.7))
             }
 
             HStack(spacing: 8) {
@@ -7101,6 +7129,309 @@ struct SharedRoundMetric: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+    }
+}
+
+struct FriendProfileDetailView: View {
+    let friend: FirebaseFriendProfile
+    let rounds: [FirebaseSharedRound]
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedRound: FirebaseSharedRound?
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(spacing: 14) {
+                            Text(initials)
+                                .font(.system(size: 26, weight: .heavy, design: .rounded))
+                                .foregroundStyle(.white)
+                                .frame(width: 68, height: 68)
+                                .background(Circle().fill(AppTheme.mint))
+
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(friend.displayName.isEmpty ? "Golfer" : friend.displayName)
+                                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                                    .foregroundStyle(AppTheme.ink)
+                                    .minimumScaleFactor(0.75)
+                                Text(friend.homeClub.isEmpty ? "Home club not set" : friend.homeClub)
+                                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                                    .foregroundStyle(AppTheme.softText)
+                            }
+                        }
+
+                        HStack(spacing: 10) {
+                            SharedRoundMetric(title: "Handicap", value: String(format: "%.1f", friend.handicap))
+                            SharedRoundMetric(title: "Shared Rounds", value: "\(rounds.count)")
+                        }
+                    }
+                    .padding(18)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                    .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        SectionHeader(title: "Rounds", actionTitle: rounds.isEmpty ? nil : "\(rounds.count)")
+
+                        if rounds.isEmpty {
+                            Text("When this friend completes a shared round, it will appear here.")
+                                .font(.system(.subheadline, design: .rounded).weight(.medium))
+                                .foregroundStyle(AppTheme.softText)
+                                .lineSpacing(3)
+                        } else {
+                            ForEach(rounds) { round in
+                                Button {
+                                    selectedRound = round
+                                } label: {
+                                    SharedRoundRow(round: round)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(18)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                    .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+                }
+                .padding(20)
+            }
+            .background(AppTheme.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(AppTheme.mint)
+                }
+            }
+        }
+        .sheet(item: $selectedRound) { round in
+            SharedRoundDetailView(round: round)
+        }
+        .preferredColorScheme(.light)
+    }
+
+    private var initials: String {
+        let parts = friend.displayName.split(separator: " ")
+        let letters = parts.prefix(2).compactMap { $0.first }
+        let value = String(letters).uppercased()
+        return value.isEmpty ? "PG" : value
+    }
+}
+
+struct SharedRoundDetailView: View {
+    let round: FirebaseSharedRound
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(round.ownerName)
+                                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                                    .foregroundStyle(AppTheme.mint)
+                                Text(round.courseName)
+                                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                                    .foregroundStyle(AppTheme.ink)
+                                    .minimumScaleFactor(0.75)
+                                Text("\(round.location.isEmpty ? "Course location not set" : round.location) - \(round.teeName) tees")
+                                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                                    .foregroundStyle(AppTheme.softText)
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 5) {
+                                Text(Self.dateFormatter.string(from: round.date))
+                                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                                    .foregroundStyle(AppTheme.softText)
+                                Text(round.scoreToParLabel)
+                                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                                    .foregroundStyle(AppTheme.mint)
+                            }
+                        }
+
+                        HStack(spacing: 8) {
+                            SharedRoundMetric(title: "Gross", value: "\(round.gross)")
+                            SharedRoundMetric(title: "Par", value: "\(round.par)")
+                            SharedRoundMetric(title: "Points", value: round.stableford.map(String.init) ?? "-")
+                        }
+                    }
+                    .padding(18)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                    .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+
+                    SharedRoundStatsGrid(round: round)
+
+                    SharedRoundScorecard(round: round)
+                }
+                .padding(20)
+            }
+            .background(AppTheme.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(AppTheme.mint)
+                }
+            }
+        }
+        .preferredColorScheme(.light)
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
+}
+
+struct SharedRoundStatsGrid: View {
+    let round: FirebaseSharedRound
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Round Stats", actionTitle: round.holes.isEmpty ? "Summary" : "Full")
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                SharedRoundMetric(title: "Birdies", value: "\(round.birdies)")
+                SharedRoundMetric(title: "Pars", value: "\(round.pars)")
+                SharedRoundMetric(title: "Putts", value: "\(round.putts)")
+                SharedRoundMetric(title: "Penalties", value: "\(round.penalties)")
+                SharedRoundMetric(title: "Fairways", value: fairwayText)
+                SharedRoundMetric(title: "GIR", value: girText)
+                SharedRoundMetric(title: "Scramble", value: scrambleText)
+                SharedRoundMetric(title: "Sand Save", value: sandSaveText)
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var fairwayText: String {
+        let tracked = round.holes.filter { $0.par > 3 && $0.fairway != .notTracked }
+        guard !tracked.isEmpty else { return "-" }
+        return "\(tracked.filter { $0.fairway == .hit }.count)/\(tracked.count)"
+    }
+
+    private var girText: String {
+        let tracked = round.holes.filter { $0.green != .notTracked }
+        guard !tracked.isEmpty else { return "-" }
+        return "\(tracked.filter { $0.green == .hit }.count)/\(tracked.count)"
+    }
+
+    private var scrambleText: String {
+        let opportunities = round.holes.filter { $0.green != .hit && $0.green != .notTracked }
+        guard !opportunities.isEmpty else { return "-" }
+        return "\(opportunities.filter { $0.score <= $0.par }.count)/\(opportunities.count)"
+    }
+
+    private var sandSaveText: String {
+        let bunkerHoles = round.holes.filter { $0.bunker == true }
+        guard !bunkerHoles.isEmpty else { return "-" }
+        return "\(bunkerHoles.filter { $0.score <= $0.par }.count)/\(bunkerHoles.count)"
+    }
+}
+
+struct SharedRoundScorecard: View {
+    let round: FirebaseSharedRound
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Digital Scorecard", actionTitle: round.holes.isEmpty ? nil : "\(round.holes.count) holes")
+
+            if round.holes.isEmpty {
+                Text("This round was shared before hole-by-hole scorecards were added. New shared rounds will include the full digital scorecard.")
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineSpacing(3)
+            } else {
+                VStack(spacing: 0) {
+                    scorecardHeader
+                    ForEach(round.holes) { hole in
+                        SharedHoleScoreRow(hole: hole)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var scorecardHeader: some View {
+        HStack {
+            scorecardHeaderText("Hole", width: 44, alignment: .leading)
+            scorecardHeaderText("Par", width: 36)
+            scorecardHeaderText("SI", width: 34)
+            scorecardHeaderText("Gross", width: 50)
+            scorecardHeaderText("Putts", width: 44)
+            scorecardHeaderText("F/G", width: 48, alignment: .trailing)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(AppTheme.mint)
+    }
+
+    private func scorecardHeaderText(_ text: String, width: CGFloat, alignment: Alignment = .center) -> some View {
+        Text(text)
+            .font(.system(.caption2, design: .rounded).weight(.heavy))
+            .foregroundStyle(.white)
+            .frame(width: width, alignment: alignment)
+    }
+}
+
+struct SharedHoleScoreRow: View {
+    let hole: FirebaseSharedHoleEntry
+
+    var body: some View {
+        HStack {
+            Text("\(hole.holeNumber)")
+                .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.ink)
+                .frame(width: 44, alignment: .leading)
+            Text("\(hole.par)")
+                .frame(width: 36)
+            Text("\(hole.strokeIndex)")
+                .frame(width: 34)
+            VStack(spacing: 1) {
+                Text(hole.pickedUp ? "P\(hole.score)" : "\(hole.score)")
+                    .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                Text(hole.scoreToParLabel)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.softText)
+            }
+            .frame(width: 50)
+            Text(hole.pickedUp ? "-" : "\(hole.putts)")
+                .frame(width: 44)
+            Text(trackingText)
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.mint)
+                .frame(width: 48, alignment: .trailing)
+        }
+        .font(.system(.caption, design: .rounded).weight(.semibold))
+        .foregroundStyle(AppTheme.ink)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(Color.white)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(AppTheme.border.opacity(0.6))
+                .frame(height: 1)
+        }
+    }
+
+    private var trackingText: String {
+        let fairway = hole.par > 3 ? (hole.fairway == .hit ? "F" : hole.fairway == .notTracked ? "-" : "M") : "-"
+        let green = hole.green == .hit ? "G" : hole.green == .notTracked ? "-" : "M"
+        return "\(fairway)/\(green)"
     }
 }
 
