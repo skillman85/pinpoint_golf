@@ -6840,11 +6840,15 @@ struct FriendsView: View {
                 if account.user == nil {
                     signedOutCard
                 } else {
-                    notificationsCard
-                    activityFeedCard
+                    friendsCard
                     addFriendCard
                     requestsCard
-                    friendsCard
+                    if !social.notifications.isEmpty {
+                        notificationsCard
+                    }
+                    if !social.sharedRounds.isEmpty {
+                        activityFeedCard
+                    }
                 }
             }
             .padding(20)
@@ -7053,11 +7057,7 @@ struct SharedRoundRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                Text(initials)
-                    .font(.system(.headline, design: .rounded).weight(.heavy))
-                    .foregroundStyle(.white)
-                    .frame(width: 46, height: 46)
-                    .background(Circle().fill(AppTheme.mint))
+                FriendAvatar(name: round.ownerName, photoURL: round.ownerPhotoURL, size: 46)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(round.ownerName)
@@ -7095,13 +7095,6 @@ struct SharedRoundRow: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
-    }
-
-    private var initials: String {
-        let parts = round.ownerName.split(separator: " ")
-        let letters = parts.prefix(2).compactMap { $0.first }
-        let value = String(letters).uppercased()
-        return value.isEmpty ? "PG" : value
     }
 
     private static let dateFormatter: DateFormatter = {
@@ -7144,11 +7137,7 @@ struct FriendProfileDetailView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(spacing: 14) {
-                            Text(initials)
-                                .font(.system(size: 26, weight: .heavy, design: .rounded))
-                                .foregroundStyle(.white)
-                                .frame(width: 68, height: 68)
-                                .background(Circle().fill(AppTheme.mint))
+                            FriendAvatar(name: friend.displayName, photoURL: friend.photoURL, size: 68)
 
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(friend.displayName.isEmpty ? "Golfer" : friend.displayName)
@@ -7209,13 +7198,6 @@ struct FriendProfileDetailView: View {
             SharedRoundDetailView(round: round)
         }
         .preferredColorScheme(.light)
-    }
-
-    private var initials: String {
-        let parts = friend.displayName.split(separator: " ")
-        let letters = parts.prefix(2).compactMap { $0.first }
-        let value = String(letters).uppercased()
-        return value.isEmpty ? "PG" : value
     }
 }
 
@@ -7473,9 +7455,69 @@ struct FriendProfileRow: View {
     let friend: FirebaseFriendProfile
 
     var body: some View {
-        FriendProfileSummary(friend: friend)
+        VStack(alignment: .leading, spacing: 12) {
+            FriendProfileSummary(friend: friend)
+
+            Label("View Profile", systemImage: "person.crop.circle")
+                .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mint))
+        }
             .padding(14)
             .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+    }
+}
+
+struct FriendAvatar: View {
+    let name: String
+    let photoURL: String?
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let url = avatarURL {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        fallback
+                    }
+                }
+            } else {
+                fallback
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Color.white.opacity(0.82), lineWidth: 2))
+    }
+
+    private var fallback: some View {
+        Text(initials)
+            .font(.system(size: max(15, size * 0.38), weight: .heavy, design: .rounded))
+            .foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(Circle().fill(AppTheme.mint))
+    }
+
+    private var avatarURL: URL? {
+        guard
+            let photoURL,
+            !photoURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        return URL(string: photoURL)
+    }
+
+    private var initials: String {
+        let parts = name.split(separator: " ")
+        let letters = parts.prefix(2).compactMap { $0.first }
+        let value = String(letters).uppercased()
+        return value.isEmpty ? "PG" : value
     }
 }
 
@@ -7484,11 +7526,7 @@ struct FriendProfileSummary: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(initials)
-                .font(.system(.headline, design: .rounded).weight(.heavy))
-                .foregroundStyle(.white)
-                .frame(width: 46, height: 46)
-                .background(Circle().fill(AppTheme.mint))
+            FriendAvatar(name: friend.displayName, photoURL: friend.photoURL, size: 46)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(friend.displayName.isEmpty ? "Golfer" : friend.displayName)
@@ -7510,13 +7548,6 @@ struct FriendProfileSummary: View {
                 .padding(.vertical, 8)
                 .background(Capsule().fill(AppTheme.mintWash))
         }
-    }
-
-    private var initials: String {
-        let parts = friend.displayName.split(separator: " ")
-        let letters = parts.prefix(2).compactMap { $0.first }
-        let value = String(letters).uppercased()
-        return value.isEmpty ? "PG" : value
     }
 
     private var detailText: String {

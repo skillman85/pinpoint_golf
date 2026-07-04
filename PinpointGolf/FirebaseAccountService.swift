@@ -238,6 +238,7 @@ final class FirebaseSocialService: ObservableObject {
                 "ownerName": ownerName,
                 "ownerHandicap": ownerProfile?.handicap ?? round.handicap ?? 0,
                 "ownerHomeClub": ownerProfile?.homeClub ?? "",
+                "ownerPhotoURL": ownerProfile?.photoURL ?? "",
                 "courseName": round.courseName,
                 "location": round.location,
                 "teeName": round.teeName,
@@ -475,7 +476,8 @@ final class FirebaseSocialService: ObservableObject {
             displayName: data["displayName"] as? String ?? "Golfer",
             handicap: data["handicap"] as? Double ?? 0,
             homeClub: data["homeClub"] as? String ?? "",
-            friendCode: data["friendCode"] as? String ?? ""
+            friendCode: data["friendCode"] as? String ?? "",
+            photoURL: data["photoURL"] as? String
         )
     }
 
@@ -509,6 +511,7 @@ struct FirebaseFriendProfile: Identifiable {
     var handicap: Double
     var homeClub: String
     var friendCode: String
+    var photoURL: String?
 }
 
 struct FirebaseFriendRequest: Identifiable {
@@ -525,6 +528,7 @@ struct FirebaseSharedRound: Identifiable {
     var ownerName: String
     var ownerHandicap: Double
     var ownerHomeClub: String
+    var ownerPhotoURL: String?
     var courseName: String
     var location: String
     var teeName: String
@@ -556,6 +560,7 @@ struct FirebaseSharedRound: Identifiable {
         self.ownerName = ownerName
         self.ownerHandicap = data["ownerHandicap"] as? Double ?? 0
         self.ownerHomeClub = data["ownerHomeClub"] as? String ?? ""
+        self.ownerPhotoURL = data["ownerPhotoURL"] as? String
         self.courseName = courseName
         self.location = data["location"] as? String ?? ""
         self.teeName = teeName
