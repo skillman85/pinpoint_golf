@@ -310,9 +310,7 @@ final class FirebaseSocialService: ObservableObject {
                 return
             }
 
-            let friendshipId = friendshipDocumentId(fromUid, toUid)
-            let friendshipSnapshot = try await database.collection("friendships").document(friendshipId).getDocument()
-            guard !friendshipSnapshot.exists else {
+            guard !friends.contains(where: { $0.uid == toUid }) else {
                 statusMessage = "You are already friends."
                 return
             }

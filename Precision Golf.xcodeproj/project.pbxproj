@@ -18,12 +18,12 @@
 		1A2B3C4D5E6F70000000010B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000004 /* Assets.xcassets */; };
 		1A2B3C4D5E6F70000000010C /* PinpointDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000014 /* PinpointDatabase.swift */; };
 		1A2B3C4D5E6F70000000010F /* PrecisionLaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000018 /* PrecisionLaunchScreen.storyboard */; };
-		428DF05C2FF9950000A31A8B /* FirebaseAccountService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 428DF05B2FF9950000A31A8B /* FirebaseAccountService.swift */; };
 		428DF0512FF97E7200A31A8B /* Algorithms in Frameworks */ = {isa = PBXBuildFile; productRef = 428DF0502FF97E7200A31A8B /* Algorithms */; };
 		428DF0532FF982A100A31A8B /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 428DF0522FF982A100A31A8B /* GoogleService-Info.plist */; };
 		428DF0562FF9900000A31A8B /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 428DF0552FF9900000A31A8B /* FirebaseCore */; };
 		428DF0582FF9900000A31A8B /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 428DF0572FF9900000A31A8B /* FirebaseAuth */; };
 		428DF05A2FF9900000A31A8B /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 428DF0592FF9900000A31A8B /* FirebaseFirestore */; };
+		428DF05C2FF9950000A31A8B /* FirebaseAccountService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 428DF05B2FF9950000A31A8B /* FirebaseAccountService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -314,7 +314,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = 3SN8VLC9JN;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -342,7 +342,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = 3SN8VLC9JN;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
