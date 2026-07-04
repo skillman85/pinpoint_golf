@@ -194,6 +194,8 @@ final class FirebaseSocialService: ObservableObject {
     @Published var friendCodeInput = ""
     @Published private(set) var friends: [FirebaseFriendProfile] = []
     @Published private(set) var incomingRequests: [FirebaseFriendRequest] = []
+    @Published private(set) var sharedRounds: [FirebaseSharedRound] = []
+    @Published private(set) var notifications: [FirebaseRoundNotification] = []
     @Published var statusMessage: String?
     @Published var isWorking = false
 
@@ -213,11 +215,72 @@ final class FirebaseSocialService: ObservableObject {
         do {
             async let requests = loadIncomingRequests(for: uid)
             async let loadedFriends = loadFriends(for: uid)
+            async let loadedSharedRounds = loadSharedRounds(for: uid)
+            async let loadedNotifications = loadNotifications(for: uid)
             incomingRequests = try await requests
             friends = try await loadedFriends
+            sharedRounds = try await loadedSharedRounds
+            notifications = try await loadedNotifications
             statusMessage = nil
         } catch {
             statusMessage = error.localizedDescription
+        }
+    }
+
+    func publishCompletedRound(_ round: SavedRound, ownerProfile: FirebaseUserProfile?) async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+
+        do {
+            let ownerName = displayName(from: ownerProfile)
+            let documentId = round.id.uuidString
+            var payload: [String: Any] = [
+                "ownerId": uid,
+                "ownerName": ownerName,
+                "ownerHandicap": ownerProfile?.handicap ?? round.handicap ?? 0,
+                "ownerHomeClub": ownerProfile?.homeClub ?? "",
+                "courseName": round.courseName,
+                "location": round.location,
+                "teeName": round.teeName,
+                "date": Timestamp(date: round.date),
+                "gross": round.totalScore,
+                "par": round.totalPar,
+                "scoreToPar": round.totalScore - round.totalPar,
+                "birdies": round.birdies,
+                "pars": round.pars,
+                "putts": round.totalPutts,
+                "penalties": round.penalties,
+                "visibility": "friends",
+                "createdAt": Timestamp(date: Date())
+            ]
+            if let stablefordPoints = round.stablefordPoints {
+                payload["stableford"] = stablefordPoints
+            }
+
+            try await database.collection("sharedRounds").document(documentId).setData(payload, merge: true)
+
+            let loadedFriends = try await loadFriends(for: uid)
+            for friend in loadedFriends {
+                let notificationId = "\(documentId)_\(friend.uid)"
+                var notificationPayload: [String: Any] = [
+                    "recipientId": friend.uid,
+                    "actorId": uid,
+                    "actorName": ownerName,
+                    "sharedRoundId": documentId,
+                    "courseName": round.courseName,
+                    "gross": round.totalScore,
+                    "message": "\(ownerName) completed a round at \(round.courseName)",
+                    "read": false,
+                    "createdAt": Timestamp(date: Date())
+                ]
+                if let stablefordPoints = round.stablefordPoints {
+                    notificationPayload["stableford"] = stablefordPoints
+                }
+                try await database.collection("roundNotifications").document(notificationId).setData(notificationPayload, merge: true)
+            }
+
+            await refresh()
+        } catch {
+            statusMessage = "Round saved locally, but friend sharing failed: \(error.localizedDescription)"
         }
     }
 
@@ -352,6 +415,34 @@ final class FirebaseSocialService: ObservableObject {
         return profiles.sorted { $0.displayName < $1.displayName }
     }
 
+    private func loadSharedRounds(for uid: String) async throws -> [FirebaseSharedRound] {
+        let friendIds = try await loadFriends(for: uid).map(\.uid)
+        let visibleOwnerIds = Array(Set(friendIds + [uid]))
+        var rounds: [FirebaseSharedRound] = []
+
+        for ownerId in visibleOwnerIds {
+            let snapshot = try await database.collection("sharedRounds")
+                .whereField("ownerId", isEqualTo: ownerId)
+                .limit(to: 20)
+                .getDocuments()
+            rounds.append(contentsOf: snapshot.documents.compactMap(FirebaseSharedRound.init(document:)))
+        }
+
+        return Array(rounds.sorted { $0.date > $1.date }.prefix(30))
+    }
+
+    private func loadNotifications(for uid: String) async throws -> [FirebaseRoundNotification] {
+        let snapshot = try await database.collection("roundNotifications")
+            .whereField("recipientId", isEqualTo: uid)
+            .whereField("read", isEqualTo: false)
+            .limit(to: 20)
+            .getDocuments()
+
+        return snapshot.documents
+            .compactMap(FirebaseRoundNotification.init(document:))
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
     private func loadProfile(uid: String) async throws -> FirebaseFriendProfile {
         let snapshot = try await database.collection("users").document(uid).getDocument()
         let data = snapshot.data() ?? [:]
@@ -378,6 +469,13 @@ final class FirebaseSocialService: ObservableObject {
     private func friendshipDocumentId(_ firstUid: String, _ secondUid: String) -> String {
         [firstUid, secondUid].sorted().joined(separator: "_")
     }
+
+    private func displayName(from profile: FirebaseUserProfile?) -> String {
+        guard let profile, !profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "A friend"
+        }
+        return profile.displayName
+    }
 }
 
 struct FirebaseFriendProfile: Identifiable {
@@ -395,4 +493,97 @@ struct FirebaseFriendRequest: Identifiable {
     var toUserId: String
     var status: String
     var fromProfile: FirebaseFriendProfile
+}
+
+struct FirebaseSharedRound: Identifiable {
+    let id: String
+    var ownerId: String
+    var ownerName: String
+    var ownerHandicap: Double
+    var ownerHomeClub: String
+    var courseName: String
+    var location: String
+    var teeName: String
+    var date: Date
+    var gross: Int
+    var par: Int
+    var scoreToPar: Int
+    var stableford: Int?
+    var birdies: Int
+    var pars: Int
+    var putts: Int
+    var penalties: Int
+
+    init?(document: QueryDocumentSnapshot) {
+        let data = document.data()
+        guard
+            let ownerId = data["ownerId"] as? String,
+            let ownerName = data["ownerName"] as? String,
+            let courseName = data["courseName"] as? String,
+            let teeName = data["teeName"] as? String,
+            let timestamp = data["date"] as? Timestamp,
+            let gross = data["gross"] as? Int,
+            let par = data["par"] as? Int
+        else { return nil }
+
+        self.id = document.documentID
+        self.ownerId = ownerId
+        self.ownerName = ownerName
+        self.ownerHandicap = data["ownerHandicap"] as? Double ?? 0
+        self.ownerHomeClub = data["ownerHomeClub"] as? String ?? ""
+        self.courseName = courseName
+        self.location = data["location"] as? String ?? ""
+        self.teeName = teeName
+        self.date = timestamp.dateValue()
+        self.gross = gross
+        self.par = par
+        self.scoreToPar = data["scoreToPar"] as? Int ?? gross - par
+        self.stableford = data["stableford"] as? Int
+        self.birdies = data["birdies"] as? Int ?? 0
+        self.pars = data["pars"] as? Int ?? 0
+        self.putts = data["putts"] as? Int ?? 0
+        self.penalties = data["penalties"] as? Int ?? 0
+    }
+
+    var scoreToParLabel: String {
+        scoreToPar == 0 ? "E" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
+    }
+}
+
+struct FirebaseRoundNotification: Identifiable {
+    let id: String
+    var recipientId: String
+    var actorId: String
+    var actorName: String
+    var sharedRoundId: String
+    var courseName: String
+    var gross: Int
+    var stableford: Int?
+    var message: String
+    var createdAt: Date
+
+    init?(document: QueryDocumentSnapshot) {
+        let data = document.data()
+        guard
+            let recipientId = data["recipientId"] as? String,
+            let actorId = data["actorId"] as? String,
+            let actorName = data["actorName"] as? String,
+            let sharedRoundId = data["sharedRoundId"] as? String,
+            let courseName = data["courseName"] as? String,
+            let gross = data["gross"] as? Int,
+            let message = data["message"] as? String,
+            let timestamp = data["createdAt"] as? Timestamp
+        else { return nil }
+
+        self.id = document.documentID
+        self.recipientId = recipientId
+        self.actorId = actorId
+        self.actorName = actorName
+        self.sharedRoundId = sharedRoundId
+        self.courseName = courseName
+        self.gross = gross
+        self.stableford = data["stableford"] as? Int
+        self.message = message
+        self.createdAt = timestamp.dateValue()
+    }
 }

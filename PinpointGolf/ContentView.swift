@@ -163,8 +163,11 @@ struct ContentView: View {
     }
 
     private func saveReviewedRound() {
-        roundArchive.save(course: selectedCourse, tee: selectedTee, handicap: roundHandicap, entries: entries)
+        let savedRound = roundArchive.save(course: selectedCourse, tee: selectedTee, handicap: roundHandicap, entries: entries)
         handicapHistory.record(roundHandicap)
+        Task {
+            await firebaseSocial.publishCompletedRound(savedRound, ownerProfile: firebaseAccount.profile)
+        }
         isRoundActive = false
         isRoundFlowPresented = false
         isRoundReviewPresented = false
@@ -6759,6 +6762,8 @@ struct FriendsView: View {
                     signedOutCard
                 } else {
                     friendCodeCard
+                    notificationsCard
+                    activityFeedCard
                     addFriendCard
                     requestsCard
                     friendsCard
@@ -6896,6 +6901,66 @@ struct FriendsView: View {
         .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
     }
 
+    private var notificationsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Today", actionTitle: social.notifications.isEmpty ? nil : "\(social.notifications.count) new")
+
+            if social.notifications.isEmpty {
+                Text("When a friend completes a round, you will see it here.")
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineSpacing(3)
+            } else {
+                ForEach(social.notifications) { notification in
+                    HStack(spacing: 12) {
+                        Image(systemName: "bell.badge.fill")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(AppTheme.mint)
+                            .frame(width: 42, height: 42)
+                            .background(Circle().fill(AppTheme.mintWash))
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(notification.message)
+                                .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                                .foregroundStyle(AppTheme.ink)
+                            Text("Gross \(notification.gross) • \(notification.stableford.map { "\($0) pts" } ?? "Stableford pending")")
+                                .font(.system(.caption, design: .rounded).weight(.medium))
+                                .foregroundStyle(AppTheme.softText)
+                        }
+                        Spacer(minLength: 8)
+                    }
+                    .padding(13)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                }
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var activityFeedCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Friend Rounds", actionTitle: social.sharedRounds.isEmpty ? nil : "\(social.sharedRounds.count)")
+
+            if social.sharedRounds.isEmpty {
+                Text("Completed rounds from you and your friends will appear here automatically.")
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineSpacing(3)
+            } else {
+                ForEach(social.sharedRounds) { round in
+                    SharedRoundRow(round: round)
+                }
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
     private var requestsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "Friend Requests", actionTitle: social.incomingRequests.isEmpty ? nil : "\(social.incomingRequests.count)")
@@ -6935,6 +7000,87 @@ struct FriendsView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
         .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+}
+
+struct SharedRoundRow: View {
+    let round: FirebaseSharedRound
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Text(initials)
+                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(.white)
+                    .frame(width: 46, height: 46)
+                    .background(Circle().fill(AppTheme.mint))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(round.ownerName)
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("\(round.courseName) • \(round.teeName) tees")
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(Self.dateFormatter.string(from: round.date))
+                        .font(.system(.caption2, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.softText)
+                    Text(round.scoreToParLabel)
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.mint)
+                }
+            }
+
+            HStack(spacing: 8) {
+                SharedRoundMetric(title: "Gross", value: "\(round.gross)")
+                SharedRoundMetric(title: "Points", value: round.stableford.map(String.init) ?? "-")
+                SharedRoundMetric(title: "Birdies", value: "\(round.birdies)")
+                SharedRoundMetric(title: "Putts", value: "\(round.putts)")
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+    }
+
+    private var initials: String {
+        let parts = round.ownerName.split(separator: " ")
+        let letters = parts.prefix(2).compactMap { $0.first }
+        let value = String(letters).uppercased()
+        return value.isEmpty ? "PG" : value
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .none
+        return formatter
+    }()
+}
+
+struct SharedRoundMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+            Text(value)
+                .font(.system(.headline, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.ink)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
     }
 }
 
