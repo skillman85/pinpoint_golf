@@ -11,6 +11,7 @@ struct ContentView: View {
     @StateObject private var clubYardages = ClubYardageStore()
     @StateObject private var handicapHistory = HandicapHistoryStore()
     @StateObject private var scorecardStore = CourseScorecardStore()
+    @StateObject private var firebaseAccount = FirebaseAccountService()
     @AppStorage("pinpoint.profileImageData") private var profileImageData: Data = Data()
     @AppStorage("precision.profileName") private var profileName = ""
     @AppStorage("precision.profileHomeClub") private var profileHomeClub = ""
@@ -119,6 +120,7 @@ struct ContentView: View {
                 clubYardages: clubYardages,
                 handicapHistory: handicapHistory,
                 scorecardStore: scorecardStore,
+                firebaseAccount: firebaseAccount,
                 profileName: $profileName,
                 profileHomeClub: $profileHomeClub
             )
@@ -6175,6 +6177,7 @@ struct SettingsView: View {
     @ObservedObject var clubYardages: ClubYardageStore
     @ObservedObject var handicapHistory: HandicapHistoryStore
     @ObservedObject var scorecardStore: CourseScorecardStore
+    @ObservedObject var firebaseAccount: FirebaseAccountService
     @Binding var profileName: String
     @Binding var profileHomeClub: String
     @State private var handicapText = ""
@@ -6209,6 +6212,13 @@ struct SettingsView: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
                 .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+
+                FirebaseAccountCard(
+                    account: firebaseAccount,
+                    profileName: profileName,
+                    handicap: playerSettings.handicap,
+                    homeClub: profileHomeClub
+                )
 
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Handicap Index")
@@ -6578,6 +6588,147 @@ struct SettingsView: View {
         formatter.timeStyle = .none
         return formatter
     }()
+}
+
+struct FirebaseAccountCard: View {
+    @ObservedObject var account: FirebaseAccountService
+    let profileName: String
+    let handicap: Double
+    let homeClub: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Firebase Account")
+                        .font(.system(.headline, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(account.user == nil ? "Sign in to test groups and shared rounds later." : "Connected for future groups and shared rounds.")
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer()
+                Image(systemName: account.user == nil ? "person.crop.circle.badge.plus" : "checkmark.seal.fill")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(account.user == nil ? AppTheme.softText : AppTheme.mint)
+            }
+
+            if let user = account.user {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(user.email ?? "Signed in")
+                        .font(.system(.subheadline, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("UID: \(user.uid)")
+                        .font(.system(.caption2, design: .monospaced).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if let profile = account.profile {
+                        Text("Cloud profile: \(profile.displayName.isEmpty ? "Unnamed golfer" : profile.displayName) - \(String(format: "%.1f", profile.handicap))")
+                            .font(.system(.caption, design: .rounded).weight(.medium))
+                            .foregroundStyle(AppTheme.softText)
+                    }
+                }
+                .padding(13)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task {
+                            await account.saveProfile(displayName: profileName, handicap: handicap, homeClub: homeClub)
+                        }
+                    } label: {
+                        Label("Sync Profile", systemImage: "icloud.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
+                    .disabled(account.isWorking)
+
+                    Button {
+                        account.signOut()
+                    } label: {
+                        Text("Sign Out")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FirebaseAccountButtonStyle(isPrimary: false))
+                    .disabled(account.isWorking)
+                }
+            } else {
+                VStack(spacing: 10) {
+                    TextField("Email", text: $account.email)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+                        .autocorrectionDisabled()
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .padding(13)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+
+                    SecureField("Password", text: $account.password)
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .padding(13)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task {
+                            await account.signIn()
+                        }
+                    } label: {
+                        Text("Sign In")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FirebaseAccountButtonStyle(isPrimary: false))
+                    .disabled(account.isWorking)
+
+                    Button {
+                        Task {
+                            await account.createAccount(displayName: profileName, handicap: handicap, homeClub: homeClub)
+                        }
+                    } label: {
+                        Text("Create")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
+                    .disabled(account.isWorking)
+                }
+            }
+
+            if account.isWorking {
+                ProgressView()
+                    .tint(AppTheme.mint)
+            }
+
+            if let status = account.statusMessage {
+                Text(status)
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(status.localizedCaseInsensitiveContains("error") ? Color.red : AppTheme.softText)
+                    .lineSpacing(3)
+            }
+
+            Text("This does not upload saved rounds yet. It only proves Firebase Auth and the user profile document work.")
+                .font(.system(.caption, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.softText)
+                .lineSpacing(3)
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+}
+
+struct FirebaseAccountButtonStyle: ButtonStyle {
+    let isPrimary: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(.subheadline, design: .rounded).weight(.bold))
+            .foregroundStyle(isPrimary ? .white : AppTheme.ink)
+            .padding(13)
+            .background(RoundedRectangle(cornerRadius: 8).fill(isPrimary ? AppTheme.mint : AppTheme.subtleFill))
+            .opacity(configuration.isPressed ? 0.82 : 1)
+    }
 }
 
 struct CachedScorecardRow: View {
