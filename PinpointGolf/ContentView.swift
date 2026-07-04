@@ -12,6 +12,7 @@ struct ContentView: View {
     @StateObject private var handicapHistory = HandicapHistoryStore()
     @StateObject private var scorecardStore = CourseScorecardStore()
     @StateObject private var firebaseAccount = FirebaseAccountService()
+    @StateObject private var firebaseSocial = FirebaseSocialService()
     @AppStorage("pinpoint.profileImageData") private var profileImageData: Data = Data()
     @AppStorage("precision.profileName") private var profileName = ""
     @AppStorage("precision.profileHomeClub") private var profileHomeClub = ""
@@ -111,6 +112,14 @@ struct ContentView: View {
             )
         case .goals:
             GoalsView(savedRounds: roundArchive.rounds, goalArchive: goalArchive)
+        case .friends:
+            FriendsView(
+                account: firebaseAccount,
+                social: firebaseSocial,
+                profileName: profileName,
+                handicap: playerSettings.handicap,
+                homeClub: profileHomeClub
+            )
         case .settings:
             SettingsView(
                 playerSettings: playerSettings,
@@ -435,6 +444,7 @@ enum Tab: String, CaseIterable {
     case yardages = "Yardages"
     case insights = "Rounds"
     case goals = "Goals"
+    case friends = "Friends"
     case settings = "Settings"
 
     var icon: String {
@@ -443,6 +453,7 @@ enum Tab: String, CaseIterable {
         case .yardages: "ruler.fill"
         case .insights: "list.bullet.rectangle.portrait.fill"
         case .goals: "target"
+        case .friends: "person.2.fill"
         case .settings: "gearshape.fill"
         }
     }
@@ -6729,6 +6740,291 @@ struct FirebaseAccountButtonStyle: ButtonStyle {
             .padding(13)
             .background(RoundedRectangle(cornerRadius: 8).fill(isPrimary ? AppTheme.mint : AppTheme.subtleFill))
             .opacity(configuration.isPressed ? 0.82 : 1)
+    }
+}
+
+struct FriendsView: View {
+    @ObservedObject var account: FirebaseAccountService
+    @ObservedObject var social: FirebaseSocialService
+    let profileName: String
+    let handicap: Double
+    let homeClub: String
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 18) {
+                HeaderBlock(title: "Friends", subtitle: "Add golfers by code and build your Precision Golf circle.")
+
+                if account.user == nil {
+                    signedOutCard
+                } else {
+                    friendCodeCard
+                    addFriendCard
+                    requestsCard
+                    friendsCard
+                }
+            }
+            .padding(20)
+            .padding(.bottom, 20)
+        }
+        .task {
+            if account.user != nil {
+                await social.refresh()
+            }
+        }
+        .refreshable {
+            await social.refresh()
+        }
+    }
+
+    private var signedOutCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
+                .font(.system(size: 28, weight: .bold))
+                .foregroundStyle(AppTheme.mint)
+            Text("Create an account first")
+                .font(.system(.title3, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.ink)
+            Text("Friends need Firebase so each player has a private profile, friend code and request inbox. Sign in or create an account from Settings.")
+                .font(.system(.subheadline, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.softText)
+                .lineSpacing(3)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var friendCodeCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Your Friend Code")
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("Share this with another golfer so they can send you a request.")
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer()
+                Image(systemName: "qrcode.viewfinder")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(AppTheme.mint)
+            }
+
+            if let friendCode = account.profile?.friendCode, !friendCode.isEmpty {
+                Text(friendCode)
+                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .minimumScaleFactor(0.7)
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+
+                ShareLink(item: friendCode) {
+                    Label("Share Friend Code", systemImage: "square.and.arrow.up.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
+            } else {
+                Text("Your profile needs a friend code before other players can add you.")
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineSpacing(3)
+
+                Button {
+                    Task {
+                        await account.saveProfile(displayName: profileName, handicap: handicap, homeClub: homeClub)
+                        await social.refresh()
+                    }
+                } label: {
+                    Label("Create Friend Code", systemImage: "sparkles")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
+                .disabled(account.isWorking)
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var addFriendCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Add Friend")
+                .font(.system(.headline, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.ink)
+
+            TextField("Friend code, e.g. JAMES-4821", text: $social.friendCodeInput)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .font(.system(.headline, design: .rounded).weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+
+            Button {
+                Task {
+                    await social.sendFriendRequest()
+                }
+            } label: {
+                Label("Send Friend Request", systemImage: "paperplane.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
+            .disabled(social.isWorking)
+
+            if social.isWorking {
+                ProgressView()
+                    .tint(AppTheme.mint)
+            }
+
+            if let status = social.statusMessage {
+                Text(status)
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(status.localizedCaseInsensitiveContains("error") ? Color.red : AppTheme.softText)
+                    .lineSpacing(3)
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var requestsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Friend Requests", actionTitle: social.incomingRequests.isEmpty ? nil : "\(social.incomingRequests.count)")
+
+            if social.incomingRequests.isEmpty {
+                Text("Incoming requests will appear here.")
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+            } else {
+                ForEach(social.incomingRequests) { request in
+                    FriendRequestRow(request: request, social: social)
+                }
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var friendsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Friends", actionTitle: social.friends.isEmpty ? nil : "\(social.friends.count)")
+
+            if social.friends.isEmpty {
+                Text("Add your first friend by entering their Precision Golf friend code.")
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineSpacing(3)
+            } else {
+                ForEach(social.friends) { friend in
+                    FriendProfileRow(friend: friend)
+                }
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+}
+
+struct FriendRequestRow: View {
+    let request: FirebaseFriendRequest
+    @ObservedObject var social: FirebaseSocialService
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FriendProfileSummary(friend: request.fromProfile)
+            HStack(spacing: 10) {
+                Button {
+                    Task {
+                        await social.decline(request)
+                    }
+                } label: {
+                    Text("Decline")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(FirebaseAccountButtonStyle(isPrimary: false))
+
+                Button {
+                    Task {
+                        await social.accept(request)
+                    }
+                } label: {
+                    Text("Accept")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+    }
+}
+
+struct FriendProfileRow: View {
+    let friend: FirebaseFriendProfile
+
+    var body: some View {
+        FriendProfileSummary(friend: friend)
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+    }
+}
+
+struct FriendProfileSummary: View {
+    let friend: FirebaseFriendProfile
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(initials)
+                .font(.system(.headline, design: .rounded).weight(.heavy))
+                .foregroundStyle(.white)
+                .frame(width: 46, height: 46)
+                .background(Circle().fill(AppTheme.mint))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(friend.displayName.isEmpty ? "Golfer" : friend.displayName)
+                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Text(detailText)
+                    .font(.system(.caption, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+
+            Spacer(minLength: 8)
+
+            Text(String(format: "%.1f", friend.handicap))
+                .font(.system(.headline, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.mint)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(AppTheme.mintWash))
+        }
+    }
+
+    private var initials: String {
+        let parts = friend.displayName.split(separator: " ")
+        let letters = parts.prefix(2).compactMap { $0.first }
+        let value = String(letters).uppercased()
+        return value.isEmpty ? "PG" : value
+    }
+
+    private var detailText: String {
+        let club = friend.homeClub.trimmingCharacters(in: .whitespacesAndNewlines)
+        return club.isEmpty ? friend.friendCode : "\(club) • \(friend.friendCode)"
     }
 }
 
