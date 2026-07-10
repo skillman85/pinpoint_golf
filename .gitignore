@@ -8,3 +8,5 @@ PinpointGolf.xcodeproj/
 *.xcscmblueprint
 *.xccheckout
 build/
+node_modules/
+functions/node_modules/
