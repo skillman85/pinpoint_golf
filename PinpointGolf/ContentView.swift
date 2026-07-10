@@ -28,6 +28,7 @@ struct ContentView: View {
     @State private var currentHoleIndex = 0
     @State private var roundHandicap = 0.0
     @State private var pendingSharedRoundId: String?
+    @State private var sideMatch = MatchplaySideGame()
     @State private var entries = DemoData.holes.map {
         ContentView.defaultEntry(for: $0)
     }
@@ -173,6 +174,7 @@ struct ContentView: View {
         entries = selectedTee.holes.map {
             Self.defaultEntry(for: $0)
         }
+        sideMatch = MatchplaySideGame()
         isRoundActive = true
         isRoundFlowPresented = true
         saveActiveRoundDraft()
@@ -193,6 +195,7 @@ struct ContentView: View {
         isRoundFlowPresented = false
         isRoundReviewPresented = false
         currentHoleIndex = 0
+        sideMatch = MatchplaySideGame()
         selectedTab = .home
         clearActiveRoundDraft()
     }
@@ -225,6 +228,7 @@ struct ContentView: View {
         entries = selectedTee.holes.map {
             Self.defaultEntry(for: $0)
         }
+        sideMatch = MatchplaySideGame()
         selectedTab = .home
         clearActiveRoundDraft()
     }
@@ -438,6 +442,8 @@ extension ContentView {
                         currentHoleIndex: $currentHoleIndex,
                         entries: $entries,
                         handicap: roundHandicap,
+                        friends: firebaseSocial.friends,
+                        sideMatch: $sideMatch,
                         finishRound: finishRound,
                         discardRound: discardCurrentRound
                     )
@@ -4530,12 +4536,43 @@ struct CourseSelectionView: View {
     }
 }
 
+struct MatchplaySideGame: Equatable {
+    var isActive = false
+    var opponentId = ""
+    var opponentName = ""
+    var opponentHandicap = 0.0
+    var useHandicap = true
+    var opponentScores: [Int?] = []
+
+    mutating func start(against friend: FirebaseFriendProfile, holeCount: Int) {
+        isActive = true
+        opponentId = friend.uid
+        opponentName = friend.displayName
+        opponentHandicap = friend.handicap
+        opponentScores = Array(repeating: nil, count: holeCount)
+    }
+
+    mutating func stop() {
+        self = MatchplaySideGame()
+    }
+
+    mutating func ensureHoleCount(_ holeCount: Int) {
+        if opponentScores.count < holeCount {
+            opponentScores.append(contentsOf: Array(repeating: nil, count: holeCount - opponentScores.count))
+        } else if opponentScores.count > holeCount {
+            opponentScores = Array(opponentScores.prefix(holeCount))
+        }
+    }
+}
+
 struct LiveRoundView: View {
     let selectedCourse: GolfCourse
     let selectedTee: TeeBox
     @Binding var currentHoleIndex: Int
     @Binding var entries: [RoundHoleEntry]
     let handicap: Double
+    let friends: [FirebaseFriendProfile]
+    @Binding var sideMatch: MatchplaySideGame
     let finishRound: () -> Void
     let discardRound: () -> Void
     @State private var scoringStep: LiveScoringStep = .score
@@ -4592,6 +4629,16 @@ struct LiveRoundView: View {
 
             LiveScoringStepPill(step: $scoringStep)
                 .padding(.horizontal, 16)
+
+            MatchplaySideCard(
+                friends: friends,
+                selectedTee: selectedTee,
+                courseHandicap: courseHandicap,
+                entries: entries,
+                currentHoleIndex: currentHoleIndex,
+                match: $sideMatch
+            )
+            .padding(.horizontal, 16)
 
             Group {
                 if scoringStep == .score {
@@ -4760,6 +4807,251 @@ struct LiveRoundView: View {
 
     private var stablefordThroughCurrentHole: Int {
         scoredEntriesThroughCurrentHole.reduce(0) { $0 + stablefordPoints(for: $1) }
+    }
+}
+
+struct MatchplaySideCard: View {
+    let friends: [FirebaseFriendProfile]
+    let selectedTee: TeeBox
+    let courseHandicap: Int
+    let entries: [RoundHoleEntry]
+    let currentHoleIndex: Int
+    @Binding var match: MatchplaySideGame
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if match.isActive {
+                activeMatchContent
+            } else {
+                inactiveMatchContent
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(LinearGradient(colors: [Color.white, AppTheme.mintWash], startPoint: .topLeading, endPoint: .bottomTrailing))
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow.opacity(0.5), radius: 10, x: 0, y: 5)
+        .onAppear {
+            match.ensureHoleCount(entries.count)
+        }
+        .onChange(of: entries.count) { _, newValue in
+            match.ensureHoleCount(newValue)
+        }
+    }
+
+    private var inactiveMatchContent: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "flag.2.crossed.fill")
+                .font(.system(size: 17, weight: .heavy))
+                .foregroundStyle(AppTheme.mint)
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(Color.white))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Side Matchplay")
+                    .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Text(friends.isEmpty ? "Add friends first to start a live side match." : "Run a match alongside your normal card.")
+                    .font(.system(.caption2, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 8)
+
+            if friends.isEmpty {
+                Text("No friends")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .padding(.horizontal, 12)
+                    .frame(height: 34)
+                    .background(Capsule().fill(AppTheme.subtleFill))
+            } else {
+                Menu {
+                    ForEach(friends) { friend in
+                        Button(friend.displayName) {
+                            match.start(against: friend, holeCount: entries.count)
+                        }
+                    }
+                } label: {
+                    Label("Start", systemImage: "play.fill")
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 34)
+                        .background(Capsule().fill(AppTheme.mint))
+                }
+            }
+        }
+    }
+
+    private var activeMatchContent: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Matchplay vs \(match.opponentName)")
+                        .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.76)
+                    Text(statusText)
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundStyle(statusAccent)
+                }
+
+                Spacer()
+
+                Button {
+                    match.useHandicap.toggle()
+                } label: {
+                    Text(match.useHandicap ? "Net" : "Gross")
+                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.mint)
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
+                        .background(Capsule().fill(Color.white))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    match.stop()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(AppTheme.softText)
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(Color.white))
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: 8) {
+                matchScoreCell(title: "You", value: userScoreText, accent: AppTheme.mint)
+                matchScoreCell(title: match.opponentName, value: opponentScoreText, accent: AppTheme.gold)
+                opponentScoreControls
+            }
+        }
+    }
+
+    private func matchScoreCell(title: String, value: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.softText)
+                .lineLimit(1)
+            Text(value)
+                .font(.system(.headline, design: .rounded).weight(.heavy))
+                .foregroundStyle(accent)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.9)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(accent.opacity(0.18)))
+    }
+
+    private var opponentScoreControls: some View {
+        HStack(spacing: 6) {
+            Button {
+                changeOpponentScore(by: -1)
+            } label: {
+                Image(systemName: "minus")
+            }
+            .disabled(currentOpponentScore == nil)
+
+            Button {
+                changeOpponentScore(by: 1)
+            } label: {
+                Image(systemName: "plus")
+            }
+
+            Button {
+                clearOpponentScore()
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+            }
+            .disabled(currentOpponentScore == nil)
+        }
+        .font(.system(size: 13, weight: .heavy))
+        .foregroundStyle(AppTheme.mint)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .frame(minHeight: 48)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.9)))
+    }
+
+    private var userScoreText: String {
+        let score = entries[currentHoleIndex].score
+        return score > 0 ? "\(score)" : "-"
+    }
+
+    private var opponentScoreText: String {
+        guard let score = currentOpponentScore else { return "-" }
+        return "\(score)"
+    }
+
+    private var currentOpponentScore: Int? {
+        guard currentHoleIndex < match.opponentScores.count else { return nil }
+        return match.opponentScores[currentHoleIndex]
+    }
+
+    private func changeOpponentScore(by delta: Int) {
+        match.ensureHoleCount(entries.count)
+        let startingScore = entries[currentHoleIndex].hole.par
+        let current = match.opponentScores[currentHoleIndex] ?? startingScore
+        match.opponentScores[currentHoleIndex] = min(12, max(1, current + delta))
+    }
+
+    private func clearOpponentScore() {
+        guard currentHoleIndex < match.opponentScores.count else { return }
+        match.opponentScores[currentHoleIndex] = nil
+    }
+
+    private var completedHoleResults: [Int] {
+        entries.enumerated().compactMap { index, entry in
+            guard index < match.opponentScores.count, entry.score > 0, let opponentScore = match.opponentScores[index] else {
+                return nil
+            }
+            let hole = entry.hole
+            let userNet = entry.score - strokes(for: hole, courseHandicap: match.useHandicap ? courseHandicap : 0)
+            let opponentNet = opponentScore - strokes(for: hole, courseHandicap: match.useHandicap ? opponentCourseHandicap : 0)
+            if userNet < opponentNet { return 1 }
+            if opponentNet < userNet { return -1 }
+            return 0
+        }
+    }
+
+    private var matchScore: Int {
+        completedHoleResults.reduce(0, +)
+    }
+
+    private var statusText: String {
+        let completed = completedHoleResults.count
+        guard completed > 0 else { return "Match not started" }
+        let holesLeft = max(0, entries.count - completed)
+        if abs(matchScore) > holesLeft {
+            return matchScore > 0 ? "You won \(abs(matchScore)) & \(holesLeft)" : "\(match.opponentName) won \(abs(matchScore)) & \(holesLeft)"
+        }
+        if matchScore == 0 { return "All square through \(completed)" }
+        let leader = matchScore > 0 ? "You" : match.opponentName
+        return "\(leader) \(abs(matchScore)) UP through \(completed)"
+    }
+
+    private var statusAccent: Color {
+        if matchScore > 0 { return AppTheme.mint }
+        if matchScore < 0 { return AppTheme.gold }
+        return AppTheme.softText
+    }
+
+    private var opponentCourseHandicap: Int {
+        let adjusted = (match.opponentHandicap * Double(selectedTee.slope) / 113.0) + (selectedTee.rating - Double(selectedTee.par))
+        return max(0, Int(adjusted.rounded(.toNearestOrAwayFromZero)))
+    }
+
+    private func strokes(for hole: Hole, courseHandicap: Int) -> Int {
+        courseHandicap / 18 + (hole.strokeIndex <= courseHandicap % 18 ? 1 : 0)
     }
 }
 
