@@ -4659,33 +4659,36 @@ struct CloudMatchplaySideCard: View {
         let opponentScore = opponentId.map { match.score(for: $0, holeIndex: currentHoleIndex) } ?? 0
 
         return Group {
-            Text(statusText(for: match, currentUserId: currentUserId, opponentId: opponentId))
-                .font(.system(.caption, design: .rounded).weight(.heavy))
+            Text(statusText(for: match, currentUserId: currentUserId, opponentId: opponentId, opponentName: opponentName))
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
                 .foregroundStyle(statusAccent(for: match, currentUserId: currentUserId, opponentId: opponentId))
                 .lineLimit(1)
-                .minimumScaleFactor(0.72)
+                .minimumScaleFactor(0.82)
+                .padding(.horizontal, 7)
+                .frame(height: 28)
+                .background(Capsule().fill(Color.white.opacity(0.62)))
 
             Spacer(minLength: 4)
 
             HStack(spacing: 4) {
-                Text("You \(scoreText(userScore))")
+                Text("Y \(scoreText(userScore))")
                     .foregroundStyle(AppTheme.mint)
                 Text("|")
                     .foregroundStyle(AppTheme.softText.opacity(0.65))
-                Text("\(shortName(opponentName)) \(scoreText(opponentScore))")
+                Text("\(opponentInitial(opponentName)) \(scoreText(opponentScore))")
                     .foregroundStyle(AppTheme.gold)
             }
-            .font(.system(size: 11, weight: .heavy, design: .rounded))
-            .padding(.horizontal, 8)
-            .frame(height: 30)
+            .font(.system(size: 12, weight: .heavy, design: .rounded))
+            .padding(.horizontal, 10)
+            .frame(height: 32)
             .background(Capsule().fill(Color.white.opacity(0.92)))
             .lineLimit(1)
 
             Text(match.useHandicap ? "Net" : "Gross")
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .font(.system(size: 9, weight: .heavy, design: .rounded))
                 .foregroundStyle(AppTheme.mint)
-                .padding(.horizontal, 8)
-                .frame(height: 30)
+                .padding(.horizontal, 7)
+                .frame(height: 28)
                 .background(Capsule().fill(Color.white))
 
             Button {
@@ -4694,9 +4697,9 @@ struct CloudMatchplaySideCard: View {
                 }
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .heavy))
+                    .font(.system(size: 10, weight: .heavy))
                     .foregroundStyle(AppTheme.softText)
-                    .frame(width: 30, height: 30)
+                    .frame(width: 28, height: 28)
                     .background(Circle().fill(Color.white))
             }
             .buttonStyle(.plain)
@@ -4711,16 +4714,20 @@ struct CloudMatchplaySideCard: View {
         name.split(separator: " ").first.map(String.init) ?? "Friend"
     }
 
-    private func statusText(for match: FirebaseMatchplayMatch, currentUserId: String, opponentId: String?) -> String {
+    private func opponentInitial(_ name: String) -> String {
+        String(shortName(name).prefix(1)).uppercased()
+    }
+
+    private func statusText(for match: FirebaseMatchplayMatch, currentUserId: String, opponentId: String?, opponentName: String) -> String {
         let score = matchScore(for: match, currentUserId: currentUserId, opponentId: opponentId)
         let completed = completedHoleCount(for: match, currentUserId: currentUserId, opponentId: opponentId)
-        guard completed > 0 else { return "Waiting for scores" }
+        guard completed > 0 else { return "Pending" }
         let holesLeft = max(0, entries.count - completed)
         if abs(score) > holesLeft {
-            return score > 0 ? "You won \(abs(score)) & \(holesLeft)" : "Friend won \(abs(score)) & \(holesLeft)"
+            return score > 0 ? "Won \(abs(score))&\(holesLeft)" : "\(opponentInitial(opponentName)) won \(abs(score))&\(holesLeft)"
         }
-        if score == 0 { return "All square through \(completed)" }
-        return score > 0 ? "You \(abs(score)) UP through \(completed)" : "Friend \(abs(score)) UP through \(completed)"
+        if score == 0 { return "AS thru \(completed)" }
+        return score > 0 ? "You \(abs(score))UP" : "\(opponentInitial(opponentName)) \(abs(score))UP"
     }
 
     private func statusAccent(for match: FirebaseMatchplayMatch, currentUserId: String, opponentId: String?) -> Color {
