@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -13,6 +14,7 @@ struct ContentView: View {
     @StateObject private var scorecardStore = CourseScorecardStore()
     @StateObject private var firebaseAccount = FirebaseAccountService()
     @StateObject private var firebaseSocial = FirebaseSocialService()
+    @StateObject private var firebaseRoundSync = FirebaseRoundSyncService()
     @AppStorage("pinpoint.profileImageData") private var profileImageData: Data = Data()
     @AppStorage("precision.profileName") private var profileName = ""
     @AppStorage("precision.profileHomeClub") private var profileHomeClub = ""
@@ -25,6 +27,7 @@ struct ContentView: View {
     @State private var isRoundReviewPresented = false
     @State private var currentHoleIndex = 0
     @State private var roundHandicap = 0.0
+    @State private var pendingSharedRoundId: String?
     @State private var entries = DemoData.holes.map {
         ContentView.defaultEntry(for: $0)
     }
@@ -58,6 +61,31 @@ struct ContentView: View {
         }
         .onAppear {
             restoreActiveRoundDraft()
+            Task {
+                await PushNotificationService.shared.requestPermissionAndRegister()
+                await firebaseRoundSync.refreshCloudCount()
+            }
+        }
+        .onChange(of: firebaseAccount.user?.uid) { _, uid in
+            Task {
+                if uid == nil {
+                    await firebaseRoundSync.refreshCloudCount()
+                } else {
+                    await firebaseRoundSync.refreshCloudCount()
+                    await firebaseRoundSync.sync(rounds: roundArchive.rounds)
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .precisionOpenSharedRound)) { notification in
+            guard let roundId = notification.userInfo?["sharedRoundId"] as? String else { return }
+            pendingSharedRoundId = roundId
+            selectedTab = .friends
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .precisionOpenFriends)) { _ in
+            selectedTab = .friends
+            Task {
+                await firebaseSocial.refresh()
+            }
         }
         .onChange(of: entries) { _, _ in
             saveActiveRoundDraft()
@@ -89,12 +117,8 @@ struct ContentView: View {
                         openRoundFlow()
                     },
                     discardRound: discardCurrentRound,
-                    deleteRound: { round in
-                        roundArchive.delete(roundID: round.id)
-                    },
-                    updateRound: { round in
-                        roundArchive.update(round)
-                    }
+                    deleteRound: deleteSavedRound,
+                    updateRound: updateSavedRound
                 )
         case .yardages:
             YardagesView(store: clubYardages)
@@ -103,19 +127,16 @@ struct ContentView: View {
                 savedRounds: roundArchive.rounds,
                 currentHandicap: playerSettings.handicap,
                 startRound: openRoundFlow,
-                deleteRound: { round in
-                    roundArchive.delete(roundID: round.id)
-                },
-                updateRound: { round in
-                    roundArchive.update(round)
-                }
+                deleteRound: deleteSavedRound,
+                updateRound: updateSavedRound
             )
         case .goals:
             GoalsView(savedRounds: roundArchive.rounds, goalArchive: goalArchive)
         case .friends:
             FriendsView(
                 account: firebaseAccount,
-                social: firebaseSocial
+                social: firebaseSocial,
+                openSharedRoundId: $pendingSharedRoundId
             )
         case .settings:
             SettingsView(
@@ -129,6 +150,7 @@ struct ContentView: View {
                 scorecardStore: scorecardStore,
                 firebaseAccount: firebaseAccount,
                 firebaseSocial: firebaseSocial,
+                firebaseRoundSync: firebaseRoundSync,
                 profileName: $profileName,
                 profileHomeClub: $profileHomeClub
             )
@@ -164,6 +186,7 @@ struct ContentView: View {
         let savedRound = roundArchive.save(course: selectedCourse, tee: selectedTee, handicap: roundHandicap, entries: entries)
         handicapHistory.record(roundHandicap)
         Task {
+            await firebaseRoundSync.sync(round: savedRound)
             await firebaseSocial.publishCompletedRound(savedRound, ownerProfile: firebaseAccount.profile)
         }
         isRoundActive = false
@@ -172,6 +195,20 @@ struct ContentView: View {
         currentHoleIndex = 0
         selectedTab = .home
         clearActiveRoundDraft()
+    }
+
+    private func updateSavedRound(_ round: SavedRound) {
+        roundArchive.update(round)
+        Task {
+            await firebaseRoundSync.sync(round: round)
+        }
+    }
+
+    private func deleteSavedRound(_ round: SavedRound) {
+        roundArchive.delete(roundID: round.id)
+        Task {
+            await firebaseRoundSync.delete(roundID: round.id)
+        }
     }
 
     private func openRoundFlow() {
@@ -462,21 +499,21 @@ enum Tab: String, CaseIterable {
 
 struct AppTheme {
     static let background = LinearGradient(
-        colors: [.white, .white],
+        colors: [Color(red: 0.985, green: 0.992, blue: 0.978), Color.white],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
     static let panel = Color.white
     static let panelStrong = Color.white
-    static let subtleFill = Color(red: 0.965, green: 0.97, blue: 0.968)
-    static let ink = Color(red: 0.07, green: 0.13, blue: 0.10)
-    static let softText = Color(red: 0.37, green: 0.45, blue: 0.40)
-    static let mint = Color(red: 0.02, green: 0.43, blue: 0.24)
-    static let mintWash = Color(red: 0.93, green: 0.97, blue: 0.95)
-    static let lime = Color(red: 0.70, green: 0.95, blue: 0.18)
-    static let gold = Color(red: 0.72, green: 0.50, blue: 0.11)
-    static let border = Color(red: 0.88, green: 0.895, blue: 0.89)
-    static let shadow = Color.black.opacity(0.055)
+    static let subtleFill = Color(red: 0.948, green: 0.962, blue: 0.946)
+    static let ink = Color(red: 0.055, green: 0.12, blue: 0.075)
+    static let softText = Color(red: 0.36, green: 0.45, blue: 0.36)
+    static let mint = Color(red: 0.025, green: 0.39, blue: 0.17)
+    static let mintWash = Color(red: 0.918, green: 0.972, blue: 0.912)
+    static let lime = Color(red: 0.67, green: 0.90, blue: 0.16)
+    static let gold = Color(red: 0.86, green: 0.48, blue: 0.16)
+    static let border = Color(red: 0.845, green: 0.895, blue: 0.835)
+    static let shadow = Color(red: 0.03, green: 0.09, blue: 0.04).opacity(0.07)
 }
 
 struct HomeView: View {
@@ -496,33 +533,28 @@ struct HomeView: View {
     @State private var showDiscardRoundAlert = false
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 12) {
-                    PlayerProfileCard(
-                        rounds: savedRounds,
-                        profileName: profileName,
-                        profileHomeClub: profileHomeClub,
-                        profileImageData: $profileImageData
-                    )
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 12) {
+                PlayerProfileCard(
+                    rounds: savedRounds,
+                    profileName: profileName,
+                    profileHomeClub: profileHomeClub,
+                    profileImageData: $profileImageData
+                )
 
-                    PerformanceOverview(rounds: savedRounds)
+                PerformanceOverview(
+                    rounds: savedRounds,
+                    isRoundActive: isRoundActive,
+                    startRound: startRound,
+                    discardRound: { showDiscardRoundAlert = true }
+                )
 
-                    InsightsDashboardContent(entries: entries, savedRounds: savedRounds, isRoundActive: isRoundActive, currentHandicap: currentHandicap)
+                InsightsDashboardContent(entries: entries, savedRounds: savedRounds, isRoundActive: isRoundActive, currentHandicap: currentHandicap)
 
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 4)
-                .padding(.bottom, 112)
             }
-
-            HomeFloatingRoundButton(
-                isRoundActive: isRoundActive,
-                startRound: startRound,
-                discardRound: { showDiscardRoundAlert = true }
-            )
-            .padding(.trailing, 22)
-            .padding(.bottom, 18)
+            .padding(.horizontal, 20)
+            .padding(.top, 4)
+            .padding(.bottom, 20)
         }
         .sheet(item: $selectedRound) { round in
             SavedRoundDetailView(round: round, currentHandicap: currentHandicap, updateRound: updateRound)
@@ -625,37 +657,29 @@ struct HomeFloatingRoundButton: View {
             }
 
             Button(action: startRound) {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Image(systemName: isRoundActive ? "flag.fill" : "plus")
-                        .font(.system(size: 15, weight: .heavy))
-                        .foregroundStyle(isRoundActive ? Color(red: 0.02, green: 0.24, blue: 0.52) : Color(red: 0.57, green: 0.86, blue: 0.18))
-                        .frame(width: 30, height: 30)
+                        .font(.system(size: 14, weight: .heavy))
+                        .foregroundStyle(isRoundActive ? AppTheme.mint : AppTheme.lime)
+                        .frame(width: 28, height: 28)
                         .background(Circle().fill(Color.white))
                         .overlay(Circle().stroke(Color.white.opacity(0.72), lineWidth: 1))
-                    Text(isRoundActive ? "Resume Round" : "New Round")
+                    Text(isRoundActive ? "Resume" : "New Round")
                         .font(.system(.subheadline, design: .rounded).weight(.heavy))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.82)
+                        .minimumScaleFactor(0.76)
                 }
                 .foregroundStyle(Color.white)
-                .padding(.leading, 12)
-                .padding(.trailing, 16)
-                .frame(height: 56)
+                .padding(.leading, 10)
+                .padding(.trailing, 14)
+                .frame(minWidth: isRoundActive ? 118 : 142)
+                .frame(height: 52)
                 .background(
                     Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.03, green: 0.32, blue: 0.72),
-                                    Color(red: 0.00, green: 0.54, blue: 0.95)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .fill(Color(red: 0.02, green: 0.28, blue: 0.72))
                 )
                 .overlay(Capsule().stroke(Color.white.opacity(0.36), lineWidth: 1))
-                .shadow(color: Color(red: 0.02, green: 0.24, blue: 0.52).opacity(0.32), radius: 16, x: 0, y: 8)
+                .shadow(color: Color(red: 0.02, green: 0.28, blue: 0.72).opacity(0.3), radius: 16, x: 0, y: 8)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isRoundActive ? "Resume current round" : "Start new round")
@@ -794,7 +818,7 @@ struct ProfileAvatar: View {
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: [AppTheme.mint, Color(red: 0.12, green: 0.56, blue: 0.32)],
+                                colors: [AppTheme.mint, AppTheme.lime],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
@@ -954,6 +978,9 @@ struct RoundTimelineRow: View {
 
 struct PerformanceOverview: View {
     let rounds: [SavedRound]
+    let isRoundActive: Bool
+    let startRound: () -> Void
+    let discardRound: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -971,16 +998,19 @@ struct PerformanceOverview: View {
                         Text("Scoring Average")
                             .font(.system(.title3, design: .rounded).weight(.heavy))
                             .foregroundStyle(.white)
+
+                        Text(roundCountLabel)
+                            .font(.system(.caption2, design: .rounded).weight(.heavy))
+                            .foregroundStyle(.white.opacity(0.78))
                     }
 
                     Spacer()
 
-                    Text(roundCountLabel)
-                        .font(.system(.caption, design: .rounded).weight(.heavy))
-                        .foregroundStyle(AppTheme.mint)
-                        .padding(.horizontal, 10)
-                        .frame(height: 28)
-                        .background(Capsule().fill(Color.white))
+                    HomeFloatingRoundButton(
+                        isRoundActive: isRoundActive,
+                        startRound: startRound,
+                        discardRound: discardRound
+                    )
                 }
 
                 HStack(alignment: .bottom, spacing: 16) {
@@ -1007,7 +1037,7 @@ struct PerformanceOverview: View {
                 UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 8)
                     .fill(
                         LinearGradient(
-                            colors: [Color(red: 0.07, green: 0.67, blue: 0.35), AppTheme.mint],
+                            colors: [AppTheme.mint, AppTheme.lime],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -1157,25 +1187,15 @@ struct ScoringMixStrip: View {
 struct HoleAverageCard: View {
     let title: String
     let value: String
-    let target: String
     let tint: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "flag.fill")
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundStyle(tint)
-                    .frame(width: 25, height: 25)
-                    .background(Circle().fill(tint.opacity(0.12)))
-                Spacer()
-                Text(target)
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .foregroundStyle(AppTheme.softText)
-                    .padding(.horizontal, 7)
-                    .frame(height: 22)
-                    .background(Capsule().fill(AppTheme.subtleFill))
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            Image(systemName: "flag.fill")
+                .font(.system(size: 13, weight: .heavy))
+                .foregroundStyle(tint)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(tint.opacity(0.12)))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
@@ -1192,7 +1212,7 @@ struct HoleAverageCard: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(minHeight: 118)
+        .frame(minHeight: 104)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(
@@ -1215,25 +1235,40 @@ struct CompactMetricPill: View {
     let tint: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.softText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(value)
-                .font(.system(size: 24, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.ink)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+        VStack(alignment: .leading, spacing: 8) {
+            Capsule()
+                .fill(tint)
+                .frame(width: 28, height: 5)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(value)
+                    .font(.system(size: 24, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(minHeight: 70)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.72)))
-        .shadow(color: AppTheme.shadow.opacity(0.38), radius: 10, x: 0, y: 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white, tint.opacity(0.10)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.18)))
+        .shadow(color: tint.opacity(0.12), radius: 10, x: 0, y: 6)
     }
 }
 
@@ -1258,9 +1293,9 @@ struct ScoringMixPill: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .frame(minHeight: 72)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.62)))
-        .shadow(color: AppTheme.shadow.opacity(0.32), radius: 9, x: 0, y: 5)
+        .background(RoundedRectangle(cornerRadius: 8).fill(tint.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.18)))
+        .shadow(color: tint.opacity(0.10), radius: 9, x: 0, y: 5)
     }
 }
 
@@ -1694,6 +1729,7 @@ struct SavedRoundDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showHoleBreakdown = false
     @State private var isEditingRound = false
+    @State private var sharePayload: RoundSharePayload?
 
     var body: some View {
         NavigationStack {
@@ -1754,7 +1790,14 @@ struct SavedRoundDetailView: View {
                     Button("Edit") { isEditingRound = true }
                         .foregroundStyle(AppTheme.mint)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        sharePayload = RoundSharePayload.savedRound(round)
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .foregroundStyle(AppTheme.mint)
+
                     Button("Done") { dismiss() }
                         .foregroundStyle(AppTheme.mint)
                 }
@@ -1767,6 +1810,9 @@ struct SavedRoundDetailView: View {
                 isEditingRound = false
                 dismiss()
             }
+        }
+        .sheet(item: $sharePayload) { payload in
+            ActivityShareView(activityItems: payload.items)
         }
     }
 
@@ -2726,6 +2772,19 @@ struct SummaryPill: View {
     }
 }
 
+protocol VisualScorecardHole: Identifiable {
+    var holeNumber: Int { get }
+    var par: Int { get }
+    var yards: Int { get }
+    var strokeIndex: Int { get }
+    var score: Int { get }
+    var putts: Int { get }
+    var pickedUp: Bool { get }
+}
+
+extension SavedHoleEntry: VisualScorecardHole {}
+extension FirebaseSharedHoleEntry: VisualScorecardHole {}
+
 struct VisualScorecard: View {
     let round: SavedRound
 
@@ -2741,10 +2800,12 @@ struct VisualScorecard: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Digital Scorecard")
+                    Text(round.courseName)
                         .font(.system(.headline, design: .rounded).weight(.heavy))
                         .foregroundStyle(AppTheme.ink)
-                    Text("\(round.teeName) tees - \(round.summary.dateLabel)")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    Text("Digital Scorecard - \(round.teeName) tees - \(round.summary.dateLabel)")
                         .font(.system(.caption, design: .rounded).weight(.bold))
                         .foregroundStyle(AppTheme.softText)
                 }
@@ -2757,12 +2818,12 @@ struct VisualScorecard: View {
             GeometryReader { proxy in
                 let metrics = ScorecardMetrics(containerWidth: proxy.size.width)
                 VStack(alignment: .leading, spacing: 12) {
-                    ScorecardTable(title: "Out", holes: frontNine, metrics: metrics)
-                    ScorecardTable(title: "In", holes: backNine, metrics: metrics)
+                    ScorecardTable(title: "Out", holes: frontNine, metrics: metrics, stablefordValues: stablefordValues(for: frontNine))
+                    ScorecardTable(title: "In", holes: backNine, metrics: metrics, stablefordValues: stablefordValues(for: backNine))
                     ScorecardTotalRow(round: round)
                 }
             }
-            .frame(height: 402)
+            .frame(height: 460)
         }
         .padding(18)
         .background(
@@ -2771,6 +2832,12 @@ struct VisualScorecard: View {
                 .shadow(color: AppTheme.shadow, radius: 16, x: 0, y: 8)
         )
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+    }
+
+    private func stablefordValues(for holes: [SavedHoleEntry]) -> [String]? {
+        guard let handicap = round.handicap else { return nil }
+        let courseHandicap = round.courseHandicap(using: handicap)
+        return holes.map { "\($0.stablefordPoints(using: Double(courseHandicap)))" }
     }
 }
 
@@ -2790,10 +2857,11 @@ struct ScorecardMetrics {
     }
 }
 
-struct ScorecardTable: View {
+struct ScorecardTable<Hole: VisualScorecardHole>: View {
     let title: String
-    let holes: [SavedHoleEntry]
+    let holes: [Hole]
     let metrics: ScorecardMetrics
+    let stablefordValues: [String]?
 
     var body: some View {
         VStack(spacing: 4) {
@@ -2802,6 +2870,9 @@ struct ScorecardTable: View {
             ScorecardInfoRow(label: "Par", values: holes.map { "\($0.par)" }, total: "\(holes.reduce(0) { $0 + $1.par })", metrics: metrics)
             ScorecardInfoRow(label: "Yds", values: holes.map { "\($0.yards)" }, total: "\(holes.reduce(0) { $0 + $1.yards })", metrics: metrics)
             ScorecardScoreRow(holes: holes, total: "\(holes.reduce(0) { $0 + $1.score })", metrics: metrics)
+            if let stablefordValues {
+                ScorecardInfoRow(label: "Pts", values: stablefordValues, total: "\(stablefordValues.compactMap(Int.init).reduce(0, +))", metrics: metrics)
+            }
             ScorecardInfoRow(label: "Putts", values: holes.map { $0.pickedUp ? "-" : "\($0.putts)" }, total: "\(holes.reduce(0) { $0 + ($1.pickedUp ? 0 : $1.putts) })", metrics: metrics)
         }
         .padding(6)
@@ -2814,7 +2885,7 @@ struct ScorecardTotalRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            ScorecardFooterCell(title: "CR", value: String(format: "%.1f", round.teeRating))
+            ScorecardFooterCell(title: "CH", value: courseHandicapText, accent: AppTheme.mint)
             ScorecardFooterCell(title: "Score", value: "\(round.totalScore)/\(round.totalPar)", accent: AppTheme.mint)
             ScorecardFooterCell(title: "Slope", value: "\(round.teeSlope)")
             ScorecardFooterCell(title: "Putts", value: "\(round.totalPutts)")
@@ -2825,13 +2896,17 @@ struct ScorecardTotalRow: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mintWash))
     }
 
+    private var courseHandicapText: String {
+        round.handicap.map { "\(round.courseHandicap(using: $0))" } ?? "-"
+    }
+
     private var stablefordText: String {
         round.stablefordPoints.map { "\($0) pts" } ?? "- pts"
     }
 }
 
-struct ScorecardHoleHeader: View {
-    let holes: [SavedHoleEntry]
+struct ScorecardHoleHeader<Hole: VisualScorecardHole>: View {
+    let holes: [Hole]
     let total: String
     let metrics: ScorecardMetrics
 
@@ -2863,8 +2938,8 @@ struct ScorecardInfoRow: View {
     }
 }
 
-struct ScorecardScoreRow: View {
-    let holes: [SavedHoleEntry]
+struct ScorecardScoreRow<Hole: VisualScorecardHole>: View {
+    let holes: [Hole]
     let total: String
     let metrics: ScorecardMetrics
 
@@ -2918,8 +2993,8 @@ struct ScorecardPlainCell: View {
     }
 }
 
-struct ScorecardResultCell: View {
-    let hole: SavedHoleEntry
+struct ScorecardResultCell<Hole: VisualScorecardHole>: View {
+    let hole: Hole
     let width: CGFloat
 
     var body: some View {
@@ -4213,7 +4288,7 @@ struct YardageHeroCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(
                     LinearGradient(
-                        colors: [Color(red: 0.07, green: 0.67, blue: 0.35), AppTheme.mint],
+                        colors: [AppTheme.mint, AppTheme.lime],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -4283,7 +4358,7 @@ struct YardageReferenceRow: View {
                     Capsule()
                         .fill(
                             LinearGradient(
-                                colors: [AppTheme.gold.opacity(0.82), Color(red: 0.07, green: 0.67, blue: 0.35)],
+                                colors: [AppTheme.gold.opacity(0.86), AppTheme.mint],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
@@ -5060,9 +5135,9 @@ struct InsightsDashboardContent: View {
                     .foregroundStyle(AppTheme.ink)
 
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    HoleAverageCard(title: "Par 3s", value: formatOptionalAverage(snapshot.par3Average), target: "\(snapshot.par3Count) holes", tint: Color(red: 0.11, green: 0.42, blue: 0.74))
-                    HoleAverageCard(title: "Par 4s", value: formatOptionalAverage(snapshot.par4Average), target: "\(snapshot.par4Count) holes", tint: AppTheme.mint)
-                    HoleAverageCard(title: "Par 5s", value: formatOptionalAverage(snapshot.par5Average), target: "\(snapshot.par5Count) holes", tint: AppTheme.gold)
+                    HoleAverageCard(title: "Par 3s", value: formatOptionalAverage(snapshot.par3Average), tint: Color(red: 0.11, green: 0.42, blue: 0.74))
+                    HoleAverageCard(title: "Par 4s", value: formatOptionalAverage(snapshot.par4Average), tint: AppTheme.mint)
+                    HoleAverageCard(title: "Par 5s", value: formatOptionalAverage(snapshot.par5Average), tint: AppTheme.gold)
                 }
             }
         }
@@ -5457,7 +5532,7 @@ struct PremiumInsightRangePicker: View {
                         .frame(height: 44)
                         .background(
                             Capsule()
-                                .fill(selection == range ? Color(red: 0.07, green: 0.67, blue: 0.35) : Color.clear)
+                                .fill(selection == range ? AppTheme.mint : Color.clear)
                                 .shadow(color: selection == range ? AppTheme.shadow.opacity(1.6) : .clear, radius: 12, x: 0, y: 6)
                         )
                 }
@@ -5484,7 +5559,7 @@ struct PremiumPageDots: View {
                     }
                 } label: {
                     Capsule()
-                        .fill(selection == index ? Color(red: 0.07, green: 0.67, blue: 0.35) : AppTheme.softText.opacity(0.28))
+                        .fill(selection == index ? AppTheme.mint : AppTheme.softText.opacity(0.28))
                         .frame(width: selection == index ? 22 : 8, height: 8)
                 }
                 .buttonStyle(.plain)
@@ -5666,11 +5741,11 @@ struct FairwayPremiumCard: View {
                             .frame(width: 126, height: 82)
                             .background(
                                 UnevenRoundedRectangle(topLeadingRadius: 64, bottomLeadingRadius: 8, bottomTrailingRadius: 8, topTrailingRadius: 64)
-                                    .fill(Color(red: 0.07, green: 0.67, blue: 0.35))
+                                    .fill(AppTheme.mint)
                             )
                         HStack(spacing: 14) {
                             PremiumDirectionPill(title: "LEFT", value: "\(snapshot.fairwayMissLeftPercent)%", color: .red)
-                            PremiumDirectionPill(title: "CENTER", value: "\(snapshot.fairwayPercent)%", color: Color(red: 0.07, green: 0.67, blue: 0.35))
+                            PremiumDirectionPill(title: "CENTER", value: "\(snapshot.fairwayPercent)%", color: AppTheme.mint)
                             PremiumDirectionPill(title: "RIGHT", value: "\(snapshot.fairwayMissRightPercent)%", color: .red)
                         }
                     }
@@ -5710,7 +5785,7 @@ struct PuttingPremiumCard: View {
                 PremiumDonutChart(
                     segments: [
                         PremiumChartSegment(value: Double(snapshot.onePutts), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "1 PUTT"),
-                        PremiumChartSegment(value: Double(snapshot.twoPutts), color: Color(red: 0.07, green: 0.67, blue: 0.35), label: "2 PUTTS"),
+                        PremiumChartSegment(value: Double(snapshot.twoPutts), color: AppTheme.mint, label: "2 PUTTS"),
                         PremiumChartSegment(value: Double(snapshot.threePutts), color: .red, label: "3 PUTTS")
                     ],
                     centerTitle: puttsPerRound,
@@ -5720,7 +5795,7 @@ struct PuttingPremiumCard: View {
 
                 PremiumLegend(segments: [
                     PremiumChartSegment(value: Double(snapshot.onePutts), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "1 PUTT"),
-                    PremiumChartSegment(value: Double(snapshot.twoPutts), color: Color(red: 0.07, green: 0.67, blue: 0.35), label: "2 PUTTS"),
+                    PremiumChartSegment(value: Double(snapshot.twoPutts), color: AppTheme.mint, label: "2 PUTTS"),
                     PremiumChartSegment(value: Double(snapshot.threePutts), color: .red, label: "3 PUTTS")
                 ])
 
@@ -5762,7 +5837,7 @@ struct ApproachPremiumCard: View {
                         .font(.system(.headline, design: .rounded).weight(.heavy))
                         .foregroundStyle(AppTheme.ink)
                     ForEach(ApproachProximity.allCases) { proximity in
-                        PremiumHorizontalBar(label: proximity.rawValue.replacingOccurrences(of: " ft", with: ""), value: proximityPercent(proximity), color: Color(red: 0.07, green: 0.67, blue: 0.35))
+                        PremiumHorizontalBar(label: proximity.rawValue.replacingOccurrences(of: " ft", with: ""), value: proximityPercent(proximity), color: AppTheme.mint)
                     }
                 }
             }
@@ -5784,7 +5859,7 @@ struct ShortGamePremiumCard: View {
             VStack(spacing: 20) {
                 PremiumDonutChart(
                     segments: [
-                        PremiumChartSegment(value: Double(snapshot.scrambles), color: Color(red: 0.07, green: 0.67, blue: 0.35), label: "SAVED"),
+                        PremiumChartSegment(value: Double(snapshot.scrambles), color: AppTheme.mint, label: "SAVED"),
                         PremiumChartSegment(value: Double(max(snapshot.scrambleOpportunities - snapshot.scrambles, 0)), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "MISSED")
                     ],
                     centerTitle: "\(snapshot.scramblePercent)%",
@@ -5793,7 +5868,7 @@ struct ShortGamePremiumCard: View {
                 .frame(width: 190, height: 190)
 
                 PremiumLegend(segments: [
-                    PremiumChartSegment(value: Double(snapshot.scrambles), color: Color(red: 0.07, green: 0.67, blue: 0.35), label: "SAVED"),
+                    PremiumChartSegment(value: Double(snapshot.scrambles), color: AppTheme.mint, label: "SAVED"),
                     PremiumChartSegment(value: Double(max(snapshot.scrambleOpportunities - snapshot.scrambles, 0)), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "MISSED")
                 ])
 
@@ -5809,7 +5884,7 @@ struct ShortGamePremiumCard: View {
                     Text("Around the green")
                         .font(.system(.headline, design: .rounded).weight(.heavy))
                         .foregroundStyle(AppTheme.ink)
-                    PremiumHorizontalBar(label: "Scramble", value: snapshot.scramblePercent, color: Color(red: 0.07, green: 0.67, blue: 0.35))
+                    PremiumHorizontalBar(label: "Scramble", value: snapshot.scramblePercent, color: AppTheme.mint)
                     PremiumHorizontalBar(label: "Sand", value: snapshot.sandSavePercent, color: AppTheme.gold)
                 }
             }
@@ -6012,7 +6087,7 @@ struct PremiumBenchmarkRow: View {
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
-                    LinearGradient(colors: [.red, AppTheme.gold, Color(red: 0.07, green: 0.67, blue: 0.35)], startPoint: .leading, endPoint: .trailing)
+                    LinearGradient(colors: [.red, AppTheme.gold, AppTheme.mint], startPoint: .leading, endPoint: .trailing)
                         .frame(height: 20)
                         .clipShape(Capsule())
                         .offset(y: 24)
@@ -6041,7 +6116,7 @@ struct PremiumBenchmarkRow: View {
     }
 
     private var statusColor: Color {
-        percent >= 50 ? Color(red: 0.07, green: 0.67, blue: 0.35) : AppTheme.gold
+        percent >= 50 ? AppTheme.mint : AppTheme.gold
     }
 }
 
@@ -6192,6 +6267,7 @@ struct SettingsView: View {
     @ObservedObject var scorecardStore: CourseScorecardStore
     @ObservedObject var firebaseAccount: FirebaseAccountService
     @ObservedObject var firebaseSocial: FirebaseSocialService
+    @ObservedObject var firebaseRoundSync: FirebaseRoundSyncService
     @Binding var profileName: String
     @Binding var profileHomeClub: String
     @State private var handicapText = ""
@@ -6229,9 +6305,19 @@ struct SettingsView: View {
 
                 FirebaseAccountCard(
                     account: firebaseAccount,
+                    roundSync: firebaseRoundSync,
+                    localRoundCount: savedRounds.count,
                     profileName: profileName,
                     handicap: playerSettings.handicap,
-                    homeClub: profileHomeClub
+                    homeClub: profileHomeClub,
+                    syncRounds: {
+                        await firebaseRoundSync.sync(rounds: savedRounds)
+                    },
+                    restoreRounds: {
+                        if let restoredRounds = await firebaseRoundSync.restoreRounds(), !restoredRounds.isEmpty {
+                            roundArchive.replace(with: restoredRounds)
+                        }
+                    }
                 )
 
                 FriendCodeSettingsCard(
@@ -6241,6 +6327,8 @@ struct SettingsView: View {
                     handicap: playerSettings.handicap,
                     homeClub: profileHomeClub
                 )
+
+                GoalSettingsCard(goalArchive: goalArchive)
 
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Handicap Index")
@@ -6614,23 +6702,27 @@ struct SettingsView: View {
 
 struct FirebaseAccountCard: View {
     @ObservedObject var account: FirebaseAccountService
+    @ObservedObject var roundSync: FirebaseRoundSyncService
+    let localRoundCount: Int
     let profileName: String
     let handicap: Double
     let homeClub: String
+    let syncRounds: () async -> Void
+    let restoreRounds: () async -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Firebase Account")
+                    Text("Account & Sync")
                         .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundStyle(AppTheme.ink)
-                    Text(account.user == nil ? "Sign in to test groups and shared rounds later." : "Connected for future groups and shared rounds.")
+                    Text(account.user == nil ? "Create an account to back up rounds and use friends." : "Your profile, friend code and completed rounds can sync to the cloud.")
                         .font(.system(.caption, design: .rounded).weight(.medium))
                         .foregroundStyle(AppTheme.softText)
                 }
                 Spacer()
-                Image(systemName: account.user == nil ? "person.crop.circle.badge.plus" : "checkmark.seal.fill")
+                Image(systemName: account.user == nil ? "person.crop.circle.badge.plus" : "checkmark.icloud.fill")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(account.user == nil ? AppTheme.softText : AppTheme.mint)
             }
@@ -6640,19 +6732,25 @@ struct FirebaseAccountCard: View {
                     Text(user.email ?? "Signed in")
                         .font(.system(.subheadline, design: .rounded).weight(.bold))
                         .foregroundStyle(AppTheme.ink)
-                    Text("UID: \(user.uid)")
-                        .font(.system(.caption2, design: .monospaced).weight(.medium))
-                        .foregroundStyle(AppTheme.softText)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
                     if let profile = account.profile {
-                        Text("Cloud profile: \(profile.displayName.isEmpty ? "Unnamed golfer" : profile.displayName) - \(String(format: "%.1f", profile.handicap))")
+                        Text("\(profile.displayName.isEmpty ? "Unnamed golfer" : profile.displayName) - \(String(format: "%.1f", profile.handicap)) index")
                             .font(.system(.caption, design: .rounded).weight(.medium))
                             .foregroundStyle(AppTheme.softText)
+                        if let friendCode = profile.friendCode {
+                            Text("Friend code \(friendCode)")
+                                .font(.system(.caption, design: .rounded).weight(.heavy))
+                                .foregroundStyle(AppTheme.mint)
+                        }
                     }
                 }
                 .padding(13)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+
+                HStack(spacing: 10) {
+                    AccountSyncMetric(title: "On Phone", value: "\(localRoundCount)", caption: "rounds")
+                    AccountSyncMetric(title: "Cloud", value: "\(roundSync.cloudRoundCount)", caption: "backed up")
+                    AccountSyncMetric(title: "Last Sync", value: lastSyncText, caption: lastSyncCaption)
+                }
 
                 HStack(spacing: 10) {
                     Button {
@@ -6667,6 +6765,30 @@ struct FirebaseAccountCard: View {
                     .disabled(account.isWorking)
 
                     Button {
+                        Task {
+                            await syncRounds()
+                        }
+                    } label: {
+                        Label("Back Up Rounds", systemImage: "icloud.and.arrow.up")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FirebaseAccountButtonStyle(isPrimary: false))
+                    .disabled(roundSync.isWorking)
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        Task {
+                            await restoreRounds()
+                        }
+                    } label: {
+                        Label("Restore Cloud Backup", systemImage: "icloud.and.arrow.down")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(FirebaseAccountButtonStyle(isPrimary: false))
+                    .disabled(roundSync.isWorking)
+
+                    Button {
                         account.signOut()
                     } label: {
                         Text("Sign Out")
@@ -6676,6 +6798,34 @@ struct FirebaseAccountCard: View {
                     .disabled(account.isWorking)
                 }
             } else {
+                VStack(spacing: 10) {
+                    SocialSignInButton(title: "Continue with Apple", systemImage: "apple.logo", style: .dark) {
+                        Task {
+                            await account.signInWithApple()
+                        }
+                    }
+                    .disabled(account.isWorking)
+
+                    SocialSignInButton(title: "Continue with Google", systemImage: "g.circle.fill", style: .light) {
+                        Task {
+                            await account.signInWithGoogle()
+                        }
+                    }
+                    .disabled(account.isWorking)
+                }
+
+                HStack(spacing: 10) {
+                    Rectangle()
+                        .fill(AppTheme.border)
+                        .frame(height: 1)
+                    Text("or use email")
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.softText)
+                    Rectangle()
+                        .fill(AppTheme.border)
+                        .frame(height: 1)
+                }
+
                 VStack(spacing: 10) {
                     TextField("Email", text: $account.email)
                         .textInputAutocapitalization(.never)
@@ -6714,9 +6864,14 @@ struct FirebaseAccountCard: View {
                     .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
                     .disabled(account.isWorking)
                 }
+
+                Text("Accounts back up rounds on Firebase Spark. Rounds still save locally first, so live scoring works even when signal is poor.")
+                    .font(.system(.caption, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineSpacing(3)
             }
 
-            if account.isWorking {
+            if account.isWorking || roundSync.isWorking {
                 ProgressView()
                     .tint(AppTheme.mint)
             }
@@ -6728,15 +6883,108 @@ struct FirebaseAccountCard: View {
                     .lineSpacing(3)
             }
 
-            Text("This does not upload saved rounds yet. It only proves Firebase Auth and the user profile document work.")
-                .font(.system(.caption, design: .rounded).weight(.medium))
-                .foregroundStyle(AppTheme.softText)
-                .lineSpacing(3)
+            if let status = roundSync.statusMessage {
+                Text(status)
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(status.localizedCaseInsensitiveContains("failed") ? Color.red : AppTheme.softText)
+                    .lineSpacing(3)
+            }
         }
         .padding(18)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
         .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var lastSyncText: String {
+        guard let lastSyncDate = roundSync.lastSyncDate else { return "Not yet" }
+        return Self.shortTimeFormatter.string(from: lastSyncDate)
+    }
+
+    private var lastSyncCaption: String {
+        guard let lastSyncDate = roundSync.lastSyncDate else { return "sync" }
+        return Self.shortDateFormatter.string(from: lastSyncDate)
+    }
+
+    private static let shortTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter
+    }()
+
+    private static let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd MMM"
+        return formatter
+    }()
+}
+
+struct AccountSyncMetric: View {
+    let title: String
+    let value: String
+    let caption: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText)
+            Text(value)
+                .font(.system(.headline, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+            Text(caption)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(AppTheme.softText)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mintWash))
+    }
+}
+
+struct SocialSignInButton: View {
+    enum Style {
+        case dark
+        case light
+    }
+
+    let title: String
+    let systemImage: String
+    let style: Style
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 18, weight: .bold))
+                Text(title)
+                    .font(.system(.headline, design: .rounded).weight(.bold))
+                Spacer()
+            }
+            .foregroundStyle(foreground)
+            .padding(14)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 8).fill(background))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(border))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var foreground: Color {
+        style == .dark ? .white : AppTheme.ink
+    }
+
+    private var background: Color {
+        style == .dark ? AppTheme.ink : Color.white
+    }
+
+    private var border: Color {
+        style == .dark ? AppTheme.ink : AppTheme.border
     }
 }
 
@@ -6826,11 +7074,136 @@ struct FriendCodeSettingsCard: View {
     }
 }
 
+struct GoalSettingsCard: View {
+    @ObservedObject var goalArchive: GoalArchive
+    @State private var goalTitle = ""
+
+    private let suggestedPersonalGoals = [
+        "Practice twice this week",
+        "No three-putts next round",
+        "Play a round without penalties",
+        "Hit 50% fairways",
+        "Hit 50% GIR",
+        "Complete pre-shot routine every hole"
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: "Set Goals", actionTitle: goalArchive.customGoals.isEmpty ? nil : "\(goalArchive.customGoals.count) active")
+
+            Text("Add personal goals here. The Goals tab keeps your round achievements updated automatically from saved scorecards.")
+                .font(.system(.caption, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.softText)
+                .lineSpacing(3)
+
+            HStack(spacing: 10) {
+                TextField("Add your own goal", text: $goalTitle)
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .padding(13)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                    .submitLabel(.done)
+                    .onSubmit(addGoal)
+
+                Button(action: addGoal) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(AppTheme.mint))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add personal goal")
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Ideas")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(suggestedPersonalGoals, id: \.self) { suggestion in
+                        Button {
+                            addSuggestion(suggestion)
+                        } label: {
+                            Text(isAdded(suggestion) ? "Added" : suggestion)
+                                .font(.system(.caption, design: .rounded).weight(.bold))
+                                .foregroundStyle(isAdded(suggestion) ? AppTheme.mint : AppTheme.ink)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.76)
+                                .frame(maxWidth: .infinity, minHeight: 42)
+                                .padding(.horizontal, 10)
+                                .background(RoundedRectangle(cornerRadius: 8).fill(isAdded(suggestion) ? AppTheme.mintWash : AppTheme.subtleFill))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(isAdded(suggestion) ? AppTheme.mint.opacity(0.4) : AppTheme.border.opacity(0.8)))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isAdded(suggestion))
+                    }
+                }
+            }
+
+            if !goalArchive.customGoals.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(goalArchive.customGoals) { goal in
+                        HStack(spacing: 12) {
+                            Image(systemName: goal.isComplete ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 21, weight: .bold))
+                                .foregroundStyle(goal.isComplete ? AppTheme.mint : AppTheme.softText)
+
+                            Text(goal.title)
+                                .font(.system(.subheadline, design: .rounded).weight(.bold))
+                                .foregroundStyle(AppTheme.ink)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Button {
+                                goalArchive.delete(goal)
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(AppTheme.gold)
+                                    .frame(width: 34, height: 34)
+                                    .background(Circle().fill(AppTheme.subtleFill))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(12)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private func addGoal() {
+        goalArchive.add(title: goalTitle)
+        goalTitle = ""
+    }
+
+    private func addSuggestion(_ suggestion: String) {
+        guard !isAdded(suggestion) else { return }
+        goalArchive.add(title: suggestion)
+    }
+
+    private func isAdded(_ suggestion: String) -> Bool {
+        goalArchive.customGoals.contains {
+            $0.title.caseInsensitiveCompare(suggestion) == .orderedSame
+        }
+    }
+}
+
 struct FriendsView: View {
     @ObservedObject var account: FirebaseAccountService
     @ObservedObject var social: FirebaseSocialService
+    @Binding var openSharedRoundId: String?
     @State private var selectedFriend: FirebaseFriendProfile?
     @State private var selectedRound: FirebaseSharedRound?
+    @State private var selectedGroup: FirebaseGolfGroup?
+    @State private var newGroupName = ""
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -6840,15 +7213,19 @@ struct FriendsView: View {
                 if account.user == nil {
                     signedOutCard
                 } else {
-                    friendsCard
-                    addFriendCard
-                    requestsCard
                     if !social.notifications.isEmpty {
                         notificationsCard
                     }
                     if !social.sharedRounds.isEmpty {
                         activityFeedCard
                     }
+                    friendsCard
+                    groupsCard
+                    if !social.groupInvites.isEmpty {
+                        groupInvitesCard
+                    }
+                    addFriendCard
+                    requestsCard
                 }
             }
             .padding(20)
@@ -6862,11 +7239,29 @@ struct FriendsView: View {
         .refreshable {
             await social.refresh()
         }
+        .onChange(of: openSharedRoundId) { _, roundId in
+            guard let roundId else { return }
+            Task {
+                await social.refresh()
+                if let round = await social.loadSharedRound(id: roundId) {
+                    selectedRound = round
+                }
+                openSharedRoundId = nil
+            }
+        }
         .sheet(item: $selectedFriend) { friend in
             FriendProfileDetailView(friend: friend, rounds: rounds(for: friend))
         }
         .sheet(item: $selectedRound) { round in
             SharedRoundDetailView(round: round)
+        }
+        .sheet(item: $selectedGroup) { group in
+            GroupDetailView(
+                group: group,
+                friends: social.friends,
+                rounds: rounds(for: group),
+                social: social
+            )
         }
     }
 
@@ -6935,7 +7330,7 @@ struct FriendsView: View {
 
     private var notificationsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Today", actionTitle: social.notifications.isEmpty ? nil : "\(social.notifications.count) new")
+            SectionHeader(title: "Round Alerts", actionTitle: social.notifications.isEmpty ? nil : "\(social.notifications.count) new")
 
             if social.notifications.isEmpty {
                 Text("When a friend completes a round, you will see it here.")
@@ -6955,7 +7350,7 @@ struct FriendsView: View {
                             Text(notification.message)
                                 .font(.system(.subheadline, design: .rounded).weight(.heavy))
                                 .foregroundStyle(AppTheme.ink)
-                            Text("Gross \(notification.gross) • \(notification.stableford.map { "\($0) pts" } ?? "Stableford pending")")
+                            Text("\(Self.friendRoundDateFormatter.string(from: notification.roundDate)) • Gross \(notification.gross) • \(notification.stableford.map { "\($0) pts" } ?? "Stableford pending")")
                                 .font(.system(.caption, design: .rounded).weight(.medium))
                                 .foregroundStyle(AppTheme.softText)
                         }
@@ -6969,8 +7364,15 @@ struct FriendsView: View {
         .padding(18)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+            .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
     }
+
+    private static let friendRoundDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
 
     private var activityFeedCard: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -7018,6 +7420,69 @@ struct FriendsView: View {
         .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
     }
 
+    private var groupInvitesCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Group Invites", actionTitle: "\(social.groupInvites.count)")
+
+            ForEach(social.groupInvites) { invite in
+                GroupInviteRow(invite: invite, social: social)
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var groupsCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: "Groups", actionTitle: social.groups.isEmpty ? nil : "\(social.groups.count)")
+
+            if social.groups.isEmpty {
+                Text("Create a group for regular fourballs, society mates, trips or season-long bragging rights.")
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineSpacing(3)
+            } else {
+                ForEach(social.groups) { group in
+                    Button {
+                        selectedGroup = group
+                    } label: {
+                        GroupRow(group: group, rounds: rounds(for: group))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                TextField("New group name", text: $newGroupName)
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .padding(13)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+
+                Button {
+                    let groupName = newGroupName
+                    newGroupName = ""
+                    Task {
+                        await social.createGroup(name: groupName)
+                    }
+                } label: {
+                    Label("Create Group", systemImage: "person.3.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
+                .disabled(social.isWorking || newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
     private var friendsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "Friends", actionTitle: social.friends.isEmpty ? nil : "\(social.friends.count)")
@@ -7047,6 +7512,12 @@ struct FriendsView: View {
     private func rounds(for friend: FirebaseFriendProfile) -> [FirebaseSharedRound] {
         social.sharedRounds
             .filter { $0.ownerId == friend.uid }
+            .sorted { $0.date > $1.date }
+    }
+
+    private func rounds(for group: FirebaseGolfGroup) -> [FirebaseSharedRound] {
+        social.sharedRounds
+            .filter { group.memberIds.contains($0.ownerId) }
             .sorted { $0.date > $1.date }
     }
 }
@@ -7105,6 +7576,283 @@ struct SharedRoundRow: View {
     }()
 }
 
+struct GroupRow: View {
+    let group: FirebaseGolfGroup
+    let rounds: [FirebaseSharedRound]
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.3.fill")
+                .font(.system(size: 20, weight: .heavy))
+                .foregroundStyle(.white)
+                .frame(width: 46, height: 46)
+                .background(Circle().fill(AppTheme.mint))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(group.name)
+                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                Text("\(group.memberIds.count) members • \(rounds.count) recent rounds")
+                    .font(.system(.caption, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.system(.caption, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.softText.opacity(0.72))
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+    }
+}
+
+struct GroupInviteRow: View {
+    let invite: FirebaseGroupInvite
+    @ObservedObject var social: FirebaseSocialService
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                FriendAvatar(name: invite.fromProfile?.displayName ?? "Golfer", photoURL: invite.fromProfile?.photoURL, size: 46)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(invite.groupName)
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("\(invite.fromProfile?.displayName ?? "A friend") invited you")
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer(minLength: 8)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    Task {
+                        await social.decline(invite)
+                    }
+                } label: {
+                    Text("Decline")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(FirebaseAccountButtonStyle(isPrimary: false))
+
+                Button {
+                    Task {
+                        await social.accept(invite)
+                    }
+                } label: {
+                    Text("Join")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+    }
+}
+
+struct GroupDetailView: View {
+    let group: FirebaseGolfGroup
+    let friends: [FirebaseFriendProfile]
+    let rounds: [FirebaseSharedRound]
+    @ObservedObject var social: FirebaseSocialService
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedRound: FirebaseSharedRound?
+
+    private var memberFriends: [FirebaseFriendProfile] {
+        friends
+            .filter { group.memberIds.contains($0.uid) }
+            .sorted { $0.displayName < $1.displayName }
+    }
+
+    private var inviteableFriends: [FirebaseFriendProfile] {
+        friends
+            .filter { !group.memberIds.contains($0.uid) }
+            .sorted { $0.displayName < $1.displayName }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    hero
+                    membersCard
+                    inviteCard
+                    roundsCard
+                }
+                .padding(20)
+            }
+            .background(AppTheme.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(AppTheme.mint)
+                }
+            }
+        }
+        .sheet(item: $selectedRound) { round in
+            SharedRoundDetailView(round: round)
+        }
+        .preferredColorScheme(.light)
+    }
+
+    private var hero: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Golf Group")
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundStyle(.white.opacity(0.78))
+                    Text(group.name)
+                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.white)
+                        .minimumScaleFactor(0.72)
+                }
+
+                Spacer(minLength: 12)
+
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 28, weight: .heavy))
+                    .foregroundStyle(AppTheme.mint)
+                    .frame(width: 64, height: 64)
+                    .background(Circle().fill(.white))
+            }
+
+            HStack(spacing: 10) {
+                GroupDetailMetric(title: "Members", value: "\(group.memberIds.count)")
+                GroupDetailMetric(title: "Rounds", value: "\(rounds.count)")
+            }
+        }
+        .padding(22)
+        .background(
+            LinearGradient(
+                colors: [AppTheme.mint, AppTheme.lime],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var membersCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Members", actionTitle: "\(group.memberIds.count)")
+
+            if memberFriends.isEmpty {
+                Text("You are the first member. Invite friends below to start building this group.")
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineSpacing(3)
+            } else {
+                ForEach(memberFriends) { friend in
+                    FriendProfileSummary(friend: friend)
+                        .padding(12)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                }
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var inviteCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Invite Friends", actionTitle: inviteableFriends.isEmpty ? nil : "\(inviteableFriends.count)")
+
+            if inviteableFriends.isEmpty {
+                Text("All of your current friends are already in this group.")
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+            } else {
+                ForEach(inviteableFriends) { friend in
+                    HStack(spacing: 12) {
+                        FriendProfileSummary(friend: friend)
+
+                        Button {
+                            Task {
+                                await social.invite(friend, to: group)
+                            }
+                        } label: {
+                            Image(systemName: "paperplane.fill")
+                                .font(.system(size: 15, weight: .heavy))
+                                .foregroundStyle(.white)
+                                .frame(width: 42, height: 42)
+                                .background(Circle().fill(AppTheme.mint))
+                        }
+                        .accessibilityLabel("Invite \(friend.displayName)")
+                    }
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                }
+            }
+
+            if let status = social.statusMessage {
+                Text(status)
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.softText)
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var roundsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Group Rounds", actionTitle: rounds.isEmpty ? nil : "\(rounds.count)")
+
+            if rounds.isEmpty {
+                Text("Rounds shared by group members will appear here automatically.")
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineSpacing(3)
+            } else {
+                ForEach(rounds) { round in
+                    Button {
+                        selectedRound = round
+                    } label: {
+                        SharedRoundRow(round: round)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+}
+
+struct GroupDetailMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(.white.opacity(0.72))
+            Text(value)
+                .font(.system(.title3, design: .rounded).weight(.heavy))
+                .foregroundStyle(.white)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(.white.opacity(0.16)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.16)))
+    }
+}
+
 struct SharedRoundMetric: View {
     let title: String
     let value: String
@@ -7122,6 +7870,263 @@ struct SharedRoundMetric: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+    }
+}
+
+struct FriendSeasonStatsCard: View {
+    let rounds: [FirebaseSharedRound]
+
+    private var seasonRounds: [FirebaseSharedRound] {
+        rounds.filter { Calendar.current.component(.year, from: $0.date) == seasonYear }
+    }
+
+    private var seasonYear: Int {
+        Calendar.current.component(.year, from: Date())
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "\(seasonYear) Season Averages", actionTitle: seasonRounds.isEmpty ? nil : "\(seasonRounds.count) rounds")
+
+            if seasonRounds.isEmpty {
+                Text("No shared rounds for this season yet.")
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    SharedRoundMetric(title: "Avg Gross", value: averageGross)
+                    SharedRoundMetric(title: "Avg Points", value: averageStableford)
+                    SharedRoundMetric(title: "Avg Putts", value: averagePutts)
+                    SharedRoundMetric(title: "Penalties", value: averagePenalties)
+                    SharedRoundMetric(title: "Fairways", value: "\(fairwayPercent)%")
+                    SharedRoundMetric(title: "GIR", value: "\(girPercent)%")
+                    SharedRoundMetric(title: "Scramble", value: "\(scramblePercent)%")
+                    SharedRoundMetric(title: "Sand Save", value: "\(sandSavePercent)%")
+                }
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var averageGross: String {
+        formatAverage(seasonRounds.map { Double($0.gross) })
+    }
+
+    private var averageStableford: String {
+        let points = seasonRounds.compactMap(\.stableford).map(Double.init)
+        return points.isEmpty ? "-" : formatAverage(points)
+    }
+
+    private var averagePutts: String {
+        formatAverage(seasonRounds.map { Double($0.putts) })
+    }
+
+    private var averagePenalties: String {
+        formatAverage(seasonRounds.map { Double($0.penalties) })
+    }
+
+    private var fairwayPercent: Int {
+        let hit = seasonRounds.reduce(0) { $0 + $1.fairwaysHit }
+        let total = seasonRounds.reduce(0) { $0 + $1.fairwaysTracked }
+        guard total > 0 else { return 0 }
+        return Int((Double(hit) / Double(total) * 100).rounded())
+    }
+
+    private var girPercent: Int {
+        let hit = seasonRounds.reduce(0) { $0 + $1.greensHit }
+        let total = seasonRounds.reduce(0) { $0 + $1.greensTracked }
+        guard total > 0 else { return 0 }
+        return Int((Double(hit) / Double(total) * 100).rounded())
+    }
+
+    private var scramblePercent: Int {
+        let made = seasonRounds.reduce(0) { $0 + $1.scrambles }
+        let total = seasonRounds.reduce(0) { $0 + $1.scrambleOpportunities }
+        guard total > 0 else { return 0 }
+        return Int((Double(made) / Double(total) * 100).rounded())
+    }
+
+    private var sandSavePercent: Int {
+        let made = seasonRounds.reduce(0) { $0 + $1.sandSaves }
+        let total = seasonRounds.reduce(0) { $0 + $1.bunkerHoles }
+        guard total > 0 else { return 0 }
+        return Int((Double(made) / Double(total) * 100).rounded())
+    }
+
+    private func formatAverage(_ values: [Double]) -> String {
+        guard !values.isEmpty else { return "-" }
+        let average = values.reduce(0, +) / Double(values.count)
+        return String(format: "%.1f", average)
+    }
+}
+
+private enum RoundShareFormatter {
+    static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
+
+    static func scoreToParLabel(_ value: Int) -> String {
+        value == 0 ? "E" : value > 0 ? "+\(value)" : "\(value)"
+    }
+
+    static func ratio(_ made: Int, _ total: Int) -> String {
+        total > 0 ? "\(made)/\(total)" : "-"
+    }
+}
+
+struct RoundSharePayload: Identifiable {
+    let id = UUID()
+    let items: [Any]
+
+    @MainActor
+    static func savedRound(_ round: SavedRound) -> RoundSharePayload {
+        if let image = ScorecardShareRenderer.renderSavedRound(round) {
+            return RoundSharePayload(items: [image])
+        }
+        return RoundSharePayload(items: [round.shareText])
+    }
+
+    @MainActor
+    static func sharedRound(_ round: FirebaseSharedRound) -> RoundSharePayload {
+        if let image = ScorecardShareRenderer.renderSharedRound(round) {
+            return RoundSharePayload(items: [image])
+        }
+        return RoundSharePayload(items: [round.shareText])
+    }
+}
+
+private enum ScorecardShareRenderer {
+    @MainActor
+    static func renderSavedRound(_ round: SavedRound) -> UIImage? {
+        let renderer = ImageRenderer(
+            content:
+                VisualScorecard(round: round)
+                    .frame(width: 720)
+                    .padding(24)
+                    .background(Color.white)
+        )
+        renderer.scale = UIScreen.main.scale
+        return renderer.uiImage
+    }
+
+    @MainActor
+    static func renderSharedRound(_ round: FirebaseSharedRound) -> UIImage? {
+        let renderer = ImageRenderer(
+            content:
+                SharedVisualScorecard(round: round)
+                    .frame(width: 720)
+                    .padding(24)
+                    .background(Color.white)
+        )
+        renderer.scale = UIScreen.main.scale
+        return renderer.uiImage
+    }
+}
+
+struct ActivityShareView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+extension SavedRound {
+    var shareText: String {
+        let scoreToPar = totalScore - totalPar
+        let stablefordText = stablefordPoints.map { "\($0) pts" } ?? "Stableford not recorded"
+        let scorecardLines = holes.sorted { $0.holeNumber < $1.holeNumber }.map { hole in
+            let score = hole.pickedUp ? "P\(hole.score)" : "\(hole.score)"
+            let putts = hole.pickedUp ? "-" : "\(hole.putts)"
+            return "H\(hole.holeNumber): \(score) on par \(hole.par), SI \(hole.strokeIndex), \(putts) putts"
+        }
+
+        return """
+        Precision Golf round
+        \(courseName) - \(teeName) tees
+        \(RoundShareFormatter.dateFormatter.string(from: date))
+
+        Gross \(totalScore) / Par \(totalPar) (\(RoundShareFormatter.scoreToParLabel(scoreToPar)))
+        Stableford: \(stablefordText)
+        Putts: \(totalPutts)
+        Penalties: \(penalties)
+        Fairways: \(RoundShareFormatter.ratio(fairwaysHit, fairwaysTotal))
+        GIR: \(RoundShareFormatter.ratio(greensInRegulation, greensTracked))
+        Scramble: \(RoundShareFormatter.ratio(scrambles, scramblingOpportunities))
+        Sand save: \(RoundShareFormatter.ratio(sandSaves, bunkerHoles))
+
+        Digital scorecard
+        \(scorecardLines.joined(separator: "\n"))
+        """
+    }
+}
+
+extension FirebaseSharedRound {
+    var shareText: String {
+        let stablefordText = stableford.map { "\($0) pts" } ?? "Stableford not recorded"
+        let scorecardLines = holes.sorted { $0.holeNumber < $1.holeNumber }.map { hole in
+            let score = hole.pickedUp ? "P\(hole.score)" : "\(hole.score)"
+            let putts = hole.pickedUp ? "-" : "\(hole.putts)"
+            return "H\(hole.holeNumber): \(score) on par \(hole.par), SI \(hole.strokeIndex), \(putts) putts"
+        }
+
+        return """
+        Precision Golf round
+        \(ownerName) at \(courseName) - \(teeName) tees
+        \(RoundShareFormatter.dateFormatter.string(from: date))
+
+        Gross \(gross) / Par \(par) (\(scoreToParLabel))
+        Stableford: \(stablefordText)
+        Putts: \(putts)
+        Penalties: \(penalties)
+        Fairways: \(RoundShareFormatter.ratio(fairwaysHit, fairwaysTracked))
+        GIR: \(RoundShareFormatter.ratio(greensHit, greensTracked))
+        Scramble: \(RoundShareFormatter.ratio(scrambles, scrambleOpportunities))
+        Sand save: \(RoundShareFormatter.ratio(sandSaves, bunkerHoles))
+
+        Digital scorecard
+        \(scorecardLines.isEmpty ? "No hole-by-hole card attached." : scorecardLines.joined(separator: "\n"))
+        """
+    }
+
+    var fairwaysTracked: Int {
+        holes.filter { $0.par > 3 && $0.fairway != .notTracked }.count
+    }
+
+    var fairwaysHit: Int {
+        holes.filter { $0.par > 3 && $0.fairway == .hit }.count
+    }
+
+    var greensTracked: Int {
+        holes.filter { $0.green != .notTracked }.count
+    }
+
+    var greensHit: Int {
+        holes.filter { $0.green == .hit }.count
+    }
+
+    var scrambleOpportunities: Int {
+        holes.filter { $0.green != .hit && $0.green != .notTracked }.count
+    }
+
+    var scrambles: Int {
+        holes.filter { $0.green != .hit && $0.green != .notTracked && $0.score <= $0.par }.count
+    }
+
+    var bunkerHoles: Int {
+        holes.filter { $0.bunker == true }.count
+    }
+
+    var sandSaves: Int {
+        holes.filter { $0.bunker == true && $0.score <= $0.par }.count
     }
 }
 
@@ -7159,6 +8164,8 @@ struct FriendProfileDetailView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
                     .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+
+                    FriendSeasonStatsCard(rounds: rounds)
 
                     VStack(alignment: .leading, spacing: 12) {
                         SectionHeader(title: "Rounds", actionTitle: rounds.isEmpty ? nil : "\(rounds.count)")
@@ -7204,6 +8211,7 @@ struct FriendProfileDetailView: View {
 struct SharedRoundDetailView: View {
     let round: FirebaseSharedRound
     @Environment(\.dismiss) private var dismiss
+    @State private var sharePayload: RoundSharePayload?
 
     var body: some View {
         NavigationStack {
@@ -7253,13 +8261,23 @@ struct SharedRoundDetailView: View {
             }
             .background(AppTheme.background.ignoresSafeArea())
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        sharePayload = RoundSharePayload.sharedRound(round)
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .foregroundStyle(AppTheme.mint)
+
                     Button("Done") { dismiss() }
                         .foregroundStyle(AppTheme.mint)
                 }
             }
         }
         .preferredColorScheme(.light)
+        .sheet(item: $sharePayload) { payload in
+            ActivityShareView(activityItems: payload.items)
+        }
     }
 
     private static let dateFormatter: DateFormatter = {
@@ -7323,97 +8341,115 @@ struct SharedRoundScorecard: View {
     let round: FirebaseSharedRound
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Digital Scorecard", actionTitle: round.holes.isEmpty ? nil : "\(round.holes.count) holes")
-
-            if round.holes.isEmpty {
+        if round.holes.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionHeader(title: "Digital Scorecard", actionTitle: nil)
                 Text("This round was shared before hole-by-hole scorecards were added. New shared rounds will include the full digital scorecard.")
                     .font(.system(.subheadline, design: .rounded).weight(.medium))
                     .foregroundStyle(AppTheme.softText)
                     .lineSpacing(3)
-            } else {
-                VStack(spacing: 0) {
-                    scorecardHeader
-                    ForEach(round.holes) { hole in
-                        SharedHoleScoreRow(hole: hole)
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
             }
+            .padding(18)
+            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+            .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+        } else {
+            SharedVisualScorecard(round: round)
         }
-        .padding(18)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
-    }
-
-    private var scorecardHeader: some View {
-        HStack {
-            scorecardHeaderText("Hole", width: 44, alignment: .leading)
-            scorecardHeaderText("Par", width: 36)
-            scorecardHeaderText("SI", width: 34)
-            scorecardHeaderText("Gross", width: 50)
-            scorecardHeaderText("Putts", width: 44)
-            scorecardHeaderText("F/G", width: 48, alignment: .trailing)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(AppTheme.mint)
-    }
-
-    private func scorecardHeaderText(_ text: String, width: CGFloat, alignment: Alignment = .center) -> some View {
-        Text(text)
-            .font(.system(.caption2, design: .rounded).weight(.heavy))
-            .foregroundStyle(.white)
-            .frame(width: width, alignment: alignment)
     }
 }
 
-struct SharedHoleScoreRow: View {
-    let hole: FirebaseSharedHoleEntry
+struct SharedVisualScorecard: View {
+    let round: FirebaseSharedRound
 
-    var body: some View {
-        HStack {
-            Text("\(hole.holeNumber)")
-                .font(.system(.subheadline, design: .rounded).weight(.heavy))
-                .foregroundStyle(AppTheme.ink)
-                .frame(width: 44, alignment: .leading)
-            Text("\(hole.par)")
-                .frame(width: 36)
-            Text("\(hole.strokeIndex)")
-                .frame(width: 34)
-            VStack(spacing: 1) {
-                Text(hole.pickedUp ? "P\(hole.score)" : "\(hole.score)")
-                    .font(.system(.subheadline, design: .rounded).weight(.heavy))
-                Text(hole.scoreToParLabel)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(AppTheme.softText)
-            }
-            .frame(width: 50)
-            Text(hole.pickedUp ? "-" : "\(hole.putts)")
-                .frame(width: 44)
-            Text(trackingText)
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                .foregroundStyle(AppTheme.mint)
-                .frame(width: 48, alignment: .trailing)
-        }
-        .font(.system(.caption, design: .rounded).weight(.semibold))
-        .foregroundStyle(AppTheme.ink)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .background(Color.white)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(AppTheme.border.opacity(0.6))
-                .frame(height: 1)
-        }
+    private var frontNine: [FirebaseSharedHoleEntry] {
+        round.holes.filter { $0.holeNumber <= 9 }
     }
 
-    private var trackingText: String {
-        let fairway = hole.par > 3 ? (hole.fairway == .hit ? "F" : hole.fairway == .notTracked ? "-" : "M") : "-"
-        let green = hole.green == .hit ? "G" : hole.green == .notTracked ? "-" : "M"
-        return "\(fairway)/\(green)"
+    private var backNine: [FirebaseSharedHoleEntry] {
+        round.holes.filter { $0.holeNumber > 9 }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(round.courseName)
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    Text("Digital Scorecard - \(round.teeName) tees - \(Self.dateFormatter.string(from: round.date))")
+                        .font(.system(.caption, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(round.gross)")
+                        .font(.system(.title2, design: .rounded).weight(.bold))
+                        .foregroundStyle(AppTheme.mint)
+                    Text(round.ownerName)
+                        .font(.system(.caption2, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.softText)
+                        .lineLimit(1)
+                }
+            }
+
+            GeometryReader { proxy in
+                let metrics = ScorecardMetrics(containerWidth: proxy.size.width)
+                VStack(alignment: .leading, spacing: 12) {
+                    ScorecardTable(title: "Out", holes: frontNine, metrics: metrics, stablefordValues: stablefordValues(for: frontNine))
+                    ScorecardTable(title: "In", holes: backNine, metrics: metrics, stablefordValues: stablefordValues(for: backNine))
+                    SharedScorecardTotalRow(round: round)
+                }
+            }
+            .frame(height: 460)
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AppTheme.panel)
+                .shadow(color: AppTheme.shadow, radius: 16, x: 0, y: 8)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
+
+    private func stablefordValues(for holes: [FirebaseSharedHoleEntry]) -> [String]? {
+        let values = holes.map { $0.stablefordPoints }
+        guard values.contains(where: { $0 != nil }) else { return nil }
+        return values.map { $0.map(String.init) ?? "-" }
+    }
+}
+
+struct SharedScorecardTotalRow: View {
+    let round: FirebaseSharedRound
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ScorecardFooterCell(title: "CH", value: courseHandicapText, accent: AppTheme.mint)
+            ScorecardFooterCell(title: "Score", value: "\(round.gross)/\(round.par)", accent: AppTheme.mint)
+            ScorecardFooterCell(title: "To Par", value: round.scoreToParLabel)
+            ScorecardFooterCell(title: "Putts", value: "\(round.putts)")
+            ScorecardFooterCell(title: "Pens", value: "\(round.penalties)", accent: round.penalties > 0 ? AppTheme.gold : nil)
+            ScorecardFooterCell(title: "Points", value: stablefordText, accent: AppTheme.gold)
+        }
+        .padding(6)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mintWash))
+    }
+
+    private var courseHandicapText: String {
+        round.courseHandicap.map(String.init) ?? "-"
+    }
+
+    private var stablefordText: String {
+        round.stableford.map { "\($0) pts" } ?? "- pts"
     }
 }
 
@@ -7622,6 +8658,94 @@ struct GoalTemplate: Identifiable {
     let progress: ([SavedRound]) -> String
 }
 
+private func automaticGoalSuggestions() -> [GoalTemplate] {
+    [
+        grossScoreGoal(id: "break100", title: "Break 100 Gross", target: 100, icon: "flag.fill"),
+        grossScoreGoal(id: "break90", title: "Break 90 Gross", target: 90, icon: "flag.2.crossed.fill"),
+        grossScoreGoal(id: "break80", title: "Break 80 Gross", target: 80, icon: "trophy.fill"),
+        grossScoreGoal(id: "break75", title: "Break 75 Gross", target: 75, icon: "medal.fill"),
+        GoalTemplate(
+            id: "breakPar",
+            title: "Break Par",
+            detail: "Shoot level par or better in a completed round.",
+            icon: "equal.circle.fill",
+            isComplete: { rounds in rounds.contains { $0.totalScore <= $0.totalPar } },
+            progress: { rounds in bestToParProgress(rounds, target: 0) }
+        ),
+        GoalTemplate(
+            id: "underPar",
+            title: "Shoot Under Par",
+            detail: "Finish a round below the course par.",
+            icon: "minus.circle.fill",
+            isComplete: { rounds in rounds.contains { $0.totalScore < $0.totalPar } },
+            progress: { rounds in bestToParProgress(rounds, target: -1) }
+        ),
+        GoalTemplate(
+            id: "holeInOne",
+            title: "Hole In One",
+            detail: "Record a score of 1 on any hole.",
+            icon: "1.circle.fill",
+            isComplete: { rounds in rounds.flatMap(\.holes).contains { $0.score == 1 } },
+            progress: { rounds in
+                rounds.flatMap(\.holes).contains { $0.score == 1 } ? "Ace recorded" : "No aces yet"
+            }
+        ),
+        GoalTemplate(
+            id: "par5Eagle",
+            title: "Eagle A Par 5",
+            detail: "Record 3 or better on a par 5.",
+            icon: "flag.fill",
+            isComplete: { rounds in rounds.flatMap(\.holes).contains { $0.par == 5 && $0.score <= 3 } },
+            progress: { rounds in
+                rounds.flatMap(\.holes).contains { $0.par == 5 && $0.score <= 3 } ? "Par 5 eagle logged" : "Waiting for a par 5 eagle"
+            }
+        ),
+        GoalTemplate(
+            id: "tenTwos",
+            title: "Minimum 10 Two's",
+            detail: "Record at least ten scores of 2 across saved rounds.",
+            icon: "2.circle.fill",
+            isComplete: { rounds in twosCount(rounds) >= 10 },
+            progress: { rounds in "\(min(twosCount(rounds), 10))/10 two's recorded" }
+        ),
+        GoalTemplate(
+            id: "noPenaltyRound",
+            title: "No Penalty Round",
+            detail: "Complete a round without recording any penalty shots.",
+            icon: "checkmark.shield.fill",
+            isComplete: { rounds in rounds.contains { $0.holes.allSatisfy { $0.penalties == 0 } } },
+            progress: { rounds in
+                rounds.contains { $0.holes.allSatisfy { $0.penalties == 0 } } ? "Clean round recorded" : "Waiting for a clean round"
+            }
+        ),
+        GoalTemplate(
+            id: "thirtySixPoints",
+            title: "36+ Stableford Points",
+            detail: "Score 36 or more Stableford points in a completed round.",
+            icon: "star.circle.fill",
+            isComplete: { rounds in rounds.contains { ($0.stablefordPoints ?? 0) >= 36 } },
+            progress: { rounds in
+                guard let best = rounds.compactMap(\.stablefordPoints).max() else { return "No completed rounds yet" }
+                return best >= 36 ? "Best \(best) points" : "\(36 - best) points away"
+            }
+        )
+    ]
+}
+
+private func grossScoreGoal(id: String, title: String, target: Int, icon: String) -> GoalTemplate {
+    GoalTemplate(
+        id: id,
+        title: title,
+        detail: "Shoot \(target - 1) or better gross in a completed round.",
+        icon: icon,
+        isComplete: { rounds in rounds.contains { $0.totalScore < target } },
+        progress: { rounds in
+            guard let best = rounds.map(\.totalScore).min() else { return "No completed rounds yet" }
+            return best < target ? "Best gross \(best)" : "\(max(0, best - (target - 1))) shots away"
+        }
+    )
+}
+
 struct GoalsView: View {
     let savedRounds: [SavedRound]
     @ObservedObject var goalArchive: GoalArchive
@@ -7630,51 +8754,38 @@ struct GoalsView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
-                HeaderBlock(title: "Goals", subtitle: "Template goals tick off from your saved rounds. Custom goals can be completed manually.")
+                HeaderBlock(title: "Goals", subtitle: "Your round achievements update automatically from completed cards.")
 
-                GoalProgressHero(completed: completedTemplateCount + completedCustomCount, total: templateGoals.count + goalArchive.customGoals.count)
-
-                SectionHeader(title: "Template Goals", actionTitle: "\(completedTemplateCount)/\(templateGoals.count) complete")
-
-                VStack(spacing: 10) {
-                    ForEach(templateGoals) { goal in
-                        GoalRow(
-                            title: goal.title,
-                            detail: goal.detail,
-                            progress: goal.progress(savedRounds),
-                            icon: goal.icon,
-                            isComplete: goal.isComplete(savedRounds),
-                            isManual: false,
-                            toggle: nil,
-                            delete: nil
-                        )
-                    }
-                }
+                GoalProgressHero(completed: completedAutomaticCount + completedCustomCount, total: goalSuggestions.count + goalArchive.customGoals.count)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    SectionHeader(title: "Custom Goals", actionTitle: "\(completedCustomCount)/\(goalArchive.customGoals.count) complete")
+                    SectionHeader(title: "Round Goals", actionTitle: "\(completedAutomaticCount)/\(goalSuggestions.count) complete")
 
-                    HStack(spacing: 10) {
-                        TextField("Add your own goal", text: $customGoalTitle)
-                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                            .foregroundStyle(AppTheme.ink)
-                            .padding(13)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
-                            .submitLabel(.done)
-                            .onSubmit(addCustomGoal)
-
-                        Button(action: addCustomGoal) {
-                            Image(systemName: "plus")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Circle().fill(AppTheme.mint))
+                    VStack(spacing: 10) {
+                        ForEach(goalSuggestions) { goal in
+                            GoalRow(
+                                title: goal.title,
+                                detail: goal.detail,
+                                progress: goal.progress(savedRounds),
+                                icon: goal.icon,
+                                isComplete: goal.isComplete(savedRounds),
+                                isManual: false,
+                                toggle: nil,
+                                delete: nil
+                            )
                         }
-                        .accessibilityLabel("Add custom goal")
                     }
+                }
+                .padding(18)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(title: "My Goals", actionTitle: goalArchive.customGoals.isEmpty ? "Set in Settings" : "\(completedCustomCount)/\(goalArchive.customGoals.count) complete")
 
                     if goalArchive.customGoals.isEmpty {
-                        Text("Add goals like better pre-shot routine, practice twice a week, or play a medal without penalties.")
+                        Text("Add personal goals from Settings. They can be things like practice twice a week, stick to your routine, or play without penalties.")
                             .font(.system(.subheadline, design: .rounded))
                             .foregroundStyle(AppTheme.softText)
                             .lineSpacing(3)
@@ -7708,82 +8819,16 @@ struct GoalsView: View {
         }
     }
 
-    private var completedTemplateCount: Int {
-        templateGoals.filter { $0.isComplete(savedRounds) }.count
-    }
-
     private var completedCustomCount: Int {
         goalArchive.customGoals.filter(\.isComplete).count
     }
 
-    private func addCustomGoal() {
-        goalArchive.add(title: customGoalTitle)
-        customGoalTitle = ""
+    private var completedAutomaticCount: Int {
+        goalSuggestions.filter { $0.isComplete(savedRounds) }.count
     }
 
-    private var templateGoals: [GoalTemplate] {
-        [
-            grossScoreGoal(id: "break80", title: "Break 80 Gross", target: 80, icon: "trophy.fill"),
-            grossScoreGoal(id: "break75", title: "Break 75 Gross", target: 75, icon: "medal.fill"),
-            GoalTemplate(
-                id: "breakPar",
-                title: "Break Par",
-                detail: "Shoot level par or better in a completed round.",
-                icon: "equal.circle.fill",
-                isComplete: { rounds in rounds.contains { $0.totalScore <= $0.totalPar } },
-                progress: { rounds in bestToParProgress(rounds, target: 0) }
-            ),
-            GoalTemplate(
-                id: "underPar",
-                title: "Shoot Under Par",
-                detail: "Finish a round below the course par.",
-                icon: "minus.circle.fill",
-                isComplete: { rounds in rounds.contains { $0.totalScore < $0.totalPar } },
-                progress: { rounds in bestToParProgress(rounds, target: -1) }
-            ),
-            GoalTemplate(
-                id: "holeInOne",
-                title: "Hole In One",
-                detail: "Record a score of 1 on any hole.",
-                icon: "1.circle.fill",
-                isComplete: { rounds in rounds.flatMap(\.holes).contains { $0.score == 1 } },
-                progress: { rounds in
-                    rounds.flatMap(\.holes).contains { $0.score == 1 } ? "Ace recorded" : "No aces yet"
-                }
-            ),
-            GoalTemplate(
-                id: "par5Eagle",
-                title: "Eagle A Par 5",
-                detail: "Record 3 or better on a par 5.",
-                icon: "flag.fill",
-                isComplete: { rounds in rounds.flatMap(\.holes).contains { $0.par == 5 && $0.score <= 3 } },
-                progress: { rounds in
-                    rounds.flatMap(\.holes).contains { $0.par == 5 && $0.score <= 3 } ? "Par 5 eagle logged" : "Waiting for a par 5 eagle"
-                }
-            ),
-            GoalTemplate(
-                id: "tenTwos",
-                title: "Minimum 10 Two's",
-                detail: "Record at least ten scores of 2 across saved rounds.",
-                icon: "2.circle.fill",
-                isComplete: { rounds in twosCount(rounds) >= 10 },
-                progress: { rounds in "\(min(twosCount(rounds), 10))/10 two's recorded" }
-            )
-        ]
-    }
-
-    private func grossScoreGoal(id: String, title: String, target: Int, icon: String) -> GoalTemplate {
-        GoalTemplate(
-            id: id,
-            title: title,
-            detail: "Shoot \(target - 1) or better gross in a completed round.",
-            icon: icon,
-            isComplete: { rounds in rounds.contains { $0.totalScore < target } },
-            progress: { rounds in
-                guard let best = rounds.map(\.totalScore).min() else { return "No completed rounds yet" }
-                return best < target ? "Best gross \(best)" : "\(max(0, best - (target - 1))) shots away"
-            }
-        )
+    private var goalSuggestions: [GoalTemplate] {
+        automaticGoalSuggestions()
     }
 }
 
@@ -7806,7 +8851,7 @@ struct GoalProgressHero: View {
             }
             ProgressView(value: total == 0 ? 0 : Double(completed), total: Double(max(total, 1)))
                 .tint(.white)
-            Text(total == 0 ? "Add a custom goal to start building your target list." : "Automatic goals update when rounds are saved. Custom goals stay in your control.")
+            Text(total == 0 ? "Add a goal to start building your target list." : "Suggested and custom goals stay in your control.")
                 .font(.system(.subheadline, design: .rounded))
                 .foregroundStyle(.white.opacity(0.84))
         }
@@ -7816,7 +8861,7 @@ struct GoalProgressHero: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(
                     LinearGradient(
-                        colors: [Color(red: 0.07, green: 0.67, blue: 0.35), AppTheme.mint],
+                        colors: [AppTheme.mint, AppTheme.lime],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -7824,6 +8869,67 @@ struct GoalProgressHero: View {
         )
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.62)))
         .shadow(color: AppTheme.shadow.opacity(1.2), radius: 18, x: 0, y: 9)
+    }
+}
+
+struct SuggestedGoalRow: View {
+    let title: String
+    let detail: String
+    let icon: String
+    let isAdded: Bool
+    let add: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(accent)
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(accent.opacity(0.12)))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(.headline, design: .rounded).weight(.bold))
+                    .foregroundStyle(AppTheme.ink)
+                Text(detail)
+                    .font(.system(.caption, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            Button(action: add) {
+                Text(isAdded ? "Added" : "Add")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(isAdded ? AppTheme.mint : .white)
+                    .padding(.horizontal, 14)
+                    .frame(height: 36)
+                    .background(
+                        Capsule()
+                            .fill(isAdded ? AppTheme.mintWash : accent)
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(isAdded)
+            .accessibilityLabel(isAdded ? "\(title) added" : "Add \(title)")
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white, accent.opacity(0.06)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke((isAdded ? AppTheme.mint : AppTheme.border).opacity(0.72)))
+    }
+
+    private var accent: Color {
+        isAdded ? AppTheme.mint : Color(red: 0.02, green: 0.28, blue: 0.72)
     }
 }
 
@@ -7930,7 +9036,7 @@ struct HeaderBlock: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(
                     LinearGradient(
-                        colors: [Color(red: 0.07, green: 0.67, blue: 0.35), AppTheme.mint],
+                        colors: [AppTheme.mint, AppTheme.lime],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -8024,6 +9130,44 @@ struct ProfileOnboardingView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
             } else {
+                VStack(spacing: 10) {
+                    SocialSignInButton(title: "Continue with Apple", systemImage: "apple.logo", style: .dark) {
+                        Task {
+                            await firebaseAccount.signInWithApple()
+                            if firebaseAccount.user != nil {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    step = .profile
+                                }
+                            }
+                        }
+                    }
+                    .disabled(firebaseAccount.isWorking)
+
+                    SocialSignInButton(title: "Continue with Google", systemImage: "g.circle.fill", style: .light) {
+                        Task {
+                            await firebaseAccount.signInWithGoogle()
+                            if firebaseAccount.user != nil {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    step = .profile
+                                }
+                            }
+                        }
+                    }
+                    .disabled(firebaseAccount.isWorking)
+                }
+
+                HStack(spacing: 10) {
+                    Rectangle()
+                        .fill(AppTheme.border)
+                        .frame(height: 1)
+                    Text("or use email")
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.softText)
+                    Rectangle()
+                        .fill(AppTheme.border)
+                        .frame(height: 1)
+                }
+
                 VStack(spacing: 10) {
                     TextField("Email", text: $firebaseAccount.email)
                         .textInputAutocapitalization(.never)
@@ -8993,7 +10137,7 @@ struct LiveRoundHeaderCard: View {
 
             HStack(spacing: 8) {
                 LiveRoundHeaderMetric(title: "Gross", value: "\(gross)", accent: AppTheme.lime)
-                LiveRoundHeaderMetric(title: "To Par", value: scoreToParLabel, accent: scoreToParAccent)
+                LiveRoundHeaderMetric(title: "To Par", value: scoreToParLabel, accent: scoreToParAccent, fill: scoreToParFill)
                 LiveRoundHeaderMetric(title: "Points", value: "\(stableford)", accent: .white)
                 LiveRoundHeaderMetric(title: "CH", value: "\(courseHandicap)", accent: .white)
             }
@@ -9003,7 +10147,7 @@ struct LiveRoundHeaderCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(
                     LinearGradient(
-                        colors: [Color(red: 0.07, green: 0.67, blue: 0.35), AppTheme.mint],
+                        colors: [AppTheme.mint, AppTheme.lime],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -9018,7 +10162,11 @@ struct LiveRoundHeaderCard: View {
     }
 
     private var scoreToParAccent: Color {
-        scoreToPar <= 0 ? .white : Color(red: 1.0, green: 0.42, blue: 0.34)
+        .white
+    }
+
+    private var scoreToParFill: Color? {
+        scoreToPar > 0 ? Color(red: 0.82, green: 0.03, blue: 0.03) : nil
     }
 
     private func headerPill(_ text: String) -> some View {
@@ -9037,6 +10185,7 @@ struct LiveRoundHeaderMetric: View {
     let title: String
     let value: String
     let accent: Color
+    var fill: Color? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -9052,8 +10201,8 @@ struct LiveRoundHeaderMetric: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.14)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.18)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(fill ?? Color.white.opacity(0.14)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(fill == nil ? Color.white.opacity(0.18) : Color.white.opacity(0.34)))
     }
 }
 

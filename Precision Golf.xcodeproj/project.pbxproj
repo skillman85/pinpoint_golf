@@ -24,6 +24,9 @@
 		428DF0582FF9900000A31A8B /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 428DF0572FF9900000A31A8B /* FirebaseAuth */; };
 		428DF05A2FF9900000A31A8B /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 428DF0592FF9900000A31A8B /* FirebaseFirestore */; };
 		428DF05C2FF9950000A31A8B /* FirebaseAccountService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 428DF05B2FF9950000A31A8B /* FirebaseAccountService.swift */; };
+		428DF05E2FFB000000A31A8B /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 428DF05D2FFB000000A31A8B /* FirebaseMessaging */; };
+		428DF0602FFB001000A31A8B /* PushNotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 428DF05F2FFB001000A31A8B /* PushNotificationService.swift */; };
+		428DF0642FFC100000A31A8B /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 428DF0632FFC100000A31A8B /* GoogleSignIn */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +45,8 @@
 		1A2B3C4D5E6F700000000018 /* PrecisionLaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = PrecisionLaunchScreen.storyboard; sourceTree = "<group>"; };
 		428DF0522FF982A100A31A8B /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		428DF05B2FF9950000A31A8B /* FirebaseAccountService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseAccountService.swift; sourceTree = "<group>"; };
+		428DF05F2FFB001000A31A8B /* PushNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationService.swift; sourceTree = "<group>"; };
+		428DF0612FFB002000A31A8B /* PrecisionGolf.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PrecisionGolf.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -53,6 +58,8 @@
 				428DF0562FF9900000A31A8B /* FirebaseCore in Frameworks */,
 				428DF0582FF9900000A31A8B /* FirebaseAuth in Frameworks */,
 				428DF05A2FF9900000A31A8B /* FirebaseFirestore in Frameworks */,
+				428DF05E2FFB000000A31A8B /* FirebaseMessaging in Frameworks */,
+				428DF0642FFC100000A31A8B /* GoogleSignIn in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -75,6 +82,8 @@
 				1A2B3C4D5E6F700000000002 /* ContentView.swift */,
 				1A2B3C4D5E6F700000000003 /* Models.swift */,
 				428DF05B2FF9950000A31A8B /* FirebaseAccountService.swift */,
+				428DF05F2FFB001000A31A8B /* PushNotificationService.swift */,
+				428DF0612FFB002000A31A8B /* PrecisionGolf.entitlements */,
 				1A2B3C4D5E6F700000000014 /* PinpointDatabase.swift */,
 				1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */,
 				1A2B3C4D5E6F700000000007 /* CourseSearchService.swift */,
@@ -117,6 +126,8 @@
 				428DF0552FF9900000A31A8B /* FirebaseCore */,
 				428DF0572FF9900000A31A8B /* FirebaseAuth */,
 				428DF0592FF9900000A31A8B /* FirebaseFirestore */,
+				428DF05D2FFB000000A31A8B /* FirebaseMessaging */,
+				428DF0632FFC100000A31A8B /* GoogleSignIn */,
 			);
 			productName = PinpointGolf;
 			productReference = 1A2B3C4D5E6F700000000006 /* Precision Golf.app */;
@@ -149,6 +160,7 @@
 			packageReferences = (
 				428DF04F2FF97E7200A31A8B /* XCRemoteSwiftPackageReference "swift-algorithms" */,
 				428DF0542FF983DB00A31A8B /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				428DF0622FFC100000A31A8B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
 			productRefGroup = 1A2B3C4D5E6F700000000303 /* Products */;
 			projectDirPath = "";
@@ -183,6 +195,7 @@
 				1A2B3C4D5E6F700000000102 /* ContentView.swift in Sources */,
 				1A2B3C4D5E6F700000000103 /* Models.swift in Sources */,
 				428DF05C2FF9950000A31A8B /* FirebaseAccountService.swift in Sources */,
+				428DF0602FFB001000A31A8B /* PushNotificationService.swift in Sources */,
 				1A2B3C4D5E6F70000000010C /* PinpointDatabase.swift in Sources */,
 				1A2B3C4D5E6F700000000107 /* CourseDatabase.swift in Sources */,
 				1A2B3C4D5E6F700000000104 /* CourseSearchService.swift in Sources */,
@@ -313,8 +326,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = PinpointGolf/PrecisionGolf.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = 3SN8VLC9JN;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -341,8 +355,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = PinpointGolf/PrecisionGolf.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_ASSET_PATHS = "";
 				DEVELOPMENT_TEAM = 3SN8VLC9JN;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -405,6 +420,14 @@
 				minimumVersion = 12.15.0;
 			};
 		};
+		428DF0622FFC100000A31A8B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -427,6 +450,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 428DF0542FF983DB00A31A8B /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseFirestore;
+		};
+		428DF05D2FFB000000A31A8B /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 428DF0542FF983DB00A31A8B /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+		428DF0632FFC100000A31A8B /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 428DF0622FFC100000A31A8B /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

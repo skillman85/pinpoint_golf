@@ -1,9 +1,14 @@
 import Foundation
+import AuthenticationServices
+import CryptoKit
+import Security
+import UIKit
 import FirebaseAuth
 import FirebaseFirestore
+import GoogleSignIn
 
 @MainActor
-final class FirebaseAccountService: ObservableObject {
+final class FirebaseAccountService: NSObject, ObservableObject {
     @Published private(set) var user: FirebaseAuth.User?
     @Published private(set) var profile: FirebaseUserProfile?
     @Published var email = ""
@@ -13,14 +18,17 @@ final class FirebaseAccountService: ObservableObject {
 
     private let database = Firestore.firestore()
     private var authHandle: AuthStateDidChangeListenerHandle?
+    private var appleSignInContinuation: CheckedContinuation<ASAuthorizationAppleIDCredential, Error>?
 
-    init() {
+    override init() {
+        super.init()
         user = Auth.auth().currentUser
         authHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
             Task { @MainActor in
                 self?.user = user
                 if let user {
                     await self?.loadProfile(for: user.uid)
+                    await PushNotificationService.shared.syncCurrentToken()
                 } else {
                     self?.profile = nil
                 }
@@ -79,6 +87,64 @@ final class FirebaseAccountService: ObservableObject {
         isWorking = false
     }
 
+    func signInWithApple() async {
+        isWorking = true
+        statusMessage = nil
+        do {
+            let nonce = Self.randomNonceString()
+            let appleCredential = try await requestAppleCredential(nonce: nonce)
+            guard let identityToken = appleCredential.identityToken,
+                  let tokenString = String(data: identityToken, encoding: .utf8)
+            else {
+                throw AuthFlowError.missingAppleIdentityToken
+            }
+
+            let credential = OAuthProvider.appleCredential(
+                withIDToken: tokenString,
+                rawNonce: nonce,
+                fullName: appleCredential.fullName
+            )
+            let result = try await Auth.auth().signIn(with: credential)
+            user = result.user
+            await ensureProfile(for: result.user, fallbackName: appleCredential.fullName?.formatted())
+            statusMessage = "Signed in with Apple"
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+        isWorking = false
+    }
+
+    func signInWithGoogle() async {
+        isWorking = true
+        statusMessage = nil
+        do {
+            guard let presentingViewController = Self.topViewController() else {
+                throw AuthFlowError.missingPresentingViewController
+            }
+            guard let clientID = FirebaseAppClientID.current else {
+                throw AuthFlowError.missingGoogleClientID
+            }
+
+            GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
+            let signInResult = try await GIDSignIn.sharedInstance.signIn(withPresenting: presentingViewController)
+            guard let idToken = signInResult.user.idToken?.tokenString else {
+                throw AuthFlowError.missingGoogleIDToken
+            }
+
+            let credential = GoogleAuthProvider.credential(
+                withIDToken: idToken,
+                accessToken: signInResult.user.accessToken.tokenString
+            )
+            let result = try await Auth.auth().signIn(with: credential)
+            user = result.user
+            await ensureProfile(for: result.user, fallbackName: result.user.displayName)
+            statusMessage = "Signed in with Google"
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+        isWorking = false
+    }
+
     func saveProfile(displayName: String, handicap: Double, homeClub: String) async {
         guard let uid = user?.uid else {
             statusMessage = "Sign in before saving your Firebase profile."
@@ -97,6 +163,12 @@ final class FirebaseAccountService: ObservableObject {
 
     func signOut() {
         do {
+            let signedInUid = user?.uid
+            Task {
+                if let signedInUid {
+                    await PushNotificationService.shared.removeCurrentToken(from: signedInUid)
+                }
+            }
             try Auth.auth().signOut()
             user = nil
             profile = nil
@@ -117,6 +189,22 @@ final class FirebaseAccountService: ObservableObject {
             return false
         }
         return true
+    }
+
+    private func ensureProfile(for user: FirebaseAuth.User, fallbackName: String?) async {
+        await loadProfile(for: user.uid)
+        guard profile == nil else { return }
+
+        let trimmedName = fallbackName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = (trimmedName?.isEmpty == false ? trimmedName : nil)
+            ?? user.email?.components(separatedBy: "@").first
+            ?? "Golfer"
+
+        do {
+            try await saveProfile(uid: user.uid, displayName: displayName, handicap: 18.0, homeClub: "")
+        } catch {
+            statusMessage = "Signed in, but profile setup needs finishing."
+        }
     }
 
     private func loadProfile(for uid: String) async {
@@ -177,6 +265,134 @@ final class FirebaseAccountService: ObservableObject {
     }
 }
 
+extension FirebaseAccountService: ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding {
+    nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        MainActor.assumeIsolated {
+            Self.topViewController()?.view.window ?? ASPresentationAnchor()
+        }
+    }
+
+    nonisolated func authorizationController(
+        controller: ASAuthorizationController,
+        didCompleteWithAuthorization authorization: ASAuthorization
+    ) {
+        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
+            Task { @MainActor in
+                appleSignInContinuation?.resume(throwing: AuthFlowError.missingAppleIdentityToken)
+                appleSignInContinuation = nil
+            }
+            return
+        }
+
+        Task { @MainActor in
+            appleSignInContinuation?.resume(returning: credential)
+            appleSignInContinuation = nil
+        }
+    }
+
+    nonisolated func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        Task { @MainActor in
+            appleSignInContinuation?.resume(throwing: error)
+            appleSignInContinuation = nil
+        }
+    }
+
+    private func requestAppleCredential(nonce: String) async throws -> ASAuthorizationAppleIDCredential {
+        try await withCheckedThrowingContinuation { continuation in
+            appleSignInContinuation = continuation
+            let provider = ASAuthorizationAppleIDProvider()
+            let request = provider.createRequest()
+            request.requestedScopes = [.fullName, .email]
+            request.nonce = Self.sha256(nonce)
+
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            controller.delegate = self
+            controller.presentationContextProvider = self
+            controller.performRequests()
+        }
+    }
+
+    @MainActor
+    private static func topViewController(base: UIViewController? = nil) -> UIViewController? {
+        let rootViewController = base ?? UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }?
+            .rootViewController
+
+        if let navigationController = rootViewController as? UINavigationController {
+            return topViewController(base: navigationController.visibleViewController)
+        }
+        if let tabBarController = rootViewController as? UITabBarController {
+            return topViewController(base: tabBarController.selectedViewController)
+        }
+        if let presented = rootViewController?.presentedViewController {
+            return topViewController(base: presented)
+        }
+        return rootViewController
+    }
+
+    private static func randomNonceString(length: Int = 32) -> String {
+        precondition(length > 0)
+        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        var result = ""
+        var remainingLength = length
+
+        while remainingLength > 0 {
+            var randoms = [UInt8](repeating: 0, count: 16)
+            let status = SecRandomCopyBytes(kSecRandomDefault, randoms.count, &randoms)
+            if status != errSecSuccess {
+                fatalError("Unable to generate nonce. SecRandomCopyBytes failed with OSStatus \(status)")
+            }
+
+            randoms.forEach { random in
+                guard remainingLength > 0 else { return }
+                if random < charset.count {
+                    result.append(charset[Int(random)])
+                    remainingLength -= 1
+                }
+            }
+        }
+
+        return result
+    }
+
+    private static func sha256(_ input: String) -> String {
+        let inputData = Data(input.utf8)
+        let hashedData = SHA256.hash(data: inputData)
+        return hashedData.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+private enum AuthFlowError: LocalizedError {
+    case missingAppleIdentityToken
+    case missingGoogleClientID
+    case missingGoogleIDToken
+    case missingPresentingViewController
+
+    var errorDescription: String? {
+        switch self {
+        case .missingAppleIdentityToken:
+            return "Apple did not return an identity token. Please try again."
+        case .missingGoogleClientID:
+            return "Google Sign-In needs an updated GoogleService-Info.plist with CLIENT_ID and the reversed client URL scheme."
+        case .missingGoogleIDToken:
+            return "Google did not return an identity token. Please try again."
+        case .missingPresentingViewController:
+            return "Could not open the Google sign-in screen. Please try again."
+        }
+    }
+}
+
+private enum FirebaseAppClientID {
+    static var current: String? {
+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+              let plist = NSDictionary(contentsOfFile: path)
+        else { return nil }
+        return plist["CLIENT_ID"] as? String
+    }
+}
+
 struct FirebaseUserProfile: Identifiable {
     var id: String { uid }
     let uid: String
@@ -190,10 +406,167 @@ struct FirebaseUserProfile: Identifiable {
 }
 
 @MainActor
+final class FirebaseRoundSyncService: ObservableObject {
+    @Published private(set) var cloudRoundCount = 0
+    @Published private(set) var lastSyncDate: Date?
+    @Published var statusMessage: String?
+    @Published var isWorking = false
+
+    private let database = Firestore.firestore()
+    private let lastSyncKey = "precision.cloudRoundsLastSync"
+
+    init() {
+        lastSyncDate = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
+    }
+
+    func refreshCloudCount() async {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            cloudRoundCount = 0
+            statusMessage = nil
+            return
+        }
+
+        do {
+            let snapshot = try await roundsCollection(for: uid).getDocuments()
+            cloudRoundCount = snapshot.documents.count
+        } catch {
+            statusMessage = "Cloud round count unavailable: \(error.localizedDescription)"
+        }
+    }
+
+    func sync(rounds: [SavedRound]) async {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            statusMessage = "Create an account to back up rounds."
+            return
+        }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            for round in rounds {
+                try await upload(round, uid: uid)
+            }
+            markSynced(count: rounds.count)
+        } catch {
+            statusMessage = "Round backup failed: \(error.localizedDescription)"
+        }
+    }
+
+    func sync(round: SavedRound) async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+
+        do {
+            try await upload(round, uid: uid)
+            markSynced(count: max(cloudRoundCount, 1))
+        } catch {
+            statusMessage = "Round saved locally. Cloud backup failed: \(error.localizedDescription)"
+        }
+    }
+
+    func delete(roundID: UUID) async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+
+        do {
+            try await roundsCollection(for: uid).document(roundID.uuidString).delete()
+            cloudRoundCount = max(0, cloudRoundCount - 1)
+            statusMessage = "Cloud backup updated"
+        } catch {
+            statusMessage = "Local round deleted. Cloud delete failed: \(error.localizedDescription)"
+        }
+    }
+
+    func restoreRounds() async -> [SavedRound]? {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            statusMessage = "Create an account before restoring cloud rounds."
+            return nil
+        }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let snapshot = try await roundsCollection(for: uid)
+                .order(by: "date", descending: true)
+                .getDocuments()
+            let rounds = snapshot.documents.compactMap { document -> SavedRound? in
+                guard let encodedRound = document.data()["roundJSON"] as? String,
+                      let data = encodedRound.data(using: .utf8)
+                else { return nil }
+                return try? Self.decoder.decode(SavedRound.self, from: data)
+            }
+            cloudRoundCount = rounds.count
+            statusMessage = rounds.isEmpty ? "No cloud rounds found yet." : "Restored \(rounds.count) cloud rounds."
+            return rounds
+        } catch {
+            statusMessage = "Cloud restore failed: \(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    private func upload(_ round: SavedRound, uid: String) async throws {
+        let data = try Self.encoder.encode(round)
+        guard let roundJSON = String(data: data, encoding: .utf8) else {
+            throw NSError(domain: "PrecisionGolf.RoundSync", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Could not prepare this round for cloud backup."
+            ])
+        }
+
+        var payload: [String: Any] = [
+            "ownerId": uid,
+            "roundId": round.id.uuidString,
+            "courseName": round.courseName,
+            "location": round.location,
+            "teeName": round.teeName,
+            "date": Timestamp(date: round.date),
+            "gross": round.totalScore,
+            "par": round.totalPar,
+            "scoreToPar": round.totalScore - round.totalPar,
+            "putts": round.totalPutts,
+            "penalties": round.penalties,
+            "holeCount": round.holes.count,
+            "roundJSON": roundJSON,
+            "updatedAt": Timestamp(date: Date())
+        ]
+
+        if let stablefordPoints = round.stablefordPoints {
+            payload["stableford"] = stablefordPoints
+        }
+
+        try await roundsCollection(for: uid).document(round.id.uuidString).setData(payload, merge: true)
+    }
+
+    private func roundsCollection(for uid: String) -> CollectionReference {
+        database.collection("users").document(uid).collection("roundBackups")
+    }
+
+    private func markSynced(count: Int) {
+        lastSyncDate = Date()
+        cloudRoundCount = count
+        UserDefaults.standard.set(lastSyncDate, forKey: lastSyncKey)
+        statusMessage = count == 1 ? "1 round backed up" : "\(count) rounds backed up"
+    }
+
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+}
+
+@MainActor
 final class FirebaseSocialService: ObservableObject {
     @Published var friendCodeInput = ""
     @Published private(set) var friends: [FirebaseFriendProfile] = []
     @Published private(set) var incomingRequests: [FirebaseFriendRequest] = []
+    @Published private(set) var groups: [FirebaseGolfGroup] = []
+    @Published private(set) var groupInvites: [FirebaseGroupInvite] = []
     @Published private(set) var sharedRounds: [FirebaseSharedRound] = []
     @Published private(set) var notifications: [FirebaseRoundNotification] = []
     @Published var statusMessage: String?
@@ -205,6 +578,10 @@ final class FirebaseSocialService: ObservableObject {
         guard let uid = Auth.auth().currentUser?.uid else {
             friends = []
             incomingRequests = []
+            groups = []
+            groupInvites = []
+            sharedRounds = []
+            notifications = []
             statusMessage = "Create an account to use friends."
             return
         }
@@ -215,10 +592,14 @@ final class FirebaseSocialService: ObservableObject {
         do {
             async let requests = loadIncomingRequests(for: uid)
             async let loadedFriends = loadFriends(for: uid)
+            async let loadedGroups = loadGroups(for: uid)
+            async let loadedGroupInvites = loadGroupInvites(for: uid)
             async let loadedSharedRounds = loadSharedRounds(for: uid)
             async let loadedNotifications = loadNotifications(for: uid)
             incomingRequests = try await requests
             friends = try await loadedFriends
+            groups = try await loadedGroups
+            groupInvites = try await loadedGroupInvites
             sharedRounds = try await loadedSharedRounds
             notifications = try await loadedNotifications
             statusMessage = nil
@@ -256,6 +637,11 @@ final class FirebaseSocialService: ObservableObject {
             if let stablefordPoints = round.stablefordPoints {
                 payload["stableford"] = stablefordPoints
             }
+            let scoringHandicap = ownerProfile?.handicap ?? round.handicap
+            let scoringCourseHandicap = scoringHandicap.map { round.courseHandicap(using: $0) }
+            if let scoringCourseHandicap {
+                payload["courseHandicap"] = scoringCourseHandicap
+            }
             payload["holes"] = round.holes.map { hole -> [String: Any] in
                 var holePayload: [String: Any] = [
                     "holeNumber": hole.holeNumber,
@@ -269,6 +655,9 @@ final class FirebaseSocialService: ObservableObject {
                     "green": hole.green.rawValue,
                     "penalties": hole.penalties
                 ]
+                if let scoringCourseHandicap {
+                    holePayload["stablefordPoints"] = hole.stablefordPoints(using: Double(scoringCourseHandicap))
+                }
                 if let bunker = hole.bunker {
                     holePayload["bunker"] = bunker
                 }
@@ -298,6 +687,7 @@ final class FirebaseSocialService: ObservableObject {
                     "gross": round.totalScore,
                     "message": "\(ownerName) completed a round at \(round.courseName)",
                     "read": false,
+                    "roundDate": Timestamp(date: round.date),
                     "createdAt": Timestamp(date: Date())
                 ]
                 if let stablefordPoints = round.stablefordPoints {
@@ -400,6 +790,108 @@ final class FirebaseSocialService: ObservableObject {
         }
     }
 
+    func createGroup(name: String) async {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            statusMessage = "Create an account before making a group."
+            return
+        }
+
+        let groupName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !groupName.isEmpty else {
+            statusMessage = "Enter a group name."
+            return
+        }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let document = database.collection("golfGroups").document()
+            try await document.setData([
+                "name": groupName,
+                "ownerId": uid,
+                "memberIds": [uid],
+                "createdAt": Timestamp(date: Date()),
+                "updatedAt": Timestamp(date: Date())
+            ])
+            statusMessage = "Group created"
+            await refresh()
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func invite(_ friend: FirebaseFriendProfile, to group: FirebaseGolfGroup) async {
+        guard let uid = Auth.auth().currentUser?.uid, group.memberIds.contains(uid) else {
+            statusMessage = "You need to be in this group before inviting friends."
+            return
+        }
+        guard !group.memberIds.contains(friend.uid) else {
+            statusMessage = "\(friend.displayName) is already in this group."
+            return
+        }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let inviteId = "\(group.id)_\(friend.uid)"
+            try await database.collection("groupInvites").document(inviteId).setData([
+                "groupId": group.id,
+                "groupName": group.name,
+                "fromUserId": uid,
+                "toUserId": friend.uid,
+                "status": "pending",
+                "createdAt": Timestamp(date: Date()),
+                "updatedAt": Timestamp(date: Date())
+            ], merge: true)
+            statusMessage = "Group invite sent"
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func accept(_ invite: FirebaseGroupInvite) async {
+        guard let uid = Auth.auth().currentUser?.uid, invite.toUserId == uid else {
+            statusMessage = "This group invite is not for the signed-in user."
+            return
+        }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            try await database.collection("golfGroups").document(invite.groupId).setData([
+                "memberIds": FieldValue.arrayUnion([uid]),
+                "updatedAt": Timestamp(date: Date())
+            ], merge: true)
+            try await database.collection("groupInvites").document(invite.id).setData([
+                "status": "accepted",
+                "updatedAt": Timestamp(date: Date())
+            ], merge: true)
+            statusMessage = "Joined \(invite.groupName)"
+            await refresh()
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func decline(_ invite: FirebaseGroupInvite) async {
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            try await database.collection("groupInvites").document(invite.id).setData([
+                "status": "declined",
+                "updatedAt": Timestamp(date: Date())
+            ], merge: true)
+            statusMessage = "Group invite declined"
+            await refresh()
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
     private func loadIncomingRequests(for uid: String) async throws -> [FirebaseFriendRequest] {
         let snapshot = try await database.collection("friendRequests")
             .whereField("toUserId", isEqualTo: uid)
@@ -441,6 +933,34 @@ final class FirebaseSocialService: ObservableObject {
         return profiles.sorted { $0.displayName < $1.displayName }
     }
 
+    private func loadGroups(for uid: String) async throws -> [FirebaseGolfGroup] {
+        let snapshot = try await database.collection("golfGroups")
+            .whereField("memberIds", arrayContains: uid)
+            .getDocuments()
+
+        return snapshot.documents
+            .compactMap(FirebaseGolfGroup.init(document:))
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func loadGroupInvites(for uid: String) async throws -> [FirebaseGroupInvite] {
+        let snapshot = try await database.collection("groupInvites")
+            .whereField("toUserId", isEqualTo: uid)
+            .whereField("status", isEqualTo: "pending")
+            .getDocuments()
+
+        var invites: [FirebaseGroupInvite] = []
+        for document in snapshot.documents {
+            guard let invite = FirebaseGroupInvite(document: document) else { continue }
+            let fromProfile = try await loadProfile(uid: invite.fromUserId)
+            var enrichedInvite = invite
+            enrichedInvite.fromProfile = fromProfile
+            invites.append(enrichedInvite)
+        }
+
+        return invites.sorted { $0.createdAt > $1.createdAt }
+    }
+
     private func loadSharedRounds(for uid: String) async throws -> [FirebaseSharedRound] {
         let friendIds = try await loadFriends(for: uid).map(\.uid)
         var rounds: [FirebaseSharedRound] = []
@@ -454,6 +974,21 @@ final class FirebaseSocialService: ObservableObject {
         }
 
         return Array(rounds.sorted { $0.date > $1.date }.prefix(30))
+    }
+
+    func loadSharedRound(id: String) async -> FirebaseSharedRound? {
+        if let existingRound = sharedRounds.first(where: { $0.id == id }) {
+            return existingRound
+        }
+
+        do {
+            let document = try await database.collection("sharedRounds").document(id).getDocument()
+            guard let data = document.data() else { return nil }
+            return FirebaseSharedRound(id: document.documentID, data: data)
+        } catch {
+            statusMessage = error.localizedDescription
+            return nil
+        }
     }
 
     private func loadNotifications(for uid: String) async throws -> [FirebaseRoundNotification] {
@@ -522,11 +1057,68 @@ struct FirebaseFriendRequest: Identifiable {
     var fromProfile: FirebaseFriendProfile
 }
 
+struct FirebaseGolfGroup: Identifiable {
+    let id: String
+    var name: String
+    var ownerId: String
+    var memberIds: [String]
+    var createdAt: Date
+    var updatedAt: Date
+
+    init?(document: QueryDocumentSnapshot) {
+        let data = document.data()
+        guard
+            let name = data["name"] as? String,
+            let ownerId = data["ownerId"] as? String,
+            let memberIds = data["memberIds"] as? [String]
+        else { return nil }
+
+        self.id = document.documentID
+        self.name = name
+        self.ownerId = ownerId
+        self.memberIds = memberIds
+        self.createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+        self.updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? createdAt
+    }
+}
+
+struct FirebaseGroupInvite: Identifiable {
+    let id: String
+    var groupId: String
+    var groupName: String
+    var fromUserId: String
+    var toUserId: String
+    var status: String
+    var createdAt: Date
+    var fromProfile: FirebaseFriendProfile?
+
+    init?(document: QueryDocumentSnapshot) {
+        let data = document.data()
+        guard
+            let groupId = data["groupId"] as? String,
+            let groupName = data["groupName"] as? String,
+            let fromUserId = data["fromUserId"] as? String,
+            let toUserId = data["toUserId"] as? String,
+            let status = data["status"] as? String
+        else { return nil }
+
+        self.id = document.documentID
+        self.groupId = groupId
+        self.groupName = groupName
+        self.fromUserId = fromUserId
+        self.toUserId = toUserId
+        self.status = status
+        self.createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+        self.fromProfile = nil
+    }
+}
+
 struct FirebaseSharedRound: Identifiable {
     let id: String
     var ownerId: String
     var ownerName: String
     var ownerHandicap: Double
+    var courseHandicap: Int?
     var ownerHomeClub: String
     var ownerPhotoURL: String?
     var courseName: String
@@ -544,7 +1136,10 @@ struct FirebaseSharedRound: Identifiable {
     var holes: [FirebaseSharedHoleEntry]
 
     init?(document: QueryDocumentSnapshot) {
-        let data = document.data()
+        self.init(id: document.documentID, data: document.data())
+    }
+
+    init?(id: String, data: [String: Any]) {
         guard
             let ownerId = data["ownerId"] as? String,
             let ownerName = data["ownerName"] as? String,
@@ -555,10 +1150,11 @@ struct FirebaseSharedRound: Identifiable {
             let par = data["par"] as? Int
         else { return nil }
 
-        self.id = document.documentID
+        self.id = id
         self.ownerId = ownerId
         self.ownerName = ownerName
         self.ownerHandicap = data["ownerHandicap"] as? Double ?? 0
+        self.courseHandicap = data["courseHandicap"] as? Int
         self.ownerHomeClub = data["ownerHomeClub"] as? String ?? ""
         self.ownerPhotoURL = data["ownerPhotoURL"] as? String
         self.courseName = courseName
@@ -595,6 +1191,7 @@ struct FirebaseSharedHoleEntry: Identifiable {
     var fairway: MissDirection
     var green: MissDirection
     var penalties: Int
+    var stablefordPoints: Int?
     var bunker: Bool?
     var upAndDown: Bool?
     var sandSave: Bool?
@@ -620,6 +1217,7 @@ struct FirebaseSharedHoleEntry: Identifiable {
         self.fairway = MissDirection(rawValue: data["fairway"] as? String ?? "") ?? .notTracked
         self.green = MissDirection(rawValue: data["green"] as? String ?? "") ?? .notTracked
         self.penalties = data["penalties"] as? Int ?? 0
+        self.stablefordPoints = data["stablefordPoints"] as? Int
         self.bunker = data["bunker"] as? Bool
         self.upAndDown = data["upAndDown"] as? Bool
         self.sandSave = data["sandSave"] as? Bool
@@ -642,6 +1240,7 @@ struct FirebaseRoundNotification: Identifiable {
     var gross: Int
     var stableford: Int?
     var message: String
+    var roundDate: Date
     var createdAt: Date
 
     init?(document: QueryDocumentSnapshot) {
@@ -666,6 +1265,7 @@ struct FirebaseRoundNotification: Identifiable {
         self.gross = gross
         self.stableford = data["stableford"] as? Int
         self.message = message
+        self.roundDate = (data["roundDate"] as? Timestamp)?.dateValue() ?? timestamp.dateValue()
         self.createdAt = timestamp.dateValue()
     }
 }
