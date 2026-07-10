@@ -4659,18 +4659,11 @@ struct CloudMatchplaySideCard: View {
         let opponentScore = opponentId.map { match.score(for: $0, holeIndex: currentHoleIndex) } ?? 0
 
         return Group {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("vs \(opponentName)")
-                    .font(.system(.caption, design: .rounded).weight(.heavy))
-                    .foregroundStyle(AppTheme.ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.76)
-                Text(statusText(for: match, currentUserId: currentUserId, opponentId: opponentId))
-                    .font(.system(size: 10, weight: .heavy, design: .rounded))
-                    .foregroundStyle(statusAccent(for: match, currentUserId: currentUserId, opponentId: opponentId))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-            }
+            Text(statusText(for: match, currentUserId: currentUserId, opponentId: opponentId))
+                .font(.system(.caption, design: .rounded).weight(.heavy))
+                .foregroundStyle(statusAccent(for: match, currentUserId: currentUserId, opponentId: opponentId))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
 
             Spacer(minLength: 4)
 
