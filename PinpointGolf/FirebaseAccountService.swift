@@ -569,10 +569,16 @@ final class FirebaseSocialService: ObservableObject {
     @Published private(set) var groupInvites: [FirebaseGroupInvite] = []
     @Published private(set) var sharedRounds: [FirebaseSharedRound] = []
     @Published private(set) var notifications: [FirebaseRoundNotification] = []
+    @Published private(set) var liveMatchplayMatches: [FirebaseMatchplayMatch] = []
     @Published var statusMessage: String?
     @Published var isWorking = false
 
     private let database = Firestore.firestore()
+    private var matchplayListener: ListenerRegistration?
+
+    deinit {
+        matchplayListener?.remove()
+    }
 
     func refresh() async {
         guard let uid = Auth.auth().currentUser?.uid else {
@@ -582,6 +588,9 @@ final class FirebaseSocialService: ObservableObject {
             groupInvites = []
             sharedRounds = []
             notifications = []
+            liveMatchplayMatches = []
+            matchplayListener?.remove()
+            matchplayListener = nil
             statusMessage = "Create an account to use friends."
             return
         }
@@ -602,7 +611,94 @@ final class FirebaseSocialService: ObservableObject {
             groupInvites = try await loadedGroupInvites
             sharedRounds = try await loadedSharedRounds
             notifications = try await loadedNotifications
+            startMatchplayListener(for: uid)
             statusMessage = nil
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func startMatchplay(with friend: FirebaseFriendProfile, course: GolfCourse, tee: TeeBox, playerProfile: FirebaseUserProfile?, courseHandicap: Int) async {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            statusMessage = "Create an account before starting matchplay."
+            return
+        }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let documentId = matchplayDocumentId(uid, friend.uid)
+            let holeCount = tee.holes.count
+            let opponentCourseHandicap = calculatedCourseHandicap(for: friend.handicap, tee: tee)
+            let payload: [String: Any] = [
+                "memberIds": [uid, friend.uid].sorted(),
+                "createdBy": uid,
+                "status": "active",
+                "courseName": course.name,
+                "teeName": tee.name,
+                "holeCount": holeCount,
+                "useHandicap": true,
+                "players": [
+                    uid: [
+                        "displayName": displayName(from: playerProfile),
+                        "handicap": playerProfile?.handicap ?? 0,
+                        "courseHandicap": courseHandicap
+                    ],
+                    friend.uid: [
+                        "displayName": friend.displayName,
+                        "handicap": friend.handicap,
+                        "courseHandicap": opponentCourseHandicap
+                    ]
+                ],
+                "scores": [
+                    uid: Array(repeating: 0, count: holeCount),
+                    friend.uid: Array(repeating: 0, count: holeCount)
+                ],
+                "currentHoleByUser": [
+                    uid: 0,
+                    friend.uid: 0
+                ],
+                "createdAt": Timestamp(date: Date()),
+                "updatedAt": Timestamp(date: Date())
+            ]
+
+            try await database.collection("matchplayMatches").document(documentId).setData(payload, merge: true)
+            statusMessage = "Matchplay started with \(friend.displayName)"
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func syncMatchplayScore(_ match: FirebaseMatchplayMatch, holeIndex: Int, score: Int) async {
+        guard let uid = Auth.auth().currentUser?.uid, match.memberIds.contains(uid) else { return }
+        guard holeIndex >= 0, holeIndex < match.holeCount else { return }
+
+        var userScores = match.scores[uid] ?? Array(repeating: 0, count: match.holeCount)
+        if userScores.count < match.holeCount {
+            userScores += Array(repeating: 0, count: match.holeCount - userScores.count)
+        }
+        userScores[holeIndex] = max(0, min(20, score))
+
+        do {
+            try await database.collection("matchplayMatches").document(match.id).updateData([
+                "scores.\(uid)": userScores,
+                "currentHoleByUser.\(uid)": holeIndex,
+                "updatedAt": Timestamp(date: Date())
+            ])
+        } catch {
+            statusMessage = "Matchplay sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    func cancelMatchplay(_ match: FirebaseMatchplayMatch) async {
+        guard let uid = Auth.auth().currentUser?.uid, match.memberIds.contains(uid) else { return }
+
+        do {
+            try await database.collection("matchplayMatches").document(match.id).setData([
+                "status": "cancelled",
+                "updatedAt": Timestamp(date: Date())
+            ], merge: true)
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -1031,6 +1127,34 @@ final class FirebaseSocialService: ObservableObject {
         [firstUid, secondUid].sorted().joined(separator: "_")
     }
 
+    private func matchplayDocumentId(_ firstUid: String, _ secondUid: String) -> String {
+        [firstUid, secondUid].sorted().joined(separator: "_") + "_active"
+    }
+
+    private func startMatchplayListener(for uid: String) {
+        matchplayListener?.remove()
+        matchplayListener = database.collection("matchplayMatches")
+            .whereField("memberIds", arrayContains: uid)
+            .whereField("status", isEqualTo: "active")
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    if let error {
+                        self?.statusMessage = "Matchplay unavailable: \(error.localizedDescription)"
+                        return
+                    }
+
+                    self?.liveMatchplayMatches = snapshot?.documents
+                        .compactMap(FirebaseMatchplayMatch.init(document:))
+                        .sorted { $0.updatedAt > $1.updatedAt } ?? []
+                }
+            }
+    }
+
+    private func calculatedCourseHandicap(for handicap: Double, tee: TeeBox) -> Int {
+        let adjusted = (handicap * Double(tee.slope) / 113.0) + (tee.rating - Double(tee.par))
+        return max(0, Int(adjusted.rounded(.toNearestOrAwayFromZero)))
+    }
+
     private func displayName(from profile: FirebaseUserProfile?) -> String {
         guard let profile, !profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return "A friend"
@@ -1110,6 +1234,79 @@ struct FirebaseGroupInvite: Identifiable {
         self.status = status
         self.createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
         self.fromProfile = nil
+    }
+}
+
+struct FirebaseMatchplayPlayer {
+    var displayName: String
+    var handicap: Double
+    var courseHandicap: Int
+
+    init(data: [String: Any]) {
+        displayName = data["displayName"] as? String ?? "Golfer"
+        handicap = data["handicap"] as? Double ?? 0
+        courseHandicap = data["courseHandicap"] as? Int ?? 0
+    }
+}
+
+struct FirebaseMatchplayMatch: Identifiable {
+    let id: String
+    var memberIds: [String]
+    var createdBy: String
+    var status: String
+    var courseName: String
+    var teeName: String
+    var holeCount: Int
+    var useHandicap: Bool
+    var players: [String: FirebaseMatchplayPlayer]
+    var scores: [String: [Int]]
+    var currentHoleByUser: [String: Int]
+    var updatedAt: Date
+
+    init?(document: QueryDocumentSnapshot) {
+        let data = document.data()
+        guard
+            let memberIds = data["memberIds"] as? [String],
+            let createdBy = data["createdBy"] as? String,
+            let status = data["status"] as? String,
+            let courseName = data["courseName"] as? String,
+            let teeName = data["teeName"] as? String,
+            let holeCount = data["holeCount"] as? Int
+        else { return nil }
+
+        let playerPayload = data["players"] as? [String: [String: Any]] ?? [:]
+        let scorePayload = data["scores"] as? [String: [Int]] ?? [:]
+        let holePayload = data["currentHoleByUser"] as? [String: Int] ?? [:]
+
+        self.id = document.documentID
+        self.memberIds = memberIds
+        self.createdBy = createdBy
+        self.status = status
+        self.courseName = courseName
+        self.teeName = teeName
+        self.holeCount = holeCount
+        self.useHandicap = data["useHandicap"] as? Bool ?? true
+        self.players = playerPayload.mapValues(FirebaseMatchplayPlayer.init(data:))
+        self.scores = scorePayload
+        self.currentHoleByUser = holePayload
+        self.updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? Date()
+    }
+
+    func opponentId(for uid: String) -> String? {
+        memberIds.first { $0 != uid }
+    }
+
+    func score(for uid: String, holeIndex: Int) -> Int {
+        guard holeIndex >= 0 else { return 0 }
+        let values = scores[uid] ?? []
+        guard holeIndex < values.count else { return 0 }
+        return values[holeIndex]
+    }
+
+    func strokes(for uid: String, hole: Hole) -> Int {
+        guard useHandicap else { return 0 }
+        let handicap = players[uid]?.courseHandicap ?? 0
+        return handicap / 18 + (hole.strokeIndex <= handicap % 18 ? 1 : 0)
     }
 }
 

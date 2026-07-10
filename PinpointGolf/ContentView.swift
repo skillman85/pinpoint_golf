@@ -65,14 +65,17 @@ struct ContentView: View {
             Task {
                 await PushNotificationService.shared.requestPermissionAndRegister()
                 await firebaseRoundSync.refreshCloudCount()
+                await firebaseSocial.refresh()
             }
         }
         .onChange(of: firebaseAccount.user?.uid) { _, uid in
             Task {
                 if uid == nil {
                     await firebaseRoundSync.refreshCloudCount()
+                    await firebaseSocial.refresh()
                 } else {
                     await firebaseRoundSync.refreshCloudCount()
+                    await firebaseSocial.refresh()
                     await firebaseRoundSync.sync(rounds: roundArchive.rounds)
                 }
             }
@@ -443,6 +446,9 @@ extension ContentView {
                         entries: $entries,
                         handicap: roundHandicap,
                         friends: firebaseSocial.friends,
+                        firebaseSocial: firebaseSocial,
+                        currentUserId: firebaseAccount.user?.uid,
+                        playerProfile: firebaseAccount.profile,
                         sideMatch: $sideMatch,
                         finishRound: finishRound,
                         discardRound: discardCurrentRound
@@ -4565,6 +4571,195 @@ struct MatchplaySideGame: Equatable {
     }
 }
 
+struct CloudMatchplaySideCard: View {
+    let friends: [FirebaseFriendProfile]
+    let selectedCourse: GolfCourse
+    let selectedTee: TeeBox
+    let courseHandicap: Int
+    let entries: [RoundHoleEntry]
+    let currentHoleIndex: Int
+    let currentUserId: String?
+    let playerProfile: FirebaseUserProfile?
+    @ObservedObject var social: FirebaseSocialService
+
+    private var activeMatch: FirebaseMatchplayMatch? {
+        social.liveMatchplayMatches.first {
+            $0.courseName == selectedCourse.name && $0.teeName == selectedTee.name
+        } ?? social.liveMatchplayMatches.first
+    }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "flag.2.crossed.fill")
+                .font(.system(size: 15, weight: .heavy))
+                .foregroundStyle(AppTheme.mint)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(Color.white))
+
+            if let activeMatch, let currentUserId {
+                activeContent(match: activeMatch, currentUserId: currentUserId)
+            } else {
+                inactiveContent
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(LinearGradient(colors: [Color.white, AppTheme.mintWash], startPoint: .topLeading, endPoint: .bottomTrailing))
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow.opacity(0.38), radius: 7, x: 0, y: 4)
+    }
+
+    private var inactiveContent: some View {
+        Group {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Cloud Matchplay")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Text("Each player enters their own score")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Menu {
+                ForEach(friends) { friend in
+                    Button(friend.displayName) {
+                        Task {
+                            await social.startMatchplay(
+                                with: friend,
+                                course: selectedCourse,
+                                tee: selectedTee,
+                                playerProfile: playerProfile,
+                                courseHandicap: courseHandicap
+                            )
+                        }
+                    }
+                }
+            } label: {
+                Label("Start", systemImage: "play.fill")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .frame(height: 32)
+                    .background(Capsule().fill(AppTheme.mint))
+            }
+            .disabled(friends.isEmpty || currentUserId == nil)
+        }
+    }
+
+    private func activeContent(match: FirebaseMatchplayMatch, currentUserId: String) -> some View {
+        let opponentId = match.opponentId(for: currentUserId)
+        let opponentName = opponentId.flatMap { match.players[$0]?.displayName } ?? "Friend"
+        let userScore = match.score(for: currentUserId, holeIndex: currentHoleIndex)
+        let opponentScore = opponentId.map { match.score(for: $0, holeIndex: currentHoleIndex) } ?? 0
+
+        return Group {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("vs \(opponentName)")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+                Text(statusText(for: match, currentUserId: currentUserId, opponentId: opponentId))
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundStyle(statusAccent(for: match, currentUserId: currentUserId, opponentId: opponentId))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+
+            Spacer(minLength: 4)
+
+            HStack(spacing: 4) {
+                Text("You \(scoreText(userScore))")
+                    .foregroundStyle(AppTheme.mint)
+                Text("|")
+                    .foregroundStyle(AppTheme.softText.opacity(0.65))
+                Text("\(shortName(opponentName)) \(scoreText(opponentScore))")
+                    .foregroundStyle(AppTheme.gold)
+            }
+            .font(.system(size: 11, weight: .heavy, design: .rounded))
+            .padding(.horizontal, 8)
+            .frame(height: 30)
+            .background(Capsule().fill(Color.white.opacity(0.92)))
+            .lineLimit(1)
+
+            Text(match.useHandicap ? "Net" : "Gross")
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .foregroundStyle(AppTheme.mint)
+                .padding(.horizontal, 8)
+                .frame(height: 30)
+                .background(Capsule().fill(Color.white))
+
+            Button {
+                Task {
+                    await social.cancelMatchplay(match)
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .heavy))
+                    .foregroundStyle(AppTheme.softText)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(Color.white))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func scoreText(_ score: Int) -> String {
+        score > 0 ? "\(score)" : "-"
+    }
+
+    private func shortName(_ name: String) -> String {
+        name.split(separator: " ").first.map(String.init) ?? "Friend"
+    }
+
+    private func statusText(for match: FirebaseMatchplayMatch, currentUserId: String, opponentId: String?) -> String {
+        let score = matchScore(for: match, currentUserId: currentUserId, opponentId: opponentId)
+        let completed = completedHoleCount(for: match, currentUserId: currentUserId, opponentId: opponentId)
+        guard completed > 0 else { return "Waiting for scores" }
+        let holesLeft = max(0, entries.count - completed)
+        if abs(score) > holesLeft {
+            return score > 0 ? "You won \(abs(score)) & \(holesLeft)" : "Friend won \(abs(score)) & \(holesLeft)"
+        }
+        if score == 0 { return "All square through \(completed)" }
+        return score > 0 ? "You \(abs(score)) UP through \(completed)" : "Friend \(abs(score)) UP through \(completed)"
+    }
+
+    private func statusAccent(for match: FirebaseMatchplayMatch, currentUserId: String, opponentId: String?) -> Color {
+        let score = matchScore(for: match, currentUserId: currentUserId, opponentId: opponentId)
+        if score > 0 { return AppTheme.mint }
+        if score < 0 { return AppTheme.gold }
+        return AppTheme.softText
+    }
+
+    private func completedHoleCount(for match: FirebaseMatchplayMatch, currentUserId: String, opponentId: String?) -> Int {
+        guard let opponentId else { return 0 }
+        return entries.indices.filter { index in
+            match.score(for: currentUserId, holeIndex: index) > 0 && match.score(for: opponentId, holeIndex: index) > 0
+        }.count
+    }
+
+    private func matchScore(for match: FirebaseMatchplayMatch, currentUserId: String, opponentId: String?) -> Int {
+        guard let opponentId else { return 0 }
+        return entries.indices.reduce(0) { total, index in
+            let userScore = match.score(for: currentUserId, holeIndex: index)
+            let opponentScore = match.score(for: opponentId, holeIndex: index)
+            guard userScore > 0, opponentScore > 0 else { return total }
+            let hole = entries[index].hole
+            let userNet = userScore - match.strokes(for: currentUserId, hole: hole)
+            let opponentNet = opponentScore - match.strokes(for: opponentId, hole: hole)
+            if userNet < opponentNet { return total + 1 }
+            if opponentNet < userNet { return total - 1 }
+            return total
+        }
+    }
+}
+
 struct LiveRoundView: View {
     let selectedCourse: GolfCourse
     let selectedTee: TeeBox
@@ -4572,6 +4767,9 @@ struct LiveRoundView: View {
     @Binding var entries: [RoundHoleEntry]
     let handicap: Double
     let friends: [FirebaseFriendProfile]
+    @ObservedObject var firebaseSocial: FirebaseSocialService
+    let currentUserId: String?
+    let playerProfile: FirebaseUserProfile?
     @Binding var sideMatch: MatchplaySideGame
     let finishRound: () -> Void
     let discardRound: () -> Void
@@ -4630,14 +4828,17 @@ struct LiveRoundView: View {
             LiveScoringStepPill(step: $scoringStep)
                 .padding(.horizontal, 16)
 
-            if sideMatch.isActive || !friends.isEmpty {
-                MatchplaySideCard(
+            if !friends.isEmpty || activeCloudMatch != nil {
+                CloudMatchplaySideCard(
                     friends: friends,
+                    selectedCourse: selectedCourse,
                     selectedTee: selectedTee,
                     courseHandicap: courseHandicap,
                     entries: entries,
                     currentHoleIndex: currentHoleIndex,
-                    match: $sideMatch
+                    currentUserId: currentUserId,
+                    playerProfile: playerProfile,
+                    social: firebaseSocial
                 )
                 .padding(.horizontal, 16)
             }
@@ -4745,7 +4946,17 @@ struct LiveRoundView: View {
             if entries[newValue].score == 0 {
                 scoringStep = .score
             }
+            syncCurrentCloudMatchScore()
         }
+        .onChange(of: entries) { _, _ in
+            syncCurrentCloudMatchScore()
+        }
+    }
+
+    private var activeCloudMatch: FirebaseMatchplayMatch? {
+        firebaseSocial.liveMatchplayMatches.first {
+            $0.courseName == selectedCourse.name && $0.teeName == selectedTee.name
+        } ?? firebaseSocial.liveMatchplayMatches.first
     }
 
     private var primaryActionTitle: String {
@@ -4789,6 +5000,14 @@ struct LiveRoundView: View {
     private var courseHandicap: Int {
         let adjusted = (handicap * Double(selectedTee.slope) / 113.0) + (selectedTee.rating - Double(selectedTee.par))
         return max(0, Int(adjusted.rounded(.toNearestOrAwayFromZero)))
+    }
+
+    private func syncCurrentCloudMatchScore() {
+        guard let match = activeCloudMatch else { return }
+        let score = entries[currentHoleIndex].score
+        Task {
+            await firebaseSocial.syncMatchplayScore(match, holeIndex: currentHoleIndex, score: score)
+        }
     }
 
     private var scoredEntriesThroughCurrentHole: [RoundHoleEntry] {
