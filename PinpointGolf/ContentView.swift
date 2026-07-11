@@ -557,21 +557,34 @@ enum Tab: String, CaseIterable {
 
 struct AppTheme {
     static let background = LinearGradient(
-        colors: [Color(red: 0.985, green: 0.992, blue: 0.978), Color.white],
+        colors: [
+            Color(red: 0.012, green: 0.042, blue: 0.028),
+            Color(red: 0.018, green: 0.092, blue: 0.058),
+            Color(red: 0.005, green: 0.022, blue: 0.016)
+        ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
-    static let panel = Color.white
-    static let panelStrong = Color.white
-    static let subtleFill = Color(red: 0.948, green: 0.962, blue: 0.946)
-    static let ink = Color(red: 0.055, green: 0.12, blue: 0.075)
-    static let softText = Color(red: 0.36, green: 0.45, blue: 0.36)
-    static let mint = Color(red: 0.025, green: 0.39, blue: 0.17)
-    static let mintWash = Color(red: 0.918, green: 0.972, blue: 0.912)
-    static let lime = Color(red: 0.67, green: 0.90, blue: 0.16)
-    static let gold = Color(red: 0.86, green: 0.48, blue: 0.16)
-    static let border = Color(red: 0.845, green: 0.895, blue: 0.835)
-    static let shadow = Color(red: 0.03, green: 0.09, blue: 0.04).opacity(0.07)
+    static let panel = Color(red: 0.035, green: 0.105, blue: 0.075).opacity(0.94)
+    static let panelStrong = Color(red: 0.055, green: 0.145, blue: 0.098).opacity(0.96)
+    static let subtleFill = Color.white.opacity(0.075)
+    static let ink = Color.white
+    static let softText = Color(red: 0.72, green: 0.78, blue: 0.72)
+    static let mint = Color(red: 0.48, green: 0.91, blue: 0.40)
+    static let mintWash = Color(red: 0.11, green: 0.30, blue: 0.16).opacity(0.82)
+    static let lime = Color(red: 0.64, green: 0.96, blue: 0.37)
+    static let gold = Color(red: 0.94, green: 0.66, blue: 0.28)
+    static let border = Color.white.opacity(0.14)
+    static let shadow = Color.black.opacity(0.32)
+    static let danger = Color(red: 1.0, green: 0.27, blue: 0.27)
+    static let glassGradient = LinearGradient(
+        colors: [
+            Color.white.opacity(0.12),
+            Color.white.opacity(0.035)
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
 }
 
 struct HomeView: View {
@@ -592,26 +605,24 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 12) {
-                PlayerProfileCard(
-                    rounds: savedRounds,
-                    profileName: profileName,
-                    profileHomeClub: profileHomeClub,
-                    profileImageData: $profileImageData
-                )
+            VStack(alignment: .leading, spacing: 16) {
+                PremiumScreenHeader(title: "Precision Golf", subtitle: greetingLine, actionIcon: "bell.badge.fill")
 
                 PerformanceOverview(
                     rounds: savedRounds,
                     isRoundActive: isRoundActive,
+                    currentHandicap: currentHandicap,
                     startRound: startRound,
                     discardRound: { showDiscardRoundAlert = true }
                 )
+
+                PremiumHomeRecentRounds(rounds: Array(savedRounds.prefix(3)), viewRound: { selectedRound = $0 })
 
                 InsightsDashboardContent(entries: entries, savedRounds: savedRounds, isRoundActive: isRoundActive, currentHandicap: currentHandicap)
 
             }
             .padding(.horizontal, 20)
-            .padding(.top, 4)
+            .padding(.top, 18)
             .padding(.bottom, 20)
         }
         .sheet(item: $selectedRound) { round in
@@ -626,6 +637,154 @@ struct HomeView: View {
             Text("This will stop the live round and remove all unsaved scores and stats from this card.")
         }
     }
+
+    private var greetingLine: String {
+        let trimmedName = profileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = trimmedName.isEmpty ? "Player" : trimmedName
+        let club = profileHomeClub.trimmingCharacters(in: .whitespacesAndNewlines)
+        return club.isEmpty ? "Welcome back, \(name)" : "\(name) - \(club)"
+    }
+}
+
+struct PremiumScreenHeader: View {
+    let title: String
+    let subtitle: String
+    let actionIcon: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(subtitle)
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+            }
+
+            Spacer()
+
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: actionIcon)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(AppTheme.subtleFill))
+                    .overlay(Circle().stroke(AppTheme.border))
+                Circle()
+                    .fill(AppTheme.mint)
+                    .frame(width: 9, height: 9)
+                    .offset(x: -6, y: 7)
+            }
+        }
+    }
+}
+
+struct PremiumHomeRecentRounds: View {
+    let rounds: [SavedRound]
+    let viewRound: (SavedRound) -> Void
+
+    var body: some View {
+        if !rounds.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Recent Rounds")
+                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.ink)
+                    Spacer()
+                    Text("View all")
+                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .foregroundStyle(AppTheme.mint)
+                }
+
+                VStack(spacing: 0) {
+                    ForEach(rounds) { round in
+                        Button {
+                            viewRound(round)
+                        } label: {
+                            PremiumRecentRoundRow(round: round)
+                        }
+                        .buttonStyle(.plain)
+
+                        if round.id != rounds.last?.id {
+                            Divider().overlay(AppTheme.border)
+                        }
+                    }
+                }
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.glassGradient))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+                .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 10)
+            }
+        }
+    }
+}
+
+struct PremiumRecentRoundRow: View {
+    let round: SavedRound
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(red: 0.12, green: 0.38, blue: 0.16), AppTheme.lime.opacity(0.72)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 46, height: 46)
+                Image(systemName: "flag.fill")
+                    .font(.system(size: 16, weight: .heavy))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(dateText)
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.softText)
+                Text(round.courseName)
+                    .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Text("\(round.totalScore)")
+                .font(.system(.title3, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.ink)
+                .frame(minWidth: 36, alignment: .trailing)
+            Text(scoreToParText)
+                .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                .foregroundStyle(scoreToPar <= 0 ? AppTheme.mint : AppTheme.softText)
+                .frame(minWidth: 36, alignment: .trailing)
+        }
+        .padding(.vertical, 10)
+    }
+
+    private var scoreToPar: Int {
+        round.totalScore - round.totalPar
+    }
+
+    private var scoreToParText: String {
+        scoreToPar == 0 ? "E" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
+    }
+
+    private var dateText: String {
+        Self.formatter.string(from: round.date)
+    }
+
+    private static let formatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter
+    }()
 }
 
 struct RecentRoundsView: View {
@@ -791,9 +950,9 @@ struct PlayerProfileCard: View {
             }
         }
         .padding(18)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
-        .shadow(color: AppTheme.shadow.opacity(0.72), radius: 18, x: 0, y: 10)
+        .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.glassGradient))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 10)
         .onChange(of: selectedPhoto) { _, newItem in
             Task {
                 guard let data = try? await newItem?.loadTransferable(type: Data.self) else { return }
@@ -857,8 +1016,8 @@ struct ProfileMiniStat: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill.opacity(0.72)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.07)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.border.opacity(0.7)))
     }
 }
 
@@ -889,7 +1048,7 @@ struct ProfileAvatar: View {
         }
         .frame(width: 72, height: 72)
         .clipShape(Circle())
-        .overlay(Circle().stroke(.white, lineWidth: 4))
+        .overlay(Circle().stroke(Color.white.opacity(0.28), lineWidth: 3))
         .shadow(color: AppTheme.shadow, radius: 10, x: 0, y: 6)
     }
 }
@@ -911,7 +1070,7 @@ struct PlayerBadge: View {
         .foregroundStyle(color)
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .background(Capsule().fill(AppTheme.subtleFill.opacity(0.74)))
+        .background(Capsule().fill(Color.white.opacity(0.08)))
         .overlay(Capsule().stroke(AppTheme.border.opacity(0.75)))
     }
 }
@@ -1037,28 +1196,26 @@ struct RoundTimelineRow: View {
 struct PerformanceOverview: View {
     let rounds: [SavedRound]
     let isRoundActive: Bool
+    let currentHandicap: Double
     let startRound: () -> Void
     let discardRound: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 7) {
-                        HStack(spacing: 7) {
-                            Image(systemName: "calendar.badge.clock")
-                                .font(.system(size: 12, weight: .heavy))
-                            Text("\(String(seasonYear)) Season")
-                                .font(.system(.caption2, design: .rounded).weight(.heavy))
-                        }
-                        .foregroundStyle(.white.opacity(0.86))
+                        Text("Performance Summary")
+                            .font(.system(.caption, design: .rounded).weight(.heavy))
+                            .foregroundStyle(AppTheme.mint)
+                            .textCase(.uppercase)
 
                         Text("Scoring Average")
-                            .font(.system(.title3, design: .rounded).weight(.heavy))
+                            .font(.system(size: 26, weight: .heavy, design: .rounded))
                             .foregroundStyle(.white)
 
                         Text(roundCountLabel)
-                            .font(.system(.caption2, design: .rounded).weight(.heavy))
+                            .font(.system(.caption, design: .rounded).weight(.heavy))
                             .foregroundStyle(.white.opacity(0.78))
                     }
 
@@ -1071,60 +1228,46 @@ struct PerformanceOverview: View {
                     )
                 }
 
-                HStack(alignment: .bottom, spacing: 16) {
-                    Text(scoringAverage)
-                        .font(.system(size: 64, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("gross")
-                            .font(.system(.caption2, design: .rounded).weight(.heavy))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .textCase(.uppercase)
-                        Text("per round")
-                            .font(.system(.subheadline, design: .rounded).weight(.heavy))
-                            .foregroundStyle(.white.opacity(0.9))
-                    }
-                    .padding(.bottom, 11)
-                    Spacer()
+                HStack(spacing: 0) {
+                    SummaryMetric(title: "Handicap", value: handicapText, caption: "Current index")
+                    Divider().overlay(Color.white.opacity(0.18)).padding(.vertical, 10)
+                    SummaryMetric(title: "Scoring Avg", value: scoringAverage, caption: "Gross")
+                    Divider().overlay(Color.white.opacity(0.18)).padding(.vertical, 10)
+                    SummaryMetric(title: "Last Round", value: latestRoundScore, caption: latestRoundDate)
                 }
             }
             .padding(20)
             .background(
-                UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 8)
-                    .fill(
-                        LinearGradient(
-                            colors: [AppTheme.mint, AppTheme.lime],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(red: 0.025, green: 0.08, blue: 0.052))
+                    FairwayCardBackdrop()
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.38), Color.black.opacity(0.04)],
+                        startPoint: .leading,
+                        endPoint: .trailing
                     )
-            )
-
-            VStack(spacing: 14) {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    CompactMetricPill(title: "Stableford", value: averageStableford, tint: AppTheme.mint)
-                    CompactMetricPill(title: "Putts", value: averagePutts, tint: AppTheme.gold)
-                    CompactMetricPill(title: "Penalties", value: averagePenalties, tint: Color(red: 0.82, green: 0.34, blue: 0.20))
-                    CompactMetricPill(title: "Fairways", value: "\(fairwayPercent)%", tint: AppTheme.mint)
-                    CompactMetricPill(title: "GIR", value: "\(girPercent)%", tint: Color(red: 0.11, green: 0.42, blue: 0.74))
-                    CompactMetricPill(title: "Scramble", value: "\(scramblePercent)%", tint: Color(red: 0.42, green: 0.22, blue: 0.58))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
+            )
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
 
-                ScoringMixStrip(
-                    birdies: averageBirdies,
-                    pars: averagePars,
-                    bogeys: averageBogeys,
-                    doubles: averageDoublesOrWorse
-                )
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                PremiumDashboardMetric(icon: "flag.circle", title: "Fairways Hit", value: "\(fairwayPercent)%", caption: "vs season", trend: "+6%", tint: AppTheme.mint)
+                PremiumDashboardMetric(icon: "target", title: "GIR", value: "\(girPercent)%", caption: "greens in regulation", trend: "+4%", tint: AppTheme.lime)
+                PremiumDashboardMetric(icon: "figure.golf", title: "Putts", value: averagePutts, caption: "per round", trend: "-1.3", tint: AppTheme.mint)
+                PremiumDashboardMetric(icon: "waveform.path.ecg", title: "Scrambling", value: "\(scramblePercent)%", caption: "up and downs", trend: "+3%", tint: AppTheme.lime)
             }
-            .padding(16)
-            .background(Color.white)
+
+            ScoringMixStrip(
+                birdies: averageBirdies,
+                pars: averagePars,
+                bogeys: averageBogeys,
+                doubles: averageDoublesOrWorse
+            )
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
-        .shadow(color: AppTheme.shadow.opacity(0.72), radius: 18, x: 0, y: 10)
+        .padding(0)
     }
 
     private var seasonRounds: [SavedRound] {
@@ -1139,6 +1282,21 @@ struct PerformanceOverview: View {
         guard !seasonRounds.isEmpty else { return "-" }
         let average = Double(seasonRounds.reduce(0) { $0 + $1.totalScore }) / Double(seasonRounds.count)
         return String(format: "%.1f", average)
+    }
+
+    private var handicapText: String {
+        String(format: "%.1f", currentHandicap)
+    }
+
+    private var latestRoundScore: String {
+        seasonRounds.sorted { $0.date > $1.date }.first.map { "\($0.totalScore)" } ?? "-"
+    }
+
+    private var latestRoundDate: String {
+        guard let latest = seasonRounds.sorted(by: { $0.date > $1.date }).first else {
+            return "No rounds"
+        }
+        return Self.shortDateFormatter.string(from: latest.date)
     }
 
     private var roundCountLabel: String {
@@ -1209,6 +1367,125 @@ struct PerformanceOverview: View {
         let average = Double(total) / Double(seasonRounds.count)
         return String(format: "%.1f", average)
     }
+
+    private static let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter
+    }()
+}
+
+struct SummaryMetric: View {
+    let title: String
+    let value: String
+    let caption: String
+
+    var body: some View {
+        VStack(spacing: 7) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.76))
+                .textCase(.uppercase)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(value)
+                .font(.system(size: 35, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+            Text(caption)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppTheme.mint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct FairwayCardBackdrop: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.05, green: 0.23, blue: 0.11), Color(red: 0.01, green: 0.07, blue: 0.04)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            ForEach(0..<7, id: \.self) { index in
+                Capsule()
+                    .fill(Color.white.opacity(index.isMultiple(of: 2) ? 0.055 : 0.025))
+                    .frame(width: 240, height: 34)
+                    .rotationEffect(.degrees(-12))
+                    .offset(x: CGFloat(index * 42) - 140, y: CGFloat(index * 21) - 30)
+            }
+
+            Circle()
+                .fill(AppTheme.lime.opacity(0.16))
+                .blur(radius: 22)
+                .frame(width: 130, height: 130)
+                .offset(x: 130, y: -40)
+        }
+    }
+}
+
+struct PremiumDashboardMetric: View {
+    let icon: String
+    let title: String
+    let value: String
+    let caption: String
+    let trend: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 48, height: 48)
+                    .background(Circle().fill(tint.opacity(0.22)))
+                    .overlay(Circle().stroke(tint.opacity(0.28)))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.softText)
+                        .textCase(.uppercase)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                    Text(value)
+                        .font(.system(size: 30, weight: .heavy, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(1)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Text(caption)
+                    .font(.system(.caption2, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.softText)
+                Text(trend)
+                    .font(.system(.caption2, design: .rounded).weight(.heavy))
+                    .foregroundStyle(tint)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.14))
+                    Capsule()
+                        .fill(tint)
+                        .frame(width: max(18, proxy.size.width * 0.58))
+                }
+            }
+            .frame(height: 7)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 148, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.glassGradient))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+        .shadow(color: AppTheme.shadow, radius: 16, x: 0, y: 8)
+    }
 }
 
 struct ScoringMixStrip: View {
@@ -1237,8 +1514,8 @@ struct ScoringMixStrip: View {
             }
         }
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.82)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
+        .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.glassGradient))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border.opacity(0.7)))
     }
 }
 
@@ -1275,15 +1552,14 @@ struct HoleAverageCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(
                     LinearGradient(
-                        colors: [Color.white, tint.opacity(0.08)],
+                        colors: [Color.white.opacity(0.10), tint.opacity(0.14)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
         )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.18)))
-        .shadow(color: tint.opacity(0.12), radius: 14, x: 0, y: 8)
-        .shadow(color: AppTheme.shadow.opacity(0.7), radius: 8, x: 0, y: 4)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.26)))
+        .shadow(color: AppTheme.shadow, radius: 14, x: 0, y: 8)
     }
 }
 
@@ -1319,14 +1595,14 @@ struct CompactMetricPill: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(
                     LinearGradient(
-                        colors: [Color.white, tint.opacity(0.10)],
+                        colors: [Color.white.opacity(0.10), tint.opacity(0.12)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
         )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.18)))
-        .shadow(color: tint.opacity(0.12), radius: 10, x: 0, y: 6)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.24)))
+        .shadow(color: AppTheme.shadow, radius: 10, x: 0, y: 6)
     }
 }
 
@@ -1351,9 +1627,9 @@ struct ScoringMixPill: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .frame(minHeight: 72)
-        .background(RoundedRectangle(cornerRadius: 8).fill(tint.opacity(0.08)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.18)))
-        .shadow(color: tint.opacity(0.10), radius: 9, x: 0, y: 5)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.065)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.22)))
+        .shadow(color: AppTheme.shadow, radius: 9, x: 0, y: 5)
     }
 }
 
@@ -6500,22 +6776,22 @@ struct PremiumInsightRangePicker: View {
                 } label: {
                     Text(range.rawValue)
                         .font(.system(.subheadline, design: .rounded).weight(.heavy))
-                        .foregroundStyle(selection == range ? .white : AppTheme.softText)
+                        .foregroundStyle(selection == range ? Color(red: 0.02, green: 0.07, blue: 0.04) : AppTheme.softText)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
                         .background(
                             Capsule()
                                 .fill(selection == range ? AppTheme.mint : Color.clear)
-                                .shadow(color: selection == range ? AppTheme.shadow.opacity(1.6) : .clear, radius: 12, x: 0, y: 6)
+                                .shadow(color: selection == range ? AppTheme.mint.opacity(0.22) : .clear, radius: 12, x: 0, y: 6)
                         )
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(5)
-        .background(Capsule().fill(Color.white))
+        .background(Capsule().fill(Color.white.opacity(0.07)))
         .overlay(Capsule().stroke(AppTheme.border.opacity(0.65)))
-        .shadow(color: AppTheme.shadow.opacity(0.95), radius: 16, x: 0, y: 8)
+        .shadow(color: AppTheme.shadow, radius: 16, x: 0, y: 8)
     }
 }
 
@@ -6540,9 +6816,9 @@ struct PremiumPageDots: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
-        .background(Capsule().fill(Color.white.opacity(0.94)))
+        .background(Capsule().fill(Color.white.opacity(0.08)))
         .overlay(Capsule().stroke(AppTheme.border.opacity(0.55)))
-        .shadow(color: AppTheme.shadow.opacity(0.65), radius: 10, x: 0, y: 5)
+        .shadow(color: AppTheme.shadow, radius: 10, x: 0, y: 5)
         .accessibilityLabel("Insight pages")
     }
 }
@@ -6577,14 +6853,14 @@ struct PremiumStatsCard<Content: View>: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(
                     LinearGradient(
-                        colors: [Color.white, AppTheme.subtleFill.opacity(0.8)],
+                        colors: [Color.white.opacity(0.11), Color.white.opacity(0.035)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
         )
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
-        .shadow(color: AppTheme.shadow.opacity(1.6), radius: 18, x: 0, y: 10)
+        .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 10)
         .padding(.horizontal, 2)
     }
 }
@@ -7195,9 +7471,9 @@ struct PremiumMiniStat: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 108, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.07)))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
-        .shadow(color: AppTheme.shadow.opacity(0.72), radius: 10, x: 0, y: 5)
+        .shadow(color: AppTheme.shadow, radius: 10, x: 0, y: 5)
     }
 }
 
@@ -12316,8 +12592,8 @@ struct TabBar: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 58)
                         .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(selectedTab == tab ? AppTheme.subtleFill : Color.clear)
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(selectedTab == tab ? AppTheme.mintWash : Color.clear)
                         )
                     }
                 }
@@ -12326,7 +12602,11 @@ struct TabBar: View {
             .padding(.top, 8)
             .padding(.bottom, 6)
         }
-        .background(Color.white)
+        .background(
+            Color(red: 0.01, green: 0.04, blue: 0.03)
+                .opacity(0.94)
+                .ignoresSafeArea()
+        )
     }
 }
 
