@@ -571,14 +571,17 @@ final class FirebaseSocialService: ObservableObject {
     @Published private(set) var notifications: [FirebaseRoundNotification] = []
     @Published private(set) var liveMatchplayMatches: [FirebaseMatchplayMatch] = []
     @Published private(set) var matchplayHistory: [FirebaseMatchplayMatch] = []
+    @Published private(set) var liveGroupGames: [FirebaseLiveGroupGame] = []
     @Published var statusMessage: String?
     @Published var isWorking = false
 
     private let database = Firestore.firestore()
     private var matchplayListener: ListenerRegistration?
+    private var liveGroupGamesListener: ListenerRegistration?
 
     deinit {
         matchplayListener?.remove()
+        liveGroupGamesListener?.remove()
     }
 
     func refresh() async {
@@ -591,8 +594,11 @@ final class FirebaseSocialService: ObservableObject {
             notifications = []
             liveMatchplayMatches = []
             matchplayHistory = []
+            liveGroupGames = []
             matchplayListener?.remove()
             matchplayListener = nil
+            liveGroupGamesListener?.remove()
+            liveGroupGamesListener = nil
             statusMessage = "Create an account to use friends."
             return
         }
@@ -608,6 +614,7 @@ final class FirebaseSocialService: ObservableObject {
             async let loadedSharedRounds = loadSharedRounds(for: uid)
             async let loadedNotifications = loadNotifications(for: uid)
             async let loadedMatchplayHistory = loadMatchplayHistory(for: uid)
+            async let loadedLiveGroupGames = loadLiveGroupGames(for: uid)
             incomingRequests = try await requests
             friends = try await loadedFriends
             groups = try await loadedGroups
@@ -615,7 +622,9 @@ final class FirebaseSocialService: ObservableObject {
             sharedRounds = try await loadedSharedRounds
             notifications = try await loadedNotifications
             matchplayHistory = try await loadedMatchplayHistory
+            liveGroupGames = try await loadedLiveGroupGames
             startMatchplayListener(for: uid)
+            startLiveGroupGamesListener(for: uid)
             statusMessage = nil
         } catch {
             statusMessage = error.localizedDescription
@@ -1056,6 +1065,126 @@ final class FirebaseSocialService: ObservableObject {
         }
     }
 
+    func createStablefordGame(for group: FirebaseGolfGroup) async {
+        guard let uid = Auth.auth().currentUser?.uid, group.memberIds.contains(uid) else {
+            statusMessage = "You need to be in this group before creating a game."
+            return
+        }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let document = database.collection("liveGroupGames").document()
+            try await document.setData([
+                "groupId": group.id,
+                "groupName": group.name,
+                "format": "stableford",
+                "status": "active",
+                "createdBy": uid,
+                "memberIds": group.memberIds,
+                "courseName": "",
+                "teeName": "",
+                "holeCount": 18,
+                "createdAt": Timestamp(date: Date()),
+                "updatedAt": Timestamp(date: Date())
+            ])
+            statusMessage = "Stableford game started"
+            await refresh()
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func completeLiveGroupGame(_ game: FirebaseLiveGroupGame) async {
+        guard let uid = Auth.auth().currentUser?.uid, game.memberIds.contains(uid) else { return }
+
+        do {
+            try await database.collection("liveGroupGames").document(game.id).setData([
+                "status": "completed",
+                "completedAt": Timestamp(date: Date()),
+                "updatedAt": Timestamp(date: Date())
+            ], merge: true)
+            statusMessage = "Group game completed"
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func syncLiveGroupStableford(
+        course: GolfCourse,
+        tee: TeeBox,
+        entries: [RoundHoleEntry],
+        currentHoleIndex: Int,
+        courseHandicap: Int,
+        playerProfile: FirebaseUserProfile?
+    ) async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let activeGames = liveGroupGames.filter { game in
+            game.status == "active"
+            && game.format == "stableford"
+            && game.memberIds.contains(uid)
+            && (game.courseName.isEmpty || game.courseName == course.name)
+            && (game.teeName.isEmpty || game.teeName == tee.name)
+        }
+        guard !activeGames.isEmpty else { return }
+
+        let scoredEntries = entries.filter { $0.score > 0 }
+        let gross = scoredEntries.reduce(0) { $0 + $1.score }
+        let pointsByHole = entries.map { stablefordPoints(for: $0, courseHandicap: courseHandicap) }
+        let totalPoints = pointsByHole.reduce(0, +)
+        let through = scoredEntries.count
+        let completed = through >= entries.count
+        let scores = entries.map(\.score)
+        let displayName = displayName(from: playerProfile)
+
+        for game in activeGames {
+            do {
+                let gameReference = database.collection("liveGroupGames").document(game.id)
+                try await gameReference.setData([
+                    "courseName": course.name,
+                    "teeName": tee.name,
+                    "holeCount": tee.holes.count,
+                    "updatedAt": Timestamp(date: Date())
+                ], merge: true)
+
+                try await gameReference.collection("players").document(uid).setData([
+                    "userId": uid,
+                    "displayName": displayName,
+                    "photoURL": playerProfile?.photoURL ?? "",
+                    "handicap": playerProfile?.handicap ?? 0,
+                    "courseHandicap": courseHandicap,
+                    "gross": gross,
+                    "stableford": totalPoints,
+                    "through": through,
+                    "completed": completed,
+                    "currentHole": min(currentHoleIndex + 1, entries.count),
+                    "scores": scores,
+                    "points": pointsByHole,
+                    "updatedAt": Timestamp(date: Date())
+                ], merge: true)
+
+                try await createLiveGroupMoments(
+                    game: game,
+                    gameReference: gameReference,
+                    uid: uid,
+                    displayName: displayName,
+                    entries: entries,
+                    pointsByHole: pointsByHole,
+                    currentHoleIndex: currentHoleIndex,
+                    totalPoints: totalPoints,
+                    completed: completed
+                )
+
+                try await gameReference.setData([
+                    "updatedAt": Timestamp(date: Date())
+                ], merge: true)
+            } catch {
+                statusMessage = "Group leaderboard sync failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
     private func loadIncomingRequests(for uid: String) async throws -> [FirebaseFriendRequest] {
         let snapshot = try await database.collection("friendRequests")
             .whereField("toUserId", isEqualTo: uid)
@@ -1178,6 +1307,54 @@ final class FirebaseSocialService: ObservableObject {
             .sorted { ($0.completedAt ?? $0.updatedAt) > ($1.completedAt ?? $1.updatedAt) }
     }
 
+    private func loadLiveGroupGames(for uid: String) async throws -> [FirebaseLiveGroupGame] {
+        let snapshot = try await database.collection("liveGroupGames")
+            .whereField("memberIds", arrayContains: uid)
+            .whereField("status", isEqualTo: "active")
+            .getDocuments()
+
+        var games: [FirebaseLiveGroupGame] = []
+        for document in snapshot.documents {
+            guard var game = FirebaseLiveGroupGame(document: document) else { continue }
+            game.players = try await loadLiveGroupPlayers(gameId: game.id)
+            game.events = try await loadLiveGroupEvents(gameId: game.id)
+            games.append(game)
+        }
+
+        return games.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func loadLiveGroupPlayers(gameId: String) async throws -> [FirebaseLiveGroupPlayer] {
+        let snapshot = try await database.collection("liveGroupGames")
+            .document(gameId)
+            .collection("players")
+            .getDocuments()
+
+        return snapshot.documents
+            .compactMap(FirebaseLiveGroupPlayer.init(document:))
+            .sorted {
+                if $0.stableford == $1.stableford {
+                    if $0.through == $1.through {
+                        return $0.gross < $1.gross
+                    }
+                    return $0.through > $1.through
+                }
+                return $0.stableford > $1.stableford
+            }
+    }
+
+    private func loadLiveGroupEvents(gameId: String) async throws -> [FirebaseLiveGroupEvent] {
+        let snapshot = try await database.collection("liveGroupGames")
+            .document(gameId)
+            .collection("events")
+            .limit(to: 20)
+            .getDocuments()
+
+        return snapshot.documents
+            .compactMap(FirebaseLiveGroupEvent.init(document:))
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
     private func loadProfile(uid: String) async throws -> FirebaseFriendProfile {
         let snapshot = try await database.collection("users").document(uid).getDocument()
         let data = snapshot.data() ?? [:]
@@ -1225,6 +1402,35 @@ final class FirebaseSocialService: ObservableObject {
                     self?.liveMatchplayMatches = snapshot?.documents
                         .compactMap(FirebaseMatchplayMatch.init(document:))
                         .sorted { $0.updatedAt > $1.updatedAt } ?? []
+                }
+            }
+    }
+
+    private func startLiveGroupGamesListener(for uid: String) {
+        liveGroupGamesListener?.remove()
+        liveGroupGamesListener = database.collection("liveGroupGames")
+            .whereField("memberIds", arrayContains: uid)
+            .whereField("status", isEqualTo: "active")
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    if let error {
+                        self?.statusMessage = "Live group games unavailable: \(error.localizedDescription)"
+                        return
+                    }
+
+                    guard let self else { return }
+                    var games: [FirebaseLiveGroupGame] = []
+                    for document in snapshot?.documents ?? [] {
+                        guard var game = FirebaseLiveGroupGame(document: document) else { continue }
+                        do {
+                            game.players = try await self.loadLiveGroupPlayers(gameId: game.id)
+                            game.events = try await self.loadLiveGroupEvents(gameId: game.id)
+                            games.append(game)
+                        } catch {
+                            self.statusMessage = "Live leaderboard unavailable: \(error.localizedDescription)"
+                        }
+                    }
+                    self.liveGroupGames = games.sorted { $0.updatedAt > $1.updatedAt }
                 }
             }
     }
@@ -1281,6 +1487,124 @@ final class FirebaseSocialService: ObservableObject {
         }
 
         return MatchplayResult(winnerId: winnerId, margin: abs(score), holesLeft: holesLeft)
+    }
+
+    private func createLiveGroupMoments(
+        game: FirebaseLiveGroupGame,
+        gameReference: DocumentReference,
+        uid: String,
+        displayName: String,
+        entries: [RoundHoleEntry],
+        pointsByHole: [Int],
+        currentHoleIndex: Int,
+        totalPoints: Int,
+        completed: Bool
+    ) async throws {
+        guard entries.indices.contains(currentHoleIndex) else { return }
+
+        let currentEntry = entries[currentHoleIndex]
+        let holeNumber = currentEntry.hole.number
+        let holePoints = pointsByHole[currentHoleIndex]
+
+        if currentEntry.score > 0 {
+            let scoreToPar = currentEntry.score - currentEntry.hole.par
+            if scoreToPar <= -2 {
+                try await createLiveGroupEvent(
+                    gameReference: gameReference,
+                    id: "\(uid)_h\(holeNumber)_eagle",
+                    actorId: uid,
+                    actorName: displayName,
+                    type: "eagle",
+                    message: "\(displayName) made eagle or better on \(holeNumber)",
+                    holeNumber: holeNumber,
+                    stableford: totalPoints
+                )
+            } else if scoreToPar == -1 {
+                try await createLiveGroupEvent(
+                    gameReference: gameReference,
+                    id: "\(uid)_h\(holeNumber)_birdie",
+                    actorId: uid,
+                    actorName: displayName,
+                    type: "birdie",
+                    message: "\(displayName) birdied \(holeNumber)",
+                    holeNumber: holeNumber,
+                    stableford: totalPoints
+                )
+            }
+
+            if holePoints >= 4 {
+                try await createLiveGroupEvent(
+                    gameReference: gameReference,
+                    id: "\(uid)_h\(holeNumber)_points",
+                    actorId: uid,
+                    actorName: displayName,
+                    type: "bigPoints",
+                    message: "\(displayName) scored \(holePoints) Stableford points on \(holeNumber)",
+                    holeNumber: holeNumber,
+                    stableford: totalPoints
+                )
+            }
+        }
+
+        if completed {
+            try await createLiveGroupEvent(
+                gameReference: gameReference,
+                id: "\(uid)_completed",
+                actorId: uid,
+                actorName: displayName,
+                type: "completed",
+                message: "\(displayName) finished on \(totalPoints) points",
+                holeNumber: nil,
+                stableford: totalPoints
+            )
+        }
+
+        let players = try await loadLiveGroupPlayers(gameId: game.id)
+        let currentPlayerIsLeader = players.first?.userId == uid && players.count > 1
+        if currentPlayerIsLeader, totalPoints > 0 {
+            try await createLiveGroupEvent(
+                gameReference: gameReference,
+                id: "\(uid)_h\(holeNumber)_leader",
+                actorId: uid,
+                actorName: displayName,
+                type: "lead",
+                message: "\(displayName) moved top of \(game.groupName)",
+                holeNumber: holeNumber,
+                stableford: totalPoints
+            )
+        }
+    }
+
+    private func createLiveGroupEvent(
+        gameReference: DocumentReference,
+        id: String,
+        actorId: String,
+        actorName: String,
+        type: String,
+        message: String,
+        holeNumber: Int?,
+        stableford: Int
+    ) async throws {
+        var payload: [String: Any] = [
+            "actorId": actorId,
+            "actorName": actorName,
+            "type": type,
+            "message": message,
+            "stableford": stableford,
+            "createdAt": Timestamp(date: Date())
+        ]
+        if let holeNumber {
+            payload["holeNumber"] = holeNumber
+        }
+        try await gameReference.collection("events").document(id).setData(payload, merge: true)
+    }
+
+    private func stablefordPoints(for entry: RoundHoleEntry, courseHandicap: Int) -> Int {
+        if entry.pickedUp { return 0 }
+        guard entry.score > 0 else { return 0 }
+        let strokes = courseHandicap / 18 + (entry.hole.strokeIndex <= courseHandicap % 18 ? 1 : 0)
+        let netScore = entry.score - strokes
+        return max(0, 2 + (entry.hole.par - netScore))
     }
 
     private func displayName(from profile: FirebaseUserProfile?) -> String {
@@ -1478,6 +1802,125 @@ struct FirebaseMatchplayMatch: Identifiable {
         guard useHandicap else { return 0 }
         let handicap = players[uid]?.courseHandicap ?? 0
         return handicap / 18 + (hole.strokeIndex <= handicap % 18 ? 1 : 0)
+    }
+}
+
+struct FirebaseLiveGroupGame: Identifiable {
+    let id: String
+    var groupId: String
+    var groupName: String
+    var format: String
+    var status: String
+    var createdBy: String
+    var memberIds: [String]
+    var courseName: String
+    var teeName: String
+    var holeCount: Int
+    var players: [FirebaseLiveGroupPlayer]
+    var events: [FirebaseLiveGroupEvent]
+    var createdAt: Date
+    var updatedAt: Date
+
+    init?(document: QueryDocumentSnapshot) {
+        let data = document.data()
+        guard
+            let groupId = data["groupId"] as? String,
+            let groupName = data["groupName"] as? String,
+            let format = data["format"] as? String,
+            let status = data["status"] as? String,
+            let createdBy = data["createdBy"] as? String,
+            let memberIds = data["memberIds"] as? [String]
+        else { return nil }
+
+        self.id = document.documentID
+        self.groupId = groupId
+        self.groupName = groupName
+        self.format = format
+        self.status = status
+        self.createdBy = createdBy
+        self.memberIds = memberIds
+        self.courseName = data["courseName"] as? String ?? ""
+        self.teeName = data["teeName"] as? String ?? ""
+        self.holeCount = data["holeCount"] as? Int ?? 18
+        self.players = []
+        self.events = []
+        self.createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+        self.updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? createdAt
+    }
+
+    var displayCourse: String {
+        courseName.isEmpty ? "Course attaches from live scoring" : "\(courseName) • \(teeName)"
+    }
+}
+
+struct FirebaseLiveGroupPlayer: Identifiable {
+    var id: String { userId }
+    var userId: String
+    var displayName: String
+    var photoURL: String?
+    var handicap: Double
+    var courseHandicap: Int
+    var gross: Int
+    var stableford: Int
+    var through: Int
+    var completed: Bool
+    var currentHole: Int
+    var scores: [Int]
+    var points: [Int]
+    var updatedAt: Date
+
+    init?(document: QueryDocumentSnapshot) {
+        let data = document.data()
+        guard let userId = data["userId"] as? String else { return nil }
+
+        self.userId = userId
+        self.displayName = data["displayName"] as? String ?? "Golfer"
+        self.photoURL = data["photoURL"] as? String
+        self.handicap = data["handicap"] as? Double ?? 0
+        self.courseHandicap = data["courseHandicap"] as? Int ?? 0
+        self.gross = data["gross"] as? Int ?? 0
+        self.stableford = data["stableford"] as? Int ?? 0
+        self.through = data["through"] as? Int ?? 0
+        self.completed = data["completed"] as? Bool ?? false
+        self.currentHole = data["currentHole"] as? Int ?? 0
+        self.scores = data["scores"] as? [Int] ?? []
+        self.points = data["points"] as? [Int] ?? []
+        self.updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? Date()
+    }
+
+    var throughText: String {
+        completed ? "F" : through == 0 ? "-" : "\(through)"
+    }
+}
+
+struct FirebaseLiveGroupEvent: Identifiable {
+    let id: String
+    var actorId: String
+    var actorName: String
+    var type: String
+    var message: String
+    var holeNumber: Int?
+    var stableford: Int
+    var createdAt: Date
+
+    init?(document: QueryDocumentSnapshot) {
+        let data = document.data()
+        guard
+            let actorId = data["actorId"] as? String,
+            let actorName = data["actorName"] as? String,
+            let type = data["type"] as? String,
+            let message = data["message"] as? String,
+            let timestamp = data["createdAt"] as? Timestamp
+        else { return nil }
+
+        self.id = document.documentID
+        self.actorId = actorId
+        self.actorName = actorName
+        self.type = type
+        self.message = message
+        self.holeNumber = data["holeNumber"] as? Int
+        self.stableford = data["stableford"] as? Int ?? 0
+        self.createdAt = timestamp.dateValue()
     }
 }
 
