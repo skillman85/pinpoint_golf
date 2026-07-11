@@ -642,6 +642,14 @@ final class FirebaseSocialService: ObservableObject {
                 "courseName": course.name,
                 "teeName": tee.name,
                 "holeCount": holeCount,
+                "holes": tee.holes.map { hole in
+                    [
+                        "number": hole.number,
+                        "par": hole.par,
+                        "yards": hole.yards,
+                        "strokeIndex": hole.strokeIndex
+                    ]
+                },
                 "useHandicap": true,
                 "players": [
                     uid: [
@@ -674,7 +682,7 @@ final class FirebaseSocialService: ObservableObject {
         }
     }
 
-    func syncMatchplayScore(_ match: FirebaseMatchplayMatch, holeIndex: Int, score: Int) async {
+    func syncMatchplayScore(_ match: FirebaseMatchplayMatch, holeIndex: Int, score: Int, holes: [Hole]) async {
         guard let uid = Auth.auth().currentUser?.uid, match.memberIds.contains(uid) else { return }
         guard holeIndex >= 0, holeIndex < match.holeCount else { return }
 
@@ -684,12 +692,27 @@ final class FirebaseSocialService: ObservableObject {
         }
         userScores[holeIndex] = max(0, min(20, score))
 
+        var scores = match.scores
+        scores[uid] = userScores
+        var payload: [String: Any] = [
+            "scores.\(uid)": userScores,
+            "currentHoleByUser.\(uid)": holeIndex,
+            "updatedAt": Timestamp(date: Date())
+        ]
+        if let result = matchplayResult(match: match, scores: scores, holes: holes) {
+            payload["status"] = "completed"
+            payload["completedAt"] = Timestamp(date: Date())
+            payload["resultMargin"] = result.margin
+            payload["resultHolesLeft"] = result.holesLeft
+            if let winnerId = result.winnerId {
+                payload["winnerId"] = winnerId
+            } else {
+                payload["winnerId"] = FieldValue.delete()
+            }
+        }
+
         do {
-            try await database.collection("matchplayMatches").document(match.id).updateData([
-                "scores.\(uid)": userScores,
-                "currentHoleByUser.\(uid)": holeIndex,
-                "updatedAt": Timestamp(date: Date())
-            ])
+            try await database.collection("matchplayMatches").document(match.id).updateData(payload)
         } catch {
             statusMessage = "Matchplay sync failed: \(error.localizedDescription)"
         }
@@ -730,6 +753,8 @@ final class FirebaseSocialService: ObservableObject {
             let score = matchplayScore(match: match, scores: scores, holes: entries.map(\.hole))
             payload["status"] = "completed"
             payload["completedAt"] = Timestamp(date: Date())
+            payload["resultMargin"] = abs(score)
+            payload["resultHolesLeft"] = 0
             if score > 0 {
                 payload["winnerId"] = uid
             } else if score < 0, let opponentId = match.opponentId(for: uid) {
@@ -1149,7 +1174,7 @@ final class FirebaseSocialService: ObservableObject {
 
         return snapshot.documents
             .compactMap(FirebaseMatchplayMatch.init(document:))
-            .filter { $0.status == "completed" }
+            .filter { $0.status != "cancelled" }
             .sorted { ($0.completedAt ?? $0.updatedAt) > ($1.completedAt ?? $1.updatedAt) }
     }
 
@@ -1229,12 +1254,47 @@ final class FirebaseSocialService: ObservableObject {
         }
     }
 
+    private func matchplayResult(match: FirebaseMatchplayMatch, scores: [String: [Int]], holes: [Hole]) -> MatchplayResult? {
+        guard let uid = Auth.auth().currentUser?.uid,
+              let opponentId = match.opponentId(for: uid)
+        else { return nil }
+
+        let completed = holes.indices.filter { index in
+            let userValues = scores[uid] ?? []
+            let opponentValues = scores[opponentId] ?? []
+            let userScore = index < userValues.count ? userValues[index] : 0
+            let opponentScore = index < opponentValues.count ? opponentValues[index] : 0
+            return userScore > 0 && opponentScore > 0
+        }.count
+        let score = matchplayScore(match: match, scores: scores, holes: holes)
+        let holesLeft = max(0, holes.count - completed)
+
+        guard abs(score) > holesLeft || completed == holes.count else { return nil }
+
+        let winnerId: String?
+        if score > 0 {
+            winnerId = uid
+        } else if score < 0 {
+            winnerId = opponentId
+        } else {
+            winnerId = nil
+        }
+
+        return MatchplayResult(winnerId: winnerId, margin: abs(score), holesLeft: holesLeft)
+    }
+
     private func displayName(from profile: FirebaseUserProfile?) -> String {
         guard let profile, !profile.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return "A friend"
         }
         return profile.displayName
     }
+}
+
+private struct MatchplayResult {
+    let winnerId: String?
+    let margin: Int
+    let holesLeft: Int
 }
 
 struct FirebaseFriendProfile: Identifiable {
@@ -1323,6 +1383,30 @@ struct FirebaseMatchplayPlayer {
     }
 }
 
+struct FirebaseMatchplayHole {
+    var number: Int
+    var par: Int
+    var yards: Int
+    var strokeIndex: Int
+
+    init?(data: [String: Any]) {
+        guard
+            let number = data["number"] as? Int,
+            let par = data["par"] as? Int,
+            let strokeIndex = data["strokeIndex"] as? Int
+        else { return nil }
+
+        self.number = number
+        self.par = par
+        self.yards = data["yards"] as? Int ?? 0
+        self.strokeIndex = strokeIndex
+    }
+
+    var hole: Hole {
+        Hole(number: number, par: par, yards: yards, strokeIndex: strokeIndex)
+    }
+}
+
 struct FirebaseMatchplayMatch: Identifiable {
     let id: String
     var memberIds: [String]
@@ -1331,12 +1415,15 @@ struct FirebaseMatchplayMatch: Identifiable {
     var courseName: String
     var teeName: String
     var holeCount: Int
+    var holes: [FirebaseMatchplayHole]
     var useHandicap: Bool
     var players: [String: FirebaseMatchplayPlayer]
     var scores: [String: [Int]]
     var currentHoleByUser: [String: Int]
     var playerFinishedIds: [String]
     var winnerId: String?
+    var resultMargin: Int?
+    var resultHolesLeft: Int?
     var completedAt: Date?
     var updatedAt: Date
 
@@ -1354,6 +1441,7 @@ struct FirebaseMatchplayMatch: Identifiable {
         let playerPayload = data["players"] as? [String: [String: Any]] ?? [:]
         let scorePayload = data["scores"] as? [String: [Int]] ?? [:]
         let holePayload = data["currentHoleByUser"] as? [String: Int] ?? [:]
+        let holesPayload = data["holes"] as? [[String: Any]] ?? []
 
         self.id = document.documentID
         self.memberIds = memberIds
@@ -1362,12 +1450,15 @@ struct FirebaseMatchplayMatch: Identifiable {
         self.courseName = courseName
         self.teeName = teeName
         self.holeCount = holeCount
+        self.holes = holesPayload.compactMap(FirebaseMatchplayHole.init(data:)).sorted { $0.number < $1.number }
         self.useHandicap = data["useHandicap"] as? Bool ?? true
         self.players = playerPayload.mapValues(FirebaseMatchplayPlayer.init(data:))
         self.scores = scorePayload
         self.currentHoleByUser = holePayload
         self.playerFinishedIds = data["playerFinishedIds"] as? [String] ?? []
         self.winnerId = data["winnerId"] as? String
+        self.resultMargin = data["resultMargin"] as? Int
+        self.resultHolesLeft = data["resultHolesLeft"] as? Int
         self.completedAt = (data["completedAt"] as? Timestamp)?.dateValue()
         self.updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? Date()
     }

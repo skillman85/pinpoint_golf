@@ -5007,7 +5007,7 @@ struct LiveRoundView: View {
         guard let match = activeCloudMatch else { return }
         let score = entries[currentHoleIndex].score
         Task {
-            await firebaseSocial.syncMatchplayScore(match, holeIndex: currentHoleIndex, score: score)
+            await firebaseSocial.syncMatchplayScore(match, holeIndex: currentHoleIndex, score: score, holes: selectedTee.holes)
         }
     }
 
@@ -9043,20 +9043,78 @@ struct MatchplayFriendRecord {
         }
 
         let friendMatches = matches.filter {
-            $0.status == "completed"
-                && $0.memberIds.contains(currentUserId)
+            $0.memberIds.contains(currentUserId)
                 && $0.memberIds.contains(friend.uid)
         }
 
-        wins = friendMatches.filter { $0.winnerId == currentUserId }.count
-        losses = friendMatches.filter { $0.winnerId == friend.uid }.count
-        halves = friendMatches.filter { $0.winnerId == nil }.count
+        let outcomes = friendMatches.compactMap {
+            Self.outcome(for: $0, currentUserId: currentUserId, friendId: friend.uid)
+        }
+
+        wins = outcomes.filter { $0 == .win }.count
+        losses = outcomes.filter { $0 == .loss }.count
+        halves = outcomes.filter { $0 == .half }.count
     }
 
     var played: Int { wins + losses + halves }
 
     var summary: String {
         played == 0 ? "No matches yet" : "\(wins)W \(losses)L \(halves)H"
+    }
+
+    private enum Outcome {
+        case win
+        case loss
+        case half
+    }
+
+    private static func outcome(for match: FirebaseMatchplayMatch, currentUserId: String, friendId: String) -> Outcome? {
+        if match.status == "completed" {
+            if match.winnerId == currentUserId { return .win }
+            if match.winnerId == friendId { return .loss }
+            return .half
+        }
+
+        guard let holes = resolvedHoles(for: match) else { return nil }
+        let score = matchScore(match: match, currentUserId: currentUserId, friendId: friendId, holes: holes)
+        let completed = completedHoleCount(match: match, currentUserId: currentUserId, friendId: friendId, holes: holes)
+        let holesLeft = max(0, holes.count - completed)
+        guard abs(score) > holesLeft || completed == holes.count else { return nil }
+        if score > 0 { return .win }
+        if score < 0 { return .loss }
+        return .half
+    }
+
+    private static func resolvedHoles(for match: FirebaseMatchplayMatch) -> [Hole]? {
+        if !match.holes.isEmpty {
+            return match.holes.map(\.hole)
+        }
+
+        return CourseDatabase.courses
+            .first { $0.name.localizedCaseInsensitiveCompare(match.courseName) == .orderedSame }?
+            .tees
+            .first { $0.name.localizedCaseInsensitiveCompare(match.teeName) == .orderedSame }?
+            .holes
+    }
+
+    private static func completedHoleCount(match: FirebaseMatchplayMatch, currentUserId: String, friendId: String, holes: [Hole]) -> Int {
+        holes.indices.filter { index in
+            match.score(for: currentUserId, holeIndex: index) > 0 && match.score(for: friendId, holeIndex: index) > 0
+        }.count
+    }
+
+    private static func matchScore(match: FirebaseMatchplayMatch, currentUserId: String, friendId: String, holes: [Hole]) -> Int {
+        holes.indices.reduce(0) { total, index in
+            let userScore = match.score(for: currentUserId, holeIndex: index)
+            let friendScore = match.score(for: friendId, holeIndex: index)
+            guard userScore > 0, friendScore > 0 else { return total }
+            let hole = holes[index]
+            let userNet = userScore - match.strokes(for: currentUserId, hole: hole)
+            let friendNet = friendScore - match.strokes(for: friendId, hole: hole)
+            if userNet < friendNet { return total + 1 }
+            if friendNet < userNet { return total - 1 }
+            return total
+        }
     }
 }
 
