@@ -565,9 +565,9 @@ struct AppTheme {
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
-    static let panel = Color(red: 0.035, green: 0.105, blue: 0.075).opacity(0.94)
-    static let panelStrong = Color(red: 0.055, green: 0.145, blue: 0.098).opacity(0.96)
-    static let subtleFill = Color.white.opacity(0.075)
+    static let panel = Color(red: 0.045, green: 0.128, blue: 0.088).opacity(0.98)
+    static let panelStrong = Color(red: 0.065, green: 0.168, blue: 0.108).opacity(0.98)
+    static let subtleFill = Color.white.opacity(0.11)
     static let ink = Color.white
     static let softText = Color(red: 0.72, green: 0.78, blue: 0.72)
     static let mint = Color(red: 0.48, green: 0.91, blue: 0.40)
@@ -579,8 +579,8 @@ struct AppTheme {
     static let danger = Color(red: 1.0, green: 0.27, blue: 0.27)
     static let glassGradient = LinearGradient(
         colors: [
-            Color.white.opacity(0.12),
-            Color.white.opacity(0.035)
+            Color.white.opacity(0.15),
+            Color.white.opacity(0.065)
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
@@ -655,7 +655,7 @@ struct PremiumScreenHeader: View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
-                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -693,11 +693,11 @@ struct PremiumHomeRecentRounds: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("Recent Rounds")
-                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                        .font(.system(.headline, design: .rounded).weight(.semibold))
                         .foregroundStyle(AppTheme.ink)
                     Spacer()
                     Text("View all")
-                        .font(.system(.caption, design: .rounded).weight(.heavy))
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
                         .foregroundStyle(AppTheme.mint)
                 }
 
@@ -744,24 +744,28 @@ struct PremiumRecentRoundRow: View {
                     .foregroundStyle(.white)
             }
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 7) {
                 Text(dateText)
-                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .font(.system(.caption, design: .rounded).weight(.medium))
                     .foregroundStyle(AppTheme.softText)
                 Text(round.courseName)
-                    .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
                     .foregroundStyle(AppTheme.ink)
                     .lineLimit(1)
+                HStack(spacing: 8) {
+                    RoundSplitChip(title: "F9", value: frontNineScore)
+                    RoundSplitChip(title: "B9", value: backNineScore)
+                }
             }
 
             Spacer()
 
             Text("\(round.totalScore)")
-                .font(.system(.title3, design: .rounded).weight(.heavy))
+                .font(.system(.title3, design: .rounded).weight(.semibold))
                 .foregroundStyle(AppTheme.ink)
                 .frame(minWidth: 36, alignment: .trailing)
             Text(scoreToParText)
-                .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                .font(.system(.subheadline, design: .rounded).weight(.semibold))
                 .foregroundStyle(scoreToPar <= 0 ? AppTheme.mint : AppTheme.softText)
                 .frame(minWidth: 36, alignment: .trailing)
         }
@@ -776,6 +780,15 @@ struct PremiumRecentRoundRow: View {
         scoreToPar == 0 ? "E" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
     }
 
+    private var frontNineScore: String {
+        "\(round.holes.filter { $0.holeNumber <= 9 }.reduce(0) { $0 + $1.score })"
+    }
+
+    private var backNineScore: String {
+        let back = round.holes.filter { $0.holeNumber > 9 }
+        return back.isEmpty ? "-" : "\(back.reduce(0) { $0 + $1.score })"
+    }
+
     private var dateText: String {
         Self.formatter.string(from: round.date)
     }
@@ -785,6 +798,26 @@ struct PremiumRecentRoundRow: View {
         formatter.dateFormat = "MMM d, yyyy"
         return formatter
     }()
+}
+
+struct RoundSplitChip: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.softText)
+            Text(value)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(Color.white.opacity(0.095)))
+        .overlay(Capsule().stroke(AppTheme.border.opacity(0.8)))
+    }
 }
 
 struct RecentRoundsView: View {
@@ -1206,16 +1239,16 @@ struct PerformanceOverview: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 7) {
                         Text("Performance Summary")
-                            .font(.system(.caption, design: .rounded).weight(.heavy))
+                            .font(.system(.caption, design: .rounded).weight(.semibold))
                             .foregroundStyle(AppTheme.mint)
                             .textCase(.uppercase)
 
                         Text("Scoring Average")
-                            .font(.system(size: 26, weight: .heavy, design: .rounded))
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
 
                         Text(roundCountLabel)
-                            .font(.system(.caption, design: .rounded).weight(.heavy))
+                            .font(.system(.caption, design: .rounded).weight(.medium))
                             .foregroundStyle(.white.opacity(0.78))
                     }
 
@@ -1383,18 +1416,18 @@ struct SummaryMetric: View {
     var body: some View {
         VStack(spacing: 7) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(.white.opacity(0.76))
                 .textCase(.uppercase)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(value)
-                .font(.system(size: 35, weight: .heavy, design: .rounded))
+                .font(.system(size: 35, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.62)
             Text(caption)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(AppTheme.mint)
                 .lineLimit(1)
                 .minimumScaleFactor(0.62)
@@ -1449,13 +1482,13 @@ struct PremiumDashboardMetric: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .font(.system(.caption, design: .rounded).weight(.medium))
                         .foregroundStyle(AppTheme.softText)
                         .textCase(.uppercase)
                         .lineLimit(1)
                         .minimumScaleFactor(0.65)
                     Text(value)
-                        .font(.system(size: 30, weight: .heavy, design: .rounded))
+                        .font(.system(size: 30, weight: .semibold, design: .rounded))
                         .foregroundStyle(AppTheme.ink)
                         .lineLimit(1)
                 }
@@ -1466,7 +1499,7 @@ struct PremiumDashboardMetric: View {
                     .font(.system(.caption2, design: .rounded).weight(.semibold))
                     .foregroundStyle(AppTheme.softText)
                 Text(trend)
-                    .font(.system(.caption2, design: .rounded).weight(.heavy))
+                    .font(.system(.caption2, design: .rounded).weight(.semibold))
                     .foregroundStyle(tint)
             }
 
@@ -1993,15 +2026,15 @@ struct SavedRoundRow: View {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
                             Text(round.courseName)
-                                .font(.system(.headline, design: .rounded).weight(.bold))
+                                .font(.system(.headline, design: .rounded).weight(.semibold))
                                 .foregroundStyle(AppTheme.ink)
                             Spacer()
                             VStack(alignment: .trailing, spacing: 5) {
                                 Text(round.summary.dateLabel)
-                                    .font(.system(.caption, design: .rounded).weight(.bold))
+                                    .font(.system(.caption, design: .rounded).weight(.medium))
                                     .foregroundStyle(AppTheme.softText)
                                 Text(handicapText)
-                                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                                    .font(.system(.caption, design: .rounded).weight(.semibold))
                                     .foregroundStyle(AppTheme.ink)
                                     .padding(.vertical, 5)
                                     .padding(.horizontal, 8)
@@ -2011,8 +2044,13 @@ struct SavedRoundRow: View {
                         HStack(spacing: 6) {
                             TeeMarkerSwatch(marker: round.teeMarkerColor ?? TeeMarkerColor.inferred(from: round.teeName), size: 10)
                             Text("\(round.teeName) tees - \(round.greensInRegulation) GIR - \(round.totalPutts) putts\(stablefordText)")
-                                .font(.system(.caption, design: .rounded).weight(.semibold))
+                                .font(.system(.caption, design: .rounded).weight(.medium))
                                 .foregroundStyle(AppTheme.softText)
+                        }
+                        HStack(spacing: 8) {
+                            RoundSplitChip(title: "Front 9", value: frontNineScore)
+                            RoundSplitChip(title: "Back 9", value: backNineScore)
+                            RoundSplitChip(title: "Total", value: "\(round.totalScore)")
                         }
                         Text("Tap to review full hole-by-hole stats")
                             .font(.system(.caption, design: .rounded))
@@ -2048,6 +2086,15 @@ struct SavedRoundRow: View {
     private var stablefordText: String {
         guard let points = round.stablefordPoints else { return "" }
         return " - \(points) pts"
+    }
+
+    private var frontNineScore: String {
+        "\(round.holes.filter { $0.holeNumber <= 9 }.reduce(0) { $0 + $1.score })"
+    }
+
+    private var backNineScore: String {
+        let back = round.holes.filter { $0.holeNumber > 9 }
+        return back.isEmpty ? "-" : "\(back.reduce(0) { $0 + $1.score })"
     }
 
     private var handicapText: String {
@@ -6355,6 +6402,8 @@ struct InsightsDashboardContent: View {
 
             PremiumInsightRangePicker(selection: $selectedRange)
 
+            ScoringTrendInsightCard(snapshot: snapshot, rounds: selectedRounds)
+
             TabView(selection: $selectedInsightPage) {
                 StrengthWeaknessPremiumCard(snapshot: snapshot, currentHandicap: currentHandicap, averageScore: formatAverage(snapshot.averageScore), puttsPerRound: formatAverage(snapshot.puttsPerRound))
                     .tag(0)
@@ -6792,6 +6841,272 @@ struct PremiumInsightRangePicker: View {
         .background(Capsule().fill(Color.white.opacity(0.07)))
         .overlay(Capsule().stroke(AppTheme.border.opacity(0.65)))
         .shadow(color: AppTheme.shadow, radius: 16, x: 0, y: 8)
+    }
+}
+
+struct ScoringTrendInsightCard: View {
+    let snapshot: InsightSnapshot
+    let rounds: [SavedRound]
+
+    private var trendRounds: [SavedRound] {
+        Array(rounds.sorted { $0.date < $1.date }.suffix(10))
+    }
+
+    private var scores: [Double] {
+        trendRounds.map { Double($0.totalScore) }
+    }
+
+    private var averageScore: String {
+        guard snapshot.roundCount > 0 else { return "-" }
+        return String(format: "%.1f", snapshot.averageScore)
+    }
+
+    private var previousDelta: Double? {
+        guard rounds.count >= 4 else { return nil }
+        let ordered = rounds.sorted { $0.date < $1.date }
+        let recent = Array(ordered.suffix(min(10, ordered.count / 2)))
+        let previous = Array(ordered.dropLast(recent.count).suffix(recent.count))
+        guard !recent.isEmpty, !previous.isEmpty else { return nil }
+        let recentAverage = Double(recent.reduce(0) { $0 + $1.totalScore }) / Double(recent.count)
+        let previousAverage = Double(previous.reduce(0) { $0 + $1.totalScore }) / Double(previous.count)
+        return recentAverage - previousAverage
+    }
+
+    private var frontNineAverage: String {
+        formatAverage(for: rounds.flatMap { $0.holes.filter { $0.holeNumber <= 9 } })
+    }
+
+    private var backNineAverage: String {
+        formatAverage(for: rounds.flatMap { $0.holes.filter { $0.holeNumber > 9 } })
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Scoring Average Trend")
+                    .font(.system(.caption, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.ink.opacity(0.88))
+                    .textCase(.uppercase)
+
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(averageScore)
+                            .font(.system(size: 38, weight: .semibold, design: .rounded))
+                            .foregroundStyle(AppTheme.mint)
+                            .lineLimit(1)
+                        Text("\(max(trendRounds.count, snapshot.roundCount)) round average")
+                            .font(.system(.caption, design: .rounded).weight(.medium))
+                            .foregroundStyle(AppTheme.softText)
+                        HStack(spacing: 4) {
+                            Image(systemName: deltaIcon)
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(deltaText)
+                                .font(.system(.caption, design: .rounded).weight(.medium))
+                        }
+                        .foregroundStyle(deltaColor)
+                    }
+                    .frame(width: 112, alignment: .leading)
+
+                    PremiumLineChart(values: scores)
+                        .frame(height: 120)
+                }
+            }
+            .padding(18)
+            .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.glassGradient))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                PremiumFrontBackCard(front: frontNineAverage, back: backNineAverage, caption: frontBackCaption)
+                PremiumParPerformanceCard(
+                    par3: formatOptional(snapshot.par3Average),
+                    par4: formatOptional(snapshot.par4Average),
+                    par5: formatOptional(snapshot.par5Average)
+                )
+            }
+        }
+    }
+
+    private var deltaIcon: String {
+        guard let previousDelta else { return "minus" }
+        return previousDelta <= 0 ? "arrowtriangle.down.fill" : "arrowtriangle.up.fill"
+    }
+
+    private var deltaText: String {
+        guard let previousDelta else { return "Build a few more rounds" }
+        let absolute = abs(previousDelta)
+        return "\(String(format: "%.1f", absolute)) vs previous set"
+    }
+
+    private var deltaColor: Color {
+        guard let previousDelta else { return AppTheme.softText }
+        return previousDelta <= 0 ? AppTheme.mint : AppTheme.danger
+    }
+
+    private var frontBackCaption: String {
+        guard let front = Double(frontNineAverage), let back = Double(backNineAverage) else {
+            return "Need more completed rounds"
+        }
+        let delta = abs(back - front)
+        if delta < 0.3 { return "Balanced scoring" }
+        return back > front ? "Back 9 needs focus" : "Front 9 needs focus"
+    }
+
+    private func formatAverage(for holes: [SavedHoleEntry]) -> String {
+        guard !rounds.isEmpty else { return "-" }
+        let total = holes.reduce(0) { $0 + $1.score }
+        return String(format: "%.1f", Double(total) / Double(rounds.count))
+    }
+
+    private func formatOptional(_ value: Double?) -> String {
+        guard let value else { return "-" }
+        return String(format: "%.2f", value)
+    }
+}
+
+struct PremiumLineChart: View {
+    let values: [Double]
+
+    private var chartValues: [Double] {
+        values.isEmpty ? [0, 0] : values
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let minValue = max((chartValues.min() ?? 0) - 3, 0)
+            let maxValue = (chartValues.max() ?? 1) + 3
+            let range = max(maxValue - minValue, 1)
+
+            ZStack {
+                VStack(spacing: 0) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        Rectangle()
+                            .fill(Color.white.opacity(0.12))
+                            .frame(height: 1)
+                        Spacer()
+                    }
+                }
+
+                Path { path in
+                    for (index, value) in chartValues.enumerated() {
+                        let x = chartValues.count == 1 ? size.width / 2 : CGFloat(index) / CGFloat(chartValues.count - 1) * size.width
+                        let y = size.height - CGFloat((value - minValue) / range) * size.height
+                        if index == 0 {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+                }
+                .stroke(AppTheme.mint, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+
+                ForEach(Array(chartValues.enumerated()), id: \.offset) { index, value in
+                    let x = chartValues.count == 1 ? size.width / 2 : CGFloat(index) / CGFloat(chartValues.count - 1) * size.width
+                    let y = size.height - CGFloat((value - minValue) / range) * size.height
+                    Circle()
+                        .fill(Color(red: 0.02, green: 0.06, blue: 0.04))
+                        .frame(width: 9, height: 9)
+                        .overlay(Circle().stroke(AppTheme.mint, lineWidth: 2))
+                        .position(x: x, y: y)
+                }
+            }
+        }
+    }
+}
+
+struct PremiumFrontBackCard: View {
+    let front: String
+    let back: String
+    let caption: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Front 9 vs Back 9")
+                .font(.system(.caption, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.ink.opacity(0.88))
+                .textCase(.uppercase)
+
+            HStack(spacing: 0) {
+                splitMetric(title: "Front 9 Avg", value: front)
+                Divider().overlay(AppTheme.border).padding(.vertical, 6)
+                splitMetric(title: "Back 9 Avg", value: back)
+            }
+
+            Text(caption)
+                .font(.system(.caption, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.softText)
+                .lineLimit(2)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 160, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.glassGradient))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+    }
+
+    private func splitMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(value)
+                .font(.system(size: 30, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+            Text(title)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.softText)
+                .textCase(.uppercase)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct PremiumParPerformanceCard: View {
+    let par3: String
+    let par4: String
+    let par5: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Par Performance")
+                .font(.system(.caption, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.ink.opacity(0.88))
+                .textCase(.uppercase)
+
+            HStack(spacing: 0) {
+                parMetric(title: "Par 3", value: par3)
+                Divider().overlay(AppTheme.border).padding(.vertical, 6)
+                parMetric(title: "Par 4", value: par4)
+                Divider().overlay(AppTheme.border).padding(.vertical, 6)
+                parMetric(title: "Par 5", value: par5)
+            }
+
+            Text("Hole scoring by par")
+                .font(.system(.caption, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.softText)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 160, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.glassGradient))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+    }
+
+    private func parMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.softText)
+                .textCase(.uppercase)
+            Text(value)
+                .font(.system(size: 26, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+            HStack(spacing: 3) {
+                Image(systemName: "arrowtriangle.down.fill")
+                    .font(.system(size: 8, weight: .semibold))
+                Text("trend")
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+            }
+            .foregroundStyle(AppTheme.mint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
