@@ -19,6 +19,7 @@ struct ContentView: View {
     @AppStorage("precision.profileName") private var profileName = ""
     @AppStorage("precision.profileHomeClub") private var profileHomeClub = ""
     @AppStorage("precision.profileOnboardingComplete") private var profileOnboardingComplete = false
+    @AppStorage("precision.appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
     @State private var selectedTab: Tab = .home
     @State private var selectedCourse = CourseDatabase.courses[0]
     @State private var selectedTee = CourseDatabase.courses[0].tees[0]
@@ -47,7 +48,7 @@ struct ContentView: View {
                 TabBar(selectedTab: $selectedTab)
             }
         }
-        .preferredColorScheme(.light)
+        .preferredColorScheme(AppearanceMode(rawValue: appearanceMode)?.colorScheme)
         .fullScreenCover(isPresented: $isRoundFlowPresented) {
             roundFlow
         }
@@ -120,6 +121,11 @@ struct ContentView: View {
                     profileName: profileName,
                     profileHomeClub: profileHomeClub,
                     profileImageData: $profileImageData,
+                    notificationCount: firebaseSocial.notifications.count + firebaseSocial.incomingRequests.count + firebaseSocial.groupInvites.count,
+                    openNotifications: {
+                        selectedTab = .friends
+                        Task { await firebaseSocial.refresh() }
+                    },
                     startRound: {
                         openRoundFlow()
                     },
@@ -363,6 +369,22 @@ struct ContentView: View {
     }
 }
 
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system = "System"
+    case light = "Light"
+    case dark = "Dark"
+
+    var id: String { rawValue }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+}
+
 private struct ActiveRoundDraft: Codable {
     let courseKey: String
     let teeName: String
@@ -531,7 +553,6 @@ extension ContentView {
                 )
             }
         }
-        .preferredColorScheme(.light)
     }
 }
 
@@ -556,31 +577,37 @@ enum Tab: String, CaseIterable {
 }
 
 struct AppTheme {
+    private static func adaptive(light: UIColor, dark: UIColor) -> Color {
+        Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? dark : light })
+    }
+
     static let background = LinearGradient(
         colors: [
-            Color(red: 0.012, green: 0.042, blue: 0.028),
-            Color(red: 0.018, green: 0.092, blue: 0.058),
-            Color(red: 0.005, green: 0.022, blue: 0.016)
+            adaptive(light: UIColor(red: 0.965, green: 0.978, blue: 0.968, alpha: 1), dark: UIColor(red: 0.012, green: 0.042, blue: 0.028, alpha: 1)),
+            adaptive(light: UIColor(red: 0.925, green: 0.955, blue: 0.932, alpha: 1), dark: UIColor(red: 0.018, green: 0.082, blue: 0.054, alpha: 1)),
+            adaptive(light: UIColor(red: 0.985, green: 0.988, blue: 0.985, alpha: 1), dark: UIColor(red: 0.005, green: 0.022, blue: 0.016, alpha: 1))
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
-    static let panel = Color(red: 0.045, green: 0.128, blue: 0.088).opacity(0.98)
-    static let panelStrong = Color(red: 0.065, green: 0.168, blue: 0.108).opacity(0.98)
-    static let subtleFill = Color.white.opacity(0.11)
-    static let ink = Color.white
-    static let softText = Color(red: 0.72, green: 0.78, blue: 0.72)
-    static let mint = Color(red: 0.48, green: 0.91, blue: 0.40)
-    static let mintWash = Color(red: 0.11, green: 0.30, blue: 0.16).opacity(0.82)
+    static let panel = adaptive(light: UIColor.white, dark: UIColor(red: 0.045, green: 0.105, blue: 0.076, alpha: 1))
+    static let panelStrong = adaptive(light: UIColor(red: 0.91, green: 0.95, blue: 0.92, alpha: 1), dark: UIColor(red: 0.067, green: 0.145, blue: 0.102, alpha: 1))
+    static let elevated = adaptive(light: UIColor(red: 0.975, green: 0.982, blue: 0.976, alpha: 1), dark: UIColor(red: 0.085, green: 0.145, blue: 0.112, alpha: 1))
+    static let subtleFill = adaptive(light: UIColor(red: 0.90, green: 0.93, blue: 0.91, alpha: 1), dark: UIColor(white: 1, alpha: 0.10))
+    static let ink = adaptive(light: UIColor(red: 0.025, green: 0.105, blue: 0.065, alpha: 1), dark: UIColor.white)
+    static let softText = adaptive(light: UIColor(red: 0.28, green: 0.38, blue: 0.31, alpha: 1), dark: UIColor(red: 0.74, green: 0.80, blue: 0.75, alpha: 1))
+    static let mint = adaptive(light: UIColor(red: 0.04, green: 0.46, blue: 0.19, alpha: 1), dark: UIColor(red: 0.48, green: 0.91, blue: 0.40, alpha: 1))
+    static let mintWash = adaptive(light: UIColor(red: 0.86, green: 0.94, blue: 0.88, alpha: 1), dark: UIColor(red: 0.08, green: 0.25, blue: 0.14, alpha: 1))
+    static let controlGreen = Color(red: 0.035, green: 0.40, blue: 0.16)
     static let lime = Color(red: 0.64, green: 0.96, blue: 0.37)
     static let gold = Color(red: 0.94, green: 0.66, blue: 0.28)
-    static let border = Color.white.opacity(0.14)
-    static let shadow = Color.black.opacity(0.32)
+    static let border = adaptive(light: UIColor(red: 0.72, green: 0.79, blue: 0.74, alpha: 0.72), dark: UIColor(white: 1, alpha: 0.18))
+    static let shadow = adaptive(light: UIColor(white: 0, alpha: 0.12), dark: UIColor(white: 0, alpha: 0.38))
     static let danger = Color(red: 1.0, green: 0.27, blue: 0.27)
     static let glassGradient = LinearGradient(
         colors: [
-            Color.white.opacity(0.15),
-            Color.white.opacity(0.065)
+            panelStrong,
+            panel
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
@@ -596,6 +623,8 @@ struct HomeView: View {
     let profileName: String
     let profileHomeClub: String
     @Binding var profileImageData: Data
+    let notificationCount: Int
+    let openNotifications: () -> Void
     let startRound: () -> Void
     let discardRound: () -> Void
     let deleteRound: (SavedRound) -> Void
@@ -606,7 +635,13 @@ struct HomeView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
-                PremiumScreenHeader(title: "Precision Golf", subtitle: greetingLine, actionIcon: "bell.badge.fill")
+                PremiumScreenHeader(
+                    title: "Precision Golf",
+                    subtitle: greetingLine,
+                    actionIcon: "bell.fill",
+                    badgeCount: notificationCount,
+                    action: openNotifications
+                )
 
                 PerformanceOverview(
                     rounds: savedRounds,
@@ -650,6 +685,8 @@ struct PremiumScreenHeader: View {
     let title: String
     let subtitle: String
     let actionIcon: String
+    var badgeCount: Int = 0
+    var action: () -> Void = { }
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
@@ -668,18 +705,26 @@ struct PremiumScreenHeader: View {
 
             Spacer()
 
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: actionIcon)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(AppTheme.ink)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(AppTheme.subtleFill))
-                    .overlay(Circle().stroke(AppTheme.border))
-                Circle()
-                    .fill(AppTheme.mint)
-                    .frame(width: 9, height: 9)
-                    .offset(x: -6, y: 7)
+            Button(action: action) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: actionIcon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(AppTheme.ink)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(AppTheme.subtleFill))
+                        .overlay(Circle().stroke(AppTheme.border))
+                    if badgeCount > 0 {
+                        Text(badgeCount > 9 ? "9+" : "\(badgeCount)")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .frame(minWidth: 17, minHeight: 17)
+                            .background(Capsule().fill(AppTheme.danger))
+                            .offset(x: 2, y: -2)
+                    }
+                }
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(badgeCount > 0 ? "Notifications, \(badgeCount) unread" : "Notifications")
         }
     }
 }
@@ -2184,7 +2229,6 @@ struct SavedRoundDetailView: View {
                 }
             }
         }
-        .preferredColorScheme(.light)
         .sheet(isPresented: $isEditingRound) {
             SavedRoundEditorView(round: round) { updatedRound in
                 updateRound(updatedRound)
@@ -2802,7 +2846,6 @@ struct SavedRoundEditorView: View {
                 }
             }
         }
-        .preferredColorScheme(.light)
     }
 
     private var editedRound: SavedRound {
@@ -4584,7 +4627,6 @@ struct CourseScorecardEditorView: View {
                 }
             }
         }
-        .preferredColorScheme(.light)
     }
 
     private var teeEditor: some View {
@@ -4837,7 +4879,7 @@ struct YardagesView: View {
                                 .foregroundStyle(AppTheme.ink)
                                 .padding(.vertical, 11)
                                 .padding(.horizontal, 13)
-                                .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+                                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
                                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
 
                             Button {
@@ -4885,11 +4927,11 @@ struct YardageHeroCard: View {
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text("Yardages")
-                        .font(.system(size: 34, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
                     Text("Build your bag map and spot distance gaps quickly.")
                         .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.84))
+                        .foregroundStyle(AppTheme.softText)
                         .lineLimit(2)
                 }
 
@@ -4899,22 +4941,13 @@ struct YardageHeroCard: View {
                     .font(.system(size: 22, weight: .heavy))
                     .foregroundStyle(AppTheme.mint)
                     .frame(width: 52, height: 52)
-                    .background(Circle().fill(Color.white))
+                    .background(Circle().fill(AppTheme.mintWash))
             }
         }
         .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(
-                    LinearGradient(
-                        colors: [AppTheme.mint, AppTheme.lime],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.65), lineWidth: 1))
-        .shadow(color: AppTheme.shadow.opacity(1.35), radius: 20, x: 0, y: 10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelStrong))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border, lineWidth: 1))
+        .shadow(color: AppTheme.shadow, radius: 16, x: 0, y: 8)
     }
 }
 
@@ -4948,7 +4981,7 @@ struct YardageSummaryMetric: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.72)))
         .shadow(color: AppTheme.shadow.opacity(0.55), radius: 12, x: 0, y: 6)
     }
@@ -5046,7 +5079,7 @@ struct YardageSetupRow: View {
                 .frame(width: 70)
                 .padding(.vertical, 10)
                 .padding(.horizontal, 12)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
 
             Text("yds")
@@ -6137,7 +6170,6 @@ struct RoundReviewView: View {
                 }
             }
         }
-        .preferredColorScheme(.light)
     }
 }
 
@@ -6393,7 +6425,7 @@ struct InsightsDashboardContent: View {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Insights")
-                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.ink)
                 Text(snapshot.roundCount == 0 ? "Finish a round to unlock personalised patterns." : "\(snapshot.roundCount) round baseline - \(snapshot.holeCount) holes tracked")
                     .font(.system(.subheadline, design: .rounded).weight(.semibold))
@@ -6429,7 +6461,7 @@ struct InsightsDashboardContent: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 Text("Hole Scoring Stats")
-                    .font(.system(.title2, design: .rounded).weight(.heavy))
+                    .font(.system(.title2, design: .rounded).weight(.semibold))
                     .foregroundStyle(AppTheme.ink)
 
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
@@ -6852,10 +6884,6 @@ struct ScoringTrendInsightCard: View {
         Array(rounds.sorted { $0.date < $1.date }.suffix(10))
     }
 
-    private var scores: [Double] {
-        trendRounds.map { Double($0.totalScore) }
-    }
-
     private var averageScore: String {
         guard snapshot.roundCount > 0 else { return "-" }
         return String(format: "%.1f", snapshot.averageScore)
@@ -6907,15 +6935,15 @@ struct ScoringTrendInsightCard: View {
                     }
                     .frame(width: 112, alignment: .leading)
 
-                    PremiumLineChart(values: scores)
-                        .frame(height: 120)
+                    PremiumLineChart(rounds: trendRounds)
+                        .frame(height: 156)
                 }
             }
             .padding(18)
             .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.glassGradient))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
 
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            VStack(spacing: 12) {
                 PremiumFrontBackCard(front: frontNineAverage, back: backNineAverage, caption: frontBackCaption)
                 PremiumParPerformanceCard(
                     par3: formatOptional(snapshot.par3Average),
@@ -6964,33 +6992,53 @@ struct ScoringTrendInsightCard: View {
 }
 
 struct PremiumLineChart: View {
-    let values: [Double]
+    let rounds: [SavedRound]
 
     private var chartValues: [Double] {
-        values.isEmpty ? [0, 0] : values
+        rounds.isEmpty ? [0, 0] : rounds.map { Double($0.totalScore) }
     }
 
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
-            let minValue = max((chartValues.min() ?? 0) - 3, 0)
-            let maxValue = (chartValues.max() ?? 1) + 3
+            let minValue = max(floor((chartValues.min() ?? 0) / 5) * 5 - 5, 0)
+            let maxValue = ceil((chartValues.max() ?? 1) / 5) * 5 + 5
             let range = max(maxValue - minValue, 1)
+            let plotOriginX: CGFloat = 30
+            let plotWidth = max(size.width - plotOriginX - 4, 1)
+            let plotHeight = max(size.height - 28, 1)
 
             ZStack {
-                VStack(spacing: 0) {
-                    ForEach(0..<4, id: \.self) { _ in
-                        Rectangle()
-                            .fill(Color.white.opacity(0.12))
-                            .frame(height: 1)
-                        Spacer()
+                ForEach(0..<4, id: \.self) { index in
+                    let fraction = CGFloat(index) / 3
+                    let y = fraction * plotHeight
+                    let labelValue = maxValue - (Double(fraction) * range)
+                    Text("\(Int(labelValue.rounded()))")
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundStyle(AppTheme.softText)
+                        .position(x: 12, y: y + 5)
+                    Rectangle()
+                        .fill(AppTheme.border.opacity(0.72))
+                        .frame(width: plotWidth, height: 1)
+                        .position(x: plotOriginX + plotWidth / 2, y: y + 5)
+                }
+
+                if !rounds.isEmpty {
+                    ForEach(Array(xAxisItems.enumerated()), id: \.offset) { _, item in
+                        Text(Self.shortDateFormatter.string(from: item.1))
+                            .font(.system(size: 8, weight: .medium, design: .rounded))
+                            .foregroundStyle(AppTheme.softText)
+                            .position(
+                                x: plotOriginX + CGFloat(item.0) / CGFloat(max(rounds.count - 1, 1)) * plotWidth,
+                                y: size.height - 5
+                            )
                     }
                 }
 
                 Path { path in
                     for (index, value) in chartValues.enumerated() {
-                        let x = chartValues.count == 1 ? size.width / 2 : CGFloat(index) / CGFloat(chartValues.count - 1) * size.width
-                        let y = size.height - CGFloat((value - minValue) / range) * size.height
+                        let x = plotOriginX + (chartValues.count == 1 ? plotWidth / 2 : CGFloat(index) / CGFloat(chartValues.count - 1) * plotWidth)
+                        let y = 5 + plotHeight - CGFloat((value - minValue) / range) * plotHeight
                         if index == 0 {
                             path.move(to: CGPoint(x: x, y: y))
                         } else {
@@ -7001,17 +7049,39 @@ struct PremiumLineChart: View {
                 .stroke(AppTheme.mint, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
 
                 ForEach(Array(chartValues.enumerated()), id: \.offset) { index, value in
-                    let x = chartValues.count == 1 ? size.width / 2 : CGFloat(index) / CGFloat(chartValues.count - 1) * size.width
-                    let y = size.height - CGFloat((value - minValue) / range) * size.height
-                    Circle()
-                        .fill(Color(red: 0.02, green: 0.06, blue: 0.04))
-                        .frame(width: 9, height: 9)
-                        .overlay(Circle().stroke(AppTheme.mint, lineWidth: 2))
-                        .position(x: x, y: y)
+                    let x = plotOriginX + (chartValues.count == 1 ? plotWidth / 2 : CGFloat(index) / CGFloat(chartValues.count - 1) * plotWidth)
+                    let y = 5 + plotHeight - CGFloat((value - minValue) / range) * plotHeight
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.panel)
+                            .frame(width: 10, height: 10)
+                            .overlay(Circle().stroke(AppTheme.mint, lineWidth: 2))
+                        Text("\(Int(value))")
+                            .font(.system(size: 8, weight: .semibold, design: .rounded))
+                            .foregroundStyle(AppTheme.ink)
+                            .padding(.horizontal, 4)
+                            .frame(height: 16)
+                            .background(Capsule().fill(AppTheme.elevated))
+                            .overlay(Capsule().stroke(AppTheme.border))
+                            .offset(y: y < 24 ? 14 : -14)
+                    }
+                    .position(x: x, y: y)
                 }
             }
         }
     }
+
+    private var xAxisItems: [(Int, Date)] {
+        guard !rounds.isEmpty else { return [] }
+        let indexes = Array(Set([0, rounds.count / 2, rounds.count - 1])).sorted()
+        return indexes.map { ($0, rounds[$0].date) }
+    }
+
+    private static let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM"
+        return formatter
+    }()
 }
 
 struct PremiumFrontBackCard: View {
@@ -7026,9 +7096,9 @@ struct PremiumFrontBackCard: View {
                 .foregroundStyle(AppTheme.ink.opacity(0.88))
                 .textCase(.uppercase)
 
-            HStack(spacing: 0) {
+            HStack(spacing: 12) {
                 splitMetric(title: "Front 9 Avg", value: front)
-                Divider().overlay(AppTheme.border).padding(.vertical, 6)
+                Divider().overlay(AppTheme.border).padding(.vertical, 4)
                 splitMetric(title: "Back 9 Avg", value: back)
             }
 
@@ -7046,8 +7116,10 @@ struct PremiumFrontBackCard: View {
     private func splitMetric(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(value)
-                .font(.system(size: 30, weight: .medium, design: .rounded))
+                .font(.system(size: 32, weight: .semibold, design: .rounded))
                 .foregroundStyle(AppTheme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
             Text(title)
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundStyle(AppTheme.softText)
@@ -7069,11 +7141,11 @@ struct PremiumParPerformanceCard: View {
                 .foregroundStyle(AppTheme.ink.opacity(0.88))
                 .textCase(.uppercase)
 
-            HStack(spacing: 0) {
+            HStack(spacing: 10) {
                 parMetric(title: "Par 3", value: par3)
-                Divider().overlay(AppTheme.border).padding(.vertical, 6)
+                Divider().overlay(AppTheme.border).padding(.vertical, 4)
                 parMetric(title: "Par 4", value: par4)
-                Divider().overlay(AppTheme.border).padding(.vertical, 6)
+                Divider().overlay(AppTheme.border).padding(.vertical, 4)
                 parMetric(title: "Par 5", value: par5)
             }
 
@@ -7094,17 +7166,10 @@ struct PremiumParPerformanceCard: View {
                 .foregroundStyle(AppTheme.softText)
                 .textCase(.uppercase)
             Text(value)
-                .font(.system(size: 26, weight: .medium, design: .rounded))
+                .font(.system(size: 28, weight: .semibold, design: .rounded))
                 .foregroundStyle(AppTheme.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
-            HStack(spacing: 3) {
-                Image(systemName: "arrowtriangle.down.fill")
-                    .font(.system(size: 8, weight: .semibold))
-                Text("trend")
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-            }
-            .foregroundStyle(AppTheme.mint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -7668,7 +7733,7 @@ struct PremiumBenchmarkRow: View {
                         .offset(x: proxy.size.width * 0.5, y: 25)
                     Text(targetLabel)
                         .font(.system(size: 11, weight: .heavy, design: .rounded))
-                        .foregroundStyle(AppTheme.ink.opacity(0.78))
+                        .foregroundStyle(Color(red: 0.12, green: 0.18, blue: 0.14))
                         .padding(.horizontal, 7)
                         .frame(height: 20)
                         .background(Capsule().fill(Color.white.opacity(0.96)))
@@ -7687,7 +7752,7 @@ struct PremiumBenchmarkRow: View {
     }
 
     private var statusColor: Color {
-        percent >= 50 ? AppTheme.mint : AppTheme.gold
+        percent >= 50 ? Color(red: 0.05, green: 0.48, blue: 0.20) : Color(red: 0.76, green: 0.40, blue: 0.05)
     }
 }
 
@@ -7850,11 +7915,28 @@ struct SettingsView: View {
     @State private var restoreMessage: String?
     @State private var scorecardPendingDelete: CourseScorecardOverride?
     @State private var showAllCachedScorecards = false
+    @AppStorage("precision.appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
                 HeaderBlock(title: "Settings", subtitle: "Set your handicap index for course-adjusted Stableford tracking.")
+
+                VStack(alignment: .leading, spacing: 12) {
+                    SectionHeader(title: "Appearance", actionTitle: nil)
+                    Picker("Appearance", selection: $appearanceMode) {
+                        ForEach(AppearanceMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    Text("Choose Light or Dark, or follow your iPhone setting.")
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                }
+                .padding(18)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
 
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Player Profile")
@@ -8551,11 +8633,11 @@ struct SocialSignInButton: View {
     }
 
     private var background: Color {
-        style == .dark ? AppTheme.ink : Color.white
+        style == .dark ? Color(red: 0.025, green: 0.035, blue: 0.03) : AppTheme.elevated
     }
 
     private var border: Color {
-        style == .dark ? AppTheme.ink : AppTheme.border
+        style == .dark ? Color.white.opacity(0.18) : AppTheme.border
     }
 }
 
@@ -8567,7 +8649,7 @@ struct FirebaseAccountButtonStyle: ButtonStyle {
             .font(.system(.subheadline, design: .rounded).weight(.bold))
             .foregroundStyle(isPrimary ? .white : AppTheme.ink)
             .padding(13)
-            .background(RoundedRectangle(cornerRadius: 8).fill(isPrimary ? AppTheme.mint : AppTheme.subtleFill))
+            .background(RoundedRectangle(cornerRadius: 8).fill(isPrimary ? AppTheme.controlGreen : AppTheme.subtleFill))
             .opacity(configuration.isPressed ? 0.82 : 1)
     }
 }
@@ -8738,7 +8820,7 @@ struct GoalSettingsCard: View {
                             .buttonStyle(.plain)
                         }
                         .padding(12)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
                     }
                 }
@@ -9255,7 +9337,6 @@ struct GroupDetailView: View {
         .sheet(item: $selectedRound) { round in
             SharedRoundDetailView(round: round)
         }
-        .preferredColorScheme(.light)
     }
 
     private var hero: some View {
@@ -9649,7 +9730,7 @@ struct SharedRoundMetric: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
     }
 }
 
@@ -10003,7 +10084,6 @@ struct FriendProfileDetailView: View {
         .sheet(item: $selectedRound) { round in
             SharedRoundDetailView(round: round)
         }
-        .preferredColorScheme(.light)
     }
 }
 
@@ -10073,7 +10153,6 @@ struct SharedRoundDetailView: View {
                 }
             }
         }
-        .preferredColorScheme(.light)
         .sheet(item: $sharePayload) { payload in
             ActivityShareView(activityItems: payload.items)
         }
@@ -10390,7 +10469,7 @@ struct FriendProfileRow: View {
                     .foregroundStyle(matchplayRecord.played == 0 ? AppTheme.softText : AppTheme.mint)
                     .padding(.horizontal, 10)
                     .frame(height: 30)
-                    .background(Capsule().fill(Color.white))
+                    .background(Capsule().fill(AppTheme.elevated))
 
                 Spacer(minLength: 8)
 
@@ -10412,7 +10491,7 @@ struct FriendProfileRow: View {
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 11)
-                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mint))
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.controlGreen))
         }
             .padding(14)
             .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
@@ -10448,10 +10527,10 @@ struct FriendRoundPreviewRow: View {
                 .foregroundStyle(AppTheme.gold)
                 .padding(.horizontal, 8)
                 .frame(height: 26)
-                .background(Capsule().fill(Color.white))
+                .background(Capsule().fill(AppTheme.elevated))
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.82)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.65)))
     }
 
@@ -10797,35 +10876,26 @@ struct GoalProgressHero: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Progress")
                 .font(.system(.caption, design: .rounded).weight(.heavy))
-                .foregroundStyle(.white.opacity(0.78))
+                .foregroundStyle(AppTheme.softText)
             HStack(alignment: .lastTextBaseline) {
                 Text("\(completed)")
                     .font(.system(size: 58, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.ink)
                 Text("of \(max(total, 1)) complete")
                     .font(.system(.headline, design: .rounded).weight(.bold))
-                    .foregroundStyle(.white.opacity(0.82))
+                    .foregroundStyle(AppTheme.softText)
             }
             ProgressView(value: total == 0 ? 0 : Double(completed), total: Double(max(total, 1)))
-                .tint(.white)
+                .tint(AppTheme.mint)
             Text(total == 0 ? "Add a goal to start building your target list." : "Suggested and custom goals stay in your control.")
                 .font(.system(.subheadline, design: .rounded))
-                .foregroundStyle(.white.opacity(0.84))
+                .foregroundStyle(AppTheme.softText)
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(
-                    LinearGradient(
-                        colors: [AppTheme.mint, AppTheme.lime],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.62)))
-        .shadow(color: AppTheme.shadow.opacity(1.2), radius: 18, x: 0, y: 9)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelStrong))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        .shadow(color: AppTheme.shadow, radius: 16, x: 0, y: 8)
     }
 }
 
@@ -10876,7 +10946,7 @@ struct SuggestedGoalRow: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(
                     LinearGradient(
-                        colors: [Color.white, accent.opacity(0.06)],
+                        colors: [AppTheme.elevated, accent.opacity(0.10)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -10970,37 +11040,28 @@ struct HeaderBlock: View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 7) {
                 Text(title)
-                    .font(.system(size: 34, weight: .heavy, design: .rounded))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
                 Text(subtitle)
                     .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.84))
+                    .foregroundStyle(AppTheme.softText)
                     .lineLimit(3)
                     .minimumScaleFactor(0.78)
             }
             Spacer()
             Image(systemName: iconName)
-                .font(.system(size: 22, weight: .heavy))
+                .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(AppTheme.mint)
                 .frame(width: 52, height: 52)
-                .background(Circle().fill(Color.white))
+                .background(Circle().fill(AppTheme.mintWash))
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(
-                    LinearGradient(
-                        colors: [AppTheme.mint, AppTheme.lime],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.62)))
-        .shadow(color: AppTheme.shadow.opacity(1.35), radius: 20, x: 0, y: 10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelStrong))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        .shadow(color: AppTheme.shadow, radius: 16, x: 0, y: 8)
     }
 
     private var iconName: String {
@@ -12339,7 +12400,7 @@ struct InsightStatTile: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 118, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.62)))
         .shadow(color: AppTheme.shadow.opacity(0.42), radius: 10, x: 0, y: 6)
     }
@@ -12858,7 +12919,7 @@ struct YardageGapTile: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.72)))
         .shadow(color: AppTheme.shadow.opacity(0.42), radius: 9, x: 0, y: 5)
     }
