@@ -208,10 +208,11 @@ struct ContentView: View {
 
     private func saveReviewedRound() {
         let savedRound = roundArchive.save(course: selectedCourse, tee: selectedTee, handicap: roundHandicap, entries: entries)
+        let sharedGroupIds = pendingRoundType == .groupStableford ? [pendingStablefordGroup?.id].compactMap { $0 } : []
         handicapHistory.record(roundHandicap)
         Task {
             await firebaseRoundSync.sync(round: savedRound)
-            await firebaseSocial.publishCompletedRound(savedRound, ownerProfile: firebaseAccount.profile)
+            await firebaseSocial.publishCompletedRound(savedRound, ownerProfile: firebaseAccount.profile, groupIds: sharedGroupIds)
             await firebaseSocial.finishMatchplayRound(course: selectedCourse, tee: selectedTee, entries: entries)
         }
         isRoundActive = false
@@ -1363,9 +1364,9 @@ struct PerformanceOverview: View {
 
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                 PremiumDashboardMetric(icon: "flag.circle", title: "Fairways Hit", value: "\(fairwayPercent)%", caption: "vs season", trend: "+6%", tint: AppTheme.mint)
-                PremiumDashboardMetric(icon: "target", title: "GIR", value: "\(girPercent)%", caption: "greens in regulation", trend: "+4%", tint: AppTheme.lime)
+                PremiumDashboardMetric(icon: "target", title: "GIR", value: "\(girPercent)%", caption: "greens in regulation", trend: "+4%", tint: AppTheme.mint)
                 PremiumDashboardMetric(icon: "figure.golf", title: "Putts", value: averagePutts, caption: "per round", trend: "-1.3", tint: AppTheme.mint)
-                PremiumDashboardMetric(icon: "waveform.path.ecg", title: "Scrambling", value: "\(scramblePercent)%", caption: "up and downs", trend: "+3%", tint: AppTheme.lime)
+                PremiumDashboardMetric(icon: "waveform.path.ecg", title: "Scrambling", value: "\(scramblePercent)%", caption: "up and downs", trend: "+3%", tint: AppTheme.mint)
             }
 
             ScoringMixStrip(
@@ -6946,12 +6947,8 @@ struct ScoringTrendInsightCard: View {
                         Text("\(max(trendRounds.count, snapshot.roundCount)) round average")
                             .font(.system(.caption, design: .rounded).weight(.medium))
                             .foregroundStyle(AppTheme.softText)
-                        HStack(spacing: 4) {
-                            Image(systemName: deltaIcon)
-                                .font(.system(size: 10, weight: .semibold))
-                            Text(deltaText)
-                                .font(.system(.caption, design: .rounded).weight(.medium))
-                        }
+                        Text(deltaText)
+                            .font(.system(.caption, design: .rounded).weight(.semibold))
                         .foregroundStyle(deltaColor)
                     }
                     .frame(width: 112, alignment: .leading)
@@ -6981,15 +6978,10 @@ struct ScoringTrendInsightCard: View {
         }
     }
 
-    private var deltaIcon: String {
-        guard let previousDelta else { return "minus" }
-        return previousDelta <= 0 ? "arrowtriangle.down.fill" : "arrowtriangle.up.fill"
-    }
-
     private var deltaText: String {
         guard let previousDelta else { return "Build a few more rounds" }
-        let absolute = abs(previousDelta)
-        return String(format: "%.1f", absolute)
+        let sign = previousDelta > 0 ? "+" : "−"
+        return "\(sign)\(String(format: "%.1f", abs(previousDelta))) strokes"
     }
 
     private var deltaColor: Color {
@@ -9237,7 +9229,7 @@ struct FriendsView: View {
 
     private func rounds(for group: FirebaseGolfGroup) -> [FirebaseSharedRound] {
         social.sharedRounds
-            .filter { group.memberIds.contains($0.ownerId) }
+            .filter { $0.groupIds.contains(group.id) }
             .sorted { $0.date > $1.date }
     }
 }

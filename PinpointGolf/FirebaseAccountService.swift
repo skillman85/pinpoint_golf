@@ -781,7 +781,7 @@ final class FirebaseSocialService: ObservableObject {
         }
     }
 
-    func publishCompletedRound(_ round: SavedRound, ownerProfile: FirebaseUserProfile?) async {
+    func publishCompletedRound(_ round: SavedRound, ownerProfile: FirebaseUserProfile?, groupIds: [String] = []) async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
 
         do {
@@ -804,6 +804,7 @@ final class FirebaseSocialService: ObservableObject {
                 "pars": round.pars,
                 "putts": round.totalPutts,
                 "penalties": round.penalties,
+                "groupIds": groupIds,
                 "visibility": "friends",
                 "createdAt": Timestamp(date: Date())
             ]
@@ -1946,6 +1947,7 @@ struct FirebaseSharedRound: Identifiable {
     var pars: Int
     var putts: Int
     var penalties: Int
+    var groupIds: [String]
     var holes: [FirebaseSharedHoleEntry]
 
     init?(document: QueryDocumentSnapshot) {
@@ -1982,6 +1984,7 @@ struct FirebaseSharedRound: Identifiable {
         self.pars = data["pars"] as? Int ?? 0
         self.putts = data["putts"] as? Int ?? 0
         self.penalties = data["penalties"] as? Int ?? 0
+        self.groupIds = data["groupIds"] as? [String] ?? []
         self.holes = (data["holes"] as? [[String: Any]] ?? [])
             .compactMap(FirebaseSharedHoleEntry.init(data:))
             .sorted { $0.holeNumber < $1.holeNumber }
