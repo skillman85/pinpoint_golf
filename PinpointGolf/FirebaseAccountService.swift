@@ -641,7 +641,7 @@ final class FirebaseSocialService: ObservableObject {
         defer { isWorking = false }
 
         do {
-            let documentId = matchplayDocumentId(uid, friend.uid)
+            let documentId = UUID().uuidString
             let holeCount = tee.holes.count
             let opponentCourseHandicap = calculatedCourseHandicap(for: friend.handicap, tee: tee)
             let payload: [String: Any] = [
@@ -1303,7 +1303,9 @@ final class FirebaseSocialService: ObservableObject {
 
         return snapshot.documents
             .compactMap(FirebaseMatchplayMatch.init(document:))
-            .filter { $0.status != "cancelled" }
+            .filter { match in
+                match.status != "cancelled" || match.completedAt != nil || match.winnerId != nil || match.resultMargin != nil
+            }
             .sorted { ($0.completedAt ?? $0.updatedAt) > ($1.completedAt ?? $1.updatedAt) }
     }
 

@@ -20,6 +20,7 @@ struct ContentView: View {
     @AppStorage("precision.profileHomeClub") private var profileHomeClub = ""
     @AppStorage("precision.profileOnboardingComplete") private var profileOnboardingComplete = false
     @AppStorage("precision.appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
+    @AppStorage("precision.seenSocialActivity") private var seenSocialActivitySignature = ""
     @State private var selectedTab: Tab = .home
     @State private var selectedCourse = CourseDatabase.courses[0]
     @State private var selectedTee = CourseDatabase.courses[0].tees[0]
@@ -121,8 +122,9 @@ struct ContentView: View {
                     profileName: profileName,
                     profileHomeClub: profileHomeClub,
                     profileImageData: $profileImageData,
-                    notificationCount: firebaseSocial.notifications.count + firebaseSocial.incomingRequests.count + firebaseSocial.groupInvites.count,
+                    notificationCount: socialActivitySignature == seenSocialActivitySignature ? 0 : firebaseSocial.notifications.count + firebaseSocial.incomingRequests.count + firebaseSocial.groupInvites.count,
                     openNotifications: {
+                        seenSocialActivitySignature = socialActivitySignature
                         selectedTab = .friends
                         Task { await firebaseSocial.refresh() }
                     },
@@ -179,6 +181,13 @@ struct ContentView: View {
                 }
             }
         )
+    }
+
+    private var socialActivitySignature: String {
+        let ids = firebaseSocial.notifications.map(\.id)
+            + firebaseSocial.incomingRequests.map(\.id)
+            + firebaseSocial.groupInvites.map(\.id)
+        return ids.sorted().joined(separator: "|")
     }
 
     private func beginRound() {
@@ -599,6 +608,9 @@ struct AppTheme {
     static let mint = adaptive(light: UIColor(red: 0.04, green: 0.46, blue: 0.19, alpha: 1), dark: UIColor(red: 0.48, green: 0.91, blue: 0.40, alpha: 1))
     static let mintWash = adaptive(light: UIColor(red: 0.86, green: 0.94, blue: 0.88, alpha: 1), dark: UIColor(red: 0.08, green: 0.25, blue: 0.14, alpha: 1))
     static let controlGreen = Color(red: 0.035, green: 0.40, blue: 0.16)
+    static let tabInactive = adaptive(light: UIColor(red: 0.30, green: 0.40, blue: 0.33, alpha: 1), dark: UIColor(red: 0.68, green: 0.75, blue: 0.70, alpha: 1))
+    static let tabBar = adaptive(light: UIColor(red: 0.94, green: 0.965, blue: 0.945, alpha: 0.98), dark: UIColor(red: 0.01, green: 0.04, blue: 0.03, alpha: 0.98))
+    static let performanceCard = adaptive(light: UIColor(red: 0.07, green: 0.25, blue: 0.13, alpha: 1), dark: UIColor(red: 0.025, green: 0.08, blue: 0.052, alpha: 1))
     static let lime = Color(red: 0.64, green: 0.96, blue: 0.37)
     static let gold = Color(red: 0.94, green: 0.66, blue: 0.28)
     static let border = adaptive(light: UIColor(red: 0.72, green: 0.79, blue: 0.74, alpha: 0.72), dark: UIColor(white: 1, alpha: 0.18))
@@ -805,14 +817,19 @@ struct PremiumRecentRoundRow: View {
 
             Spacer()
 
-            Text("\(round.totalScore)")
-                .font(.system(.title3, design: .rounded).weight(.semibold))
-                .foregroundStyle(AppTheme.ink)
-                .frame(minWidth: 36, alignment: .trailing)
-            Text(scoreToParText)
-                .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                .foregroundStyle(scoreToPar <= 0 ? AppTheme.mint : AppTheme.softText)
-                .frame(minWidth: 36, alignment: .trailing)
+            VStack(alignment: .trailing, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("\(round.totalScore)")
+                        .font(.system(.title3, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(scoreToParText)
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(scoreToPar <= 0 ? AppTheme.mint : AppTheme.softText)
+                }
+                Label("View round", systemImage: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.mint)
+            }
         }
         .padding(.vertical, 10)
     }
@@ -873,6 +890,7 @@ struct RecentRoundsView: View {
     let updateRound: (SavedRound) -> Void
     @State private var selectedRound: SavedRound?
     @State private var visibleRecentRoundCount = 8
+    @State private var roundPendingDelete: SavedRound?
 
     private var visibleRecentRounds: ArraySlice<SavedRound> {
         savedRounds.prefix(visibleRecentRoundCount)
@@ -898,7 +916,7 @@ struct RecentRoundsView: View {
                             SavedRoundRow(
                                 round: round,
                                 viewRound: { selectedRound = round },
-                                deleteRound: { deleteRound(round) }
+                                deleteRound: { roundPendingDelete = round }
                             )
                         }
 
@@ -928,6 +946,18 @@ struct RecentRoundsView: View {
         .sheet(item: $selectedRound) { round in
             SavedRoundDetailView(round: round, currentHandicap: currentHandicap, updateRound: updateRound)
         }
+        .alert("Delete this round?", isPresented: Binding(
+            get: { roundPendingDelete != nil },
+            set: { if !$0 { roundPendingDelete = nil } }
+        )) {
+            Button("Keep Round", role: .cancel) { roundPendingDelete = nil }
+            Button("Delete Round", role: .destructive) {
+                if let roundPendingDelete { deleteRound(roundPendingDelete) }
+                roundPendingDelete = nil
+            }
+        } message: {
+            Text("This permanently removes the scorecard and its statistics. This cannot be undone.")
+        }
     }
 }
 
@@ -955,7 +985,7 @@ struct HomeFloatingRoundButton: View {
                 HStack(spacing: 8) {
                     Image(systemName: isRoundActive ? "flag.fill" : "plus")
                         .font(.system(size: 14, weight: .heavy))
-                        .foregroundStyle(isRoundActive ? AppTheme.mint : AppTheme.lime)
+                        .foregroundStyle(AppTheme.controlGreen)
                         .frame(width: 28, height: 28)
                         .background(Circle().fill(Color.white))
                         .overlay(Circle().stroke(Color.white.opacity(0.72), lineWidth: 1))
@@ -971,10 +1001,10 @@ struct HomeFloatingRoundButton: View {
                 .frame(height: 52)
                 .background(
                     Capsule()
-                        .fill(Color(red: 0.02, green: 0.28, blue: 0.72))
+                        .fill(AppTheme.controlGreen)
                 )
                 .overlay(Capsule().stroke(Color.white.opacity(0.36), lineWidth: 1))
-                .shadow(color: Color(red: 0.02, green: 0.28, blue: 0.72).opacity(0.3), radius: 16, x: 0, y: 8)
+                .shadow(color: AppTheme.controlGreen.opacity(0.3), radius: 16, x: 0, y: 8)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isRoundActive ? "Resume current round" : "Start new round")
@@ -1292,7 +1322,7 @@ struct PerformanceOverview: View {
                             .font(.system(size: 26, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
 
-                        Text(roundCountLabel)
+                        Text("\(String(seasonYear)) season • \(roundCountLabel)")
                             .font(.system(.caption, design: .rounded).weight(.medium))
                             .foregroundStyle(.white.opacity(0.78))
                     }
@@ -1318,7 +1348,7 @@ struct PerformanceOverview: View {
             .background(
                 ZStack {
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(red: 0.025, green: 0.08, blue: 0.052))
+                        .fill(AppTheme.performanceCard)
                     FairwayCardBackdrop()
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                     LinearGradient(
@@ -1473,7 +1503,7 @@ struct SummaryMetric: View {
                 .minimumScaleFactor(0.62)
             Text(caption)
                 .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(AppTheme.mint)
+                .foregroundStyle(.white.opacity(0.86))
                 .lineLimit(1)
                 .minimumScaleFactor(0.62)
         }
@@ -1520,7 +1550,7 @@ struct PremiumDashboardMetric: View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.mint)
                     .frame(width: 48, height: 48)
                     .background(Circle().fill(tint.opacity(0.22)))
                     .overlay(Circle().stroke(tint.opacity(0.28)))
@@ -2093,8 +2123,8 @@ struct SavedRoundRow: View {
                                 .foregroundStyle(AppTheme.softText)
                         }
                         HStack(spacing: 8) {
-                            RoundSplitChip(title: "Front 9", value: frontNineScore)
-                            RoundSplitChip(title: "Back 9", value: backNineScore)
+                            RoundSplitChip(title: "F9", value: frontNineScore)
+                            RoundSplitChip(title: "B9", value: backNineScore)
                             RoundSplitChip(title: "Total", value: "\(round.totalScore)")
                         }
                         Text("Tap to review full hole-by-hole stats")
@@ -6434,7 +6464,7 @@ struct InsightsDashboardContent: View {
 
             PremiumInsightRangePicker(selection: $selectedRange)
 
-            ScoringTrendInsightCard(snapshot: snapshot, rounds: selectedRounds)
+            ScoringTrendInsightCard(snapshot: snapshot, rounds: selectedRounds, showNodeValues: selectedRange == .last5)
 
             TabView(selection: $selectedInsightPage) {
                 StrengthWeaknessPremiumCard(snapshot: snapshot, currentHandicap: currentHandicap, averageScore: formatAverage(snapshot.averageScore), puttsPerRound: formatAverage(snapshot.puttsPerRound))
@@ -6459,17 +6489,6 @@ struct InsightsDashboardContent: View {
             PremiumPageDots(count: 6, selection: $selectedInsightPage)
                 .frame(maxWidth: .infinity)
 
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Hole Scoring Stats")
-                    .font(.system(.title2, design: .rounded).weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
-
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    HoleAverageCard(title: "Par 3s", value: formatOptionalAverage(snapshot.par3Average), tint: Color(red: 0.11, green: 0.42, blue: 0.74))
-                    HoleAverageCard(title: "Par 4s", value: formatOptionalAverage(snapshot.par4Average), tint: AppTheme.mint)
-                    HoleAverageCard(title: "Par 5s", value: formatOptionalAverage(snapshot.par5Average), tint: AppTheme.gold)
-                }
-            }
         }
     }
 
@@ -6879,9 +6898,10 @@ struct PremiumInsightRangePicker: View {
 struct ScoringTrendInsightCard: View {
     let snapshot: InsightSnapshot
     let rounds: [SavedRound]
+    let showNodeValues: Bool
 
     private var trendRounds: [SavedRound] {
-        Array(rounds.sorted { $0.date < $1.date }.suffix(10))
+        Array(rounds.sorted { $0.date < $1.date }.suffix(15))
     }
 
     private var averageScore: String {
@@ -6892,8 +6912,9 @@ struct ScoringTrendInsightCard: View {
     private var previousDelta: Double? {
         guard rounds.count >= 4 else { return nil }
         let ordered = rounds.sorted { $0.date < $1.date }
-        let recent = Array(ordered.suffix(min(10, ordered.count / 2)))
-        let previous = Array(ordered.dropLast(recent.count).suffix(recent.count))
+        let comparisonCount = min(5, ordered.count / 2)
+        let recent = Array(ordered.suffix(comparisonCount))
+        let previous = Array(ordered.dropLast(comparisonCount).suffix(comparisonCount))
         guard !recent.isEmpty, !previous.isEmpty else { return nil }
         let recentAverage = Double(recent.reduce(0) { $0 + $1.totalScore }) / Double(recent.count)
         let previousAverage = Double(previous.reduce(0) { $0 + $1.totalScore }) / Double(previous.count)
@@ -6935,7 +6956,7 @@ struct ScoringTrendInsightCard: View {
                     }
                     .frame(width: 112, alignment: .leading)
 
-                    PremiumLineChart(rounds: trendRounds)
+                    PremiumLineChart(rounds: trendRounds, showNodeValues: showNodeValues)
                         .frame(height: 156)
                 }
             }
@@ -6944,7 +6965,13 @@ struct ScoringTrendInsightCard: View {
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
 
             VStack(spacing: 12) {
-                PremiumFrontBackCard(front: frontNineAverage, back: backNineAverage, caption: frontBackCaption)
+                PremiumFrontBackCard(
+                    front: frontNineAverage,
+                    back: backNineAverage,
+                    frontPoints: stablefordAverage(frontNine: true),
+                    backPoints: stablefordAverage(frontNine: false),
+                    caption: frontBackCaption
+                )
                 PremiumParPerformanceCard(
                     par3: formatOptional(snapshot.par3Average),
                     par4: formatOptional(snapshot.par4Average),
@@ -6962,7 +6989,7 @@ struct ScoringTrendInsightCard: View {
     private var deltaText: String {
         guard let previousDelta else { return "Build a few more rounds" }
         let absolute = abs(previousDelta)
-        return "\(String(format: "%.1f", absolute)) vs previous set"
+        return String(format: "%.1f", absolute)
     }
 
     private var deltaColor: Color {
@@ -6985,6 +7012,18 @@ struct ScoringTrendInsightCard: View {
         return String(format: "%.1f", Double(total) / Double(rounds.count))
     }
 
+    private func stablefordAverage(frontNine: Bool) -> String {
+        let totals = rounds.compactMap { round -> Int? in
+            guard let handicap = round.handicap else { return nil }
+            let courseHandicap = round.courseHandicap(using: handicap)
+            let holes = round.holes.filter { frontNine ? $0.holeNumber <= 9 : $0.holeNumber > 9 }
+            guard !holes.isEmpty else { return nil }
+            return holes.reduce(0) { $0 + $1.stablefordPoints(using: Double(courseHandicap)) }
+        }
+        guard !totals.isEmpty else { return "-" }
+        return String(format: "%.1f pts", Double(totals.reduce(0, +)) / Double(totals.count))
+    }
+
     private func formatOptional(_ value: Double?) -> String {
         guard let value else { return "-" }
         return String(format: "%.2f", value)
@@ -6993,6 +7032,7 @@ struct ScoringTrendInsightCard: View {
 
 struct PremiumLineChart: View {
     let rounds: [SavedRound]
+    let showNodeValues: Bool
 
     private var chartValues: [Double] {
         rounds.isEmpty ? [0, 0] : rounds.map { Double($0.totalScore) }
@@ -7056,14 +7096,16 @@ struct PremiumLineChart: View {
                             .fill(AppTheme.panel)
                             .frame(width: 10, height: 10)
                             .overlay(Circle().stroke(AppTheme.mint, lineWidth: 2))
-                        Text("\(Int(value))")
-                            .font(.system(size: 8, weight: .semibold, design: .rounded))
-                            .foregroundStyle(AppTheme.ink)
-                            .padding(.horizontal, 4)
-                            .frame(height: 16)
-                            .background(Capsule().fill(AppTheme.elevated))
-                            .overlay(Capsule().stroke(AppTheme.border))
-                            .offset(y: y < 24 ? 14 : -14)
+                        if showNodeValues {
+                            Text("\(Int(value))")
+                                .font(.system(size: 8, weight: .semibold, design: .rounded))
+                                .foregroundStyle(AppTheme.ink)
+                                .padding(.horizontal, 4)
+                                .frame(height: 16)
+                                .background(Capsule().fill(AppTheme.elevated))
+                                .overlay(Capsule().stroke(AppTheme.border))
+                                .offset(y: y < 24 ? 14 : -14)
+                        }
                     }
                     .position(x: x, y: y)
                 }
@@ -7087,6 +7129,8 @@ struct PremiumLineChart: View {
 struct PremiumFrontBackCard: View {
     let front: String
     let back: String
+    let frontPoints: String
+    let backPoints: String
     let caption: String
 
     var body: some View {
@@ -7097,9 +7141,9 @@ struct PremiumFrontBackCard: View {
                 .textCase(.uppercase)
 
             HStack(spacing: 12) {
-                splitMetric(title: "Front 9 Avg", value: front)
+                splitMetric(title: "Front 9 Avg", value: front, points: frontPoints)
                 Divider().overlay(AppTheme.border).padding(.vertical, 4)
-                splitMetric(title: "Back 9 Avg", value: back)
+                splitMetric(title: "Back 9 Avg", value: back, points: backPoints)
             }
 
             Text(caption)
@@ -7113,7 +7157,7 @@ struct PremiumFrontBackCard: View {
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
     }
 
-    private func splitMetric(title: String, value: String) -> some View {
+    private func splitMetric(title: String, value: String, points: String) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(value)
                 .font(.system(size: 32, weight: .semibold, design: .rounded))
@@ -7124,6 +7168,9 @@ struct PremiumFrontBackCard: View {
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundStyle(AppTheme.softText)
                 .textCase(.uppercase)
+            Text(points)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppTheme.mint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -7892,6 +7939,14 @@ struct PrecisionBackupDocument: FileDocument {
     }
 }
 
+private enum SettingsSection: String, CaseIterable, Identifiable {
+    case account = "Account"
+    case golf = "Golf"
+    case data = "Data"
+
+    var id: String { rawValue }
+}
+
 struct SettingsView: View {
     @ObservedObject var playerSettings: PlayerSettings
     let savedRounds: [SavedRound]
@@ -7915,6 +7970,7 @@ struct SettingsView: View {
     @State private var restoreMessage: String?
     @State private var scorecardPendingDelete: CourseScorecardOverride?
     @State private var showAllCachedScorecards = false
+    @State private var selectedSection: SettingsSection = .account
     @AppStorage("precision.appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
 
     var body: some View {
@@ -7938,7 +7994,16 @@ struct SettingsView: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
 
-                VStack(alignment: .leading, spacing: 14) {
+                Picker("Settings section", selection: $selectedSection) {
+                    ForEach(SettingsSection.allCases) { section in
+                        Text(section.rawValue).tag(section)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .tint(AppTheme.controlGreen)
+
+                if selectedSection == .account {
+                    VStack(alignment: .leading, spacing: 14) {
                     Text("Player Profile")
                         .font(.system(.headline, design: .rounded).weight(.bold))
                         .foregroundStyle(AppTheme.ink)
@@ -7973,15 +8038,17 @@ struct SettingsView: View {
                     }
                 )
 
-                FriendCodeSettingsCard(
+                    FriendCodeSettingsCard(
                     account: firebaseAccount,
                     social: firebaseSocial,
                     profileName: profileName,
                     handicap: playerSettings.handicap,
                     homeClub: profileHomeClub
-                )
+                    )
+                }
 
-                GoalSettingsCard(goalArchive: goalArchive)
+                if selectedSection == .golf {
+                    GoalSettingsCard(goalArchive: goalArchive)
 
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Handicap Index")
@@ -8110,9 +8177,11 @@ struct SettingsView: View {
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-                .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+                    .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+                }
 
-                VStack(alignment: .leading, spacing: 14) {
+                if selectedSection == .data {
+                    VStack(alignment: .leading, spacing: 14) {
                     SectionHeader(title: "Saved Scorecards", actionTitle: scorecardStore.overrides.isEmpty ? nil : "\(scorecardStore.overrides.count)")
 
                     if scorecardStore.overrides.isEmpty {
@@ -8150,9 +8219,9 @@ struct SettingsView: View {
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-                .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+                    .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
 
-                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 14) {
                     SectionHeader(title: "Data Backup", actionTitle: nil)
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -8208,7 +8277,8 @@ struct SettingsView: View {
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-                .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+                    .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+                }
             }
             .padding(20)
             .padding(.bottom, 20)
@@ -8730,6 +8800,7 @@ struct FriendCodeSettingsCard: View {
 struct GoalSettingsCard: View {
     @ObservedObject var goalArchive: GoalArchive
     @State private var goalTitle = ""
+    @State private var goalPendingDelete: CustomGoal?
 
     private let suggestedPersonalGoals = [
         "Practice twice this week",
@@ -8809,7 +8880,7 @@ struct GoalSettingsCard: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
 
                             Button {
-                                goalArchive.delete(goal)
+                                goalPendingDelete = goal
                             } label: {
                                 Image(systemName: "trash")
                                     .font(.system(size: 15, weight: .bold))
@@ -8830,6 +8901,18 @@ struct GoalSettingsCard: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
         .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+        .alert("Delete this goal?", isPresented: Binding(
+            get: { goalPendingDelete != nil },
+            set: { if !$0 { goalPendingDelete = nil } }
+        )) {
+            Button("Keep Goal", role: .cancel) { goalPendingDelete = nil }
+            Button("Delete Goal", role: .destructive) {
+                if let goalPendingDelete { goalArchive.delete(goalPendingDelete) }
+                goalPendingDelete = nil
+            }
+        } message: {
+            Text("This removes the goal and its completion state.")
+        }
     }
 
     private func addGoal() {
@@ -10786,6 +10869,7 @@ struct GoalsView: View {
     let savedRounds: [SavedRound]
     @ObservedObject var goalArchive: GoalArchive
     @State private var customGoalTitle = ""
+    @State private var goalPendingDelete: CustomGoal?
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -10839,7 +10923,7 @@ struct GoalsView: View {
                                     isComplete: goal.isComplete,
                                     isManual: true,
                                     toggle: { goalArchive.toggle(goal) },
-                                    delete: { goalArchive.delete(goal) }
+                                    delete: { goalPendingDelete = goal }
                                 )
                             }
                         }
@@ -10852,6 +10936,18 @@ struct GoalsView: View {
             }
             .padding(20)
             .padding(.bottom, 20)
+        }
+        .alert("Delete this goal?", isPresented: Binding(
+            get: { goalPendingDelete != nil },
+            set: { if !$0 { goalPendingDelete = nil } }
+        )) {
+            Button("Keep Goal", role: .cancel) { goalPendingDelete = nil }
+            Button("Delete Goal", role: .destructive) {
+                if let goalPendingDelete { goalArchive.delete(goalPendingDelete) }
+                goalPendingDelete = nil
+            }
+        } message: {
+            Text("This removes the goal and its completion state.")
         }
     }
 
@@ -12960,11 +13056,11 @@ struct TabBar: View {
                     } label: {
                         VStack(spacing: 5) {
                             Image(systemName: tab.icon)
-                                .font(.system(size: 17, weight: .bold))
+                                .font(.system(size: 19, weight: .semibold))
                             Text(tab.rawValue)
                                 .font(.system(size: 10, weight: .bold, design: .rounded))
                         }
-                        .foregroundStyle(selectedTab == tab ? AppTheme.mint : AppTheme.softText)
+                        .foregroundStyle(selectedTab == tab ? AppTheme.mint : AppTheme.tabInactive)
                         .frame(maxWidth: .infinity)
                         .frame(height: 58)
                         .background(
@@ -12979,8 +13075,7 @@ struct TabBar: View {
             .padding(.bottom, 6)
         }
         .background(
-            Color(red: 0.01, green: 0.04, blue: 0.03)
-                .opacity(0.94)
+            AppTheme.tabBar
                 .ignoresSafeArea()
         )
     }
