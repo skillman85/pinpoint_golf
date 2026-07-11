@@ -570,6 +570,7 @@ final class FirebaseSocialService: ObservableObject {
     @Published private(set) var sharedRounds: [FirebaseSharedRound] = []
     @Published private(set) var notifications: [FirebaseRoundNotification] = []
     @Published private(set) var liveMatchplayMatches: [FirebaseMatchplayMatch] = []
+    @Published private(set) var matchplayHistory: [FirebaseMatchplayMatch] = []
     @Published var statusMessage: String?
     @Published var isWorking = false
 
@@ -589,6 +590,7 @@ final class FirebaseSocialService: ObservableObject {
             sharedRounds = []
             notifications = []
             liveMatchplayMatches = []
+            matchplayHistory = []
             matchplayListener?.remove()
             matchplayListener = nil
             statusMessage = "Create an account to use friends."
@@ -605,12 +607,14 @@ final class FirebaseSocialService: ObservableObject {
             async let loadedGroupInvites = loadGroupInvites(for: uid)
             async let loadedSharedRounds = loadSharedRounds(for: uid)
             async let loadedNotifications = loadNotifications(for: uid)
+            async let loadedMatchplayHistory = loadMatchplayHistory(for: uid)
             incomingRequests = try await requests
             friends = try await loadedFriends
             groups = try await loadedGroups
             groupInvites = try await loadedGroupInvites
             sharedRounds = try await loadedSharedRounds
             notifications = try await loadedNotifications
+            matchplayHistory = try await loadedMatchplayHistory
             startMatchplayListener(for: uid)
             statusMessage = nil
         } catch {
@@ -701,6 +705,45 @@ final class FirebaseSocialService: ObservableObject {
             ], merge: true)
         } catch {
             statusMessage = error.localizedDescription
+        }
+    }
+
+    func finishMatchplayRound(course: GolfCourse, tee: TeeBox, entries: [RoundHoleEntry]) async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard let match = liveMatchplayMatches.first(where: { $0.courseName == course.name && $0.teeName == tee.name }) ?? liveMatchplayMatches.first else {
+            return
+        }
+
+        let playerScores = entries.map(\.score)
+        var scores = match.scores
+        scores[uid] = playerScores
+        var finished = Set(match.playerFinishedIds)
+        finished.insert(uid)
+
+        var payload: [String: Any] = [
+            "scores.\(uid)": playerScores,
+            "playerFinishedIds": Array(finished),
+            "updatedAt": Timestamp(date: Date())
+        ]
+
+        if Set(match.memberIds).isSubset(of: finished) {
+            let score = matchplayScore(match: match, scores: scores, holes: entries.map(\.hole))
+            payload["status"] = "completed"
+            payload["completedAt"] = Timestamp(date: Date())
+            if score > 0 {
+                payload["winnerId"] = uid
+            } else if score < 0, let opponentId = match.opponentId(for: uid) {
+                payload["winnerId"] = opponentId
+            } else {
+                payload["winnerId"] = FieldValue.delete()
+            }
+        }
+
+        do {
+            try await database.collection("matchplayMatches").document(match.id).updateData(payload)
+            await refresh()
+        } catch {
+            statusMessage = "Matchplay result sync failed: \(error.localizedDescription)"
         }
     }
 
@@ -1099,6 +1142,17 @@ final class FirebaseSocialService: ObservableObject {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
+    private func loadMatchplayHistory(for uid: String) async throws -> [FirebaseMatchplayMatch] {
+        let snapshot = try await database.collection("matchplayMatches")
+            .whereField("memberIds", arrayContains: uid)
+            .getDocuments()
+
+        return snapshot.documents
+            .compactMap(FirebaseMatchplayMatch.init(document:))
+            .filter { $0.status == "completed" }
+            .sorted { ($0.completedAt ?? $0.updatedAt) > ($1.completedAt ?? $1.updatedAt) }
+    }
+
     private func loadProfile(uid: String) async throws -> FirebaseFriendProfile {
         let snapshot = try await database.collection("users").document(uid).getDocument()
         let data = snapshot.data() ?? [:]
@@ -1153,6 +1207,26 @@ final class FirebaseSocialService: ObservableObject {
     private func calculatedCourseHandicap(for handicap: Double, tee: TeeBox) -> Int {
         let adjusted = (handicap * Double(tee.slope) / 113.0) + (tee.rating - Double(tee.par))
         return max(0, Int(adjusted.rounded(.toNearestOrAwayFromZero)))
+    }
+
+    private func matchplayScore(match: FirebaseMatchplayMatch, scores: [String: [Int]], holes: [Hole]) -> Int {
+        guard let uid = Auth.auth().currentUser?.uid,
+              let opponentId = match.opponentId(for: uid)
+        else { return 0 }
+
+        return holes.indices.reduce(0) { total, index in
+            let userValues = scores[uid] ?? []
+            let opponentValues = scores[opponentId] ?? []
+            let userScore = index < userValues.count ? userValues[index] : 0
+            let opponentScore = index < opponentValues.count ? opponentValues[index] : 0
+            guard userScore > 0, opponentScore > 0 else { return total }
+            let hole = holes[index]
+            let userNet = userScore - match.strokes(for: uid, hole: hole)
+            let opponentNet = opponentScore - match.strokes(for: opponentId, hole: hole)
+            if userNet < opponentNet { return total + 1 }
+            if opponentNet < userNet { return total - 1 }
+            return total
+        }
     }
 
     private func displayName(from profile: FirebaseUserProfile?) -> String {
@@ -1261,6 +1335,9 @@ struct FirebaseMatchplayMatch: Identifiable {
     var players: [String: FirebaseMatchplayPlayer]
     var scores: [String: [Int]]
     var currentHoleByUser: [String: Int]
+    var playerFinishedIds: [String]
+    var winnerId: String?
+    var completedAt: Date?
     var updatedAt: Date
 
     init?(document: QueryDocumentSnapshot) {
@@ -1289,6 +1366,9 @@ struct FirebaseMatchplayMatch: Identifiable {
         self.players = playerPayload.mapValues(FirebaseMatchplayPlayer.init(data:))
         self.scores = scorePayload
         self.currentHoleByUser = holePayload
+        self.playerFinishedIds = data["playerFinishedIds"] as? [String] ?? []
+        self.winnerId = data["winnerId"] as? String
+        self.completedAt = (data["completedAt"] as? Timestamp)?.dateValue()
         self.updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? Date()
     }
 

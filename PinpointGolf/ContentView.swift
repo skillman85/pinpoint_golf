@@ -193,6 +193,7 @@ struct ContentView: View {
         Task {
             await firebaseRoundSync.sync(round: savedRound)
             await firebaseSocial.publishCompletedRound(savedRound, ownerProfile: firebaseAccount.profile)
+            await firebaseSocial.finishMatchplayRound(course: selectedCourse, tee: selectedTee, entries: entries)
         }
         isRoundActive = false
         isRoundFlowPresented = false
@@ -7755,9 +7756,6 @@ struct FriendsView: View {
                     if !social.notifications.isEmpty {
                         notificationsCard
                     }
-                    if !social.sharedRounds.isEmpty {
-                        activityFeedCard
-                    }
                     friendsCard
                     groupsCard
                     if !social.groupInvites.isEmpty {
@@ -7789,7 +7787,11 @@ struct FriendsView: View {
             }
         }
         .sheet(item: $selectedFriend) { friend in
-            FriendProfileDetailView(friend: friend, rounds: rounds(for: friend))
+            FriendProfileDetailView(
+                friend: friend,
+                rounds: rounds(for: friend),
+                matchplayRecord: matchplayRecord(for: friend)
+            )
         }
         .sheet(item: $selectedRound) { round in
             SharedRoundDetailView(round: round)
@@ -7869,7 +7871,7 @@ struct FriendsView: View {
 
     private var notificationsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Round Alerts", actionTitle: social.notifications.isEmpty ? nil : "\(social.notifications.count) new")
+            SectionHeader(title: "Round Alerts", actionTitle: social.notifications.isEmpty ? nil : "\(min(3, social.notifications.count)) of \(social.notifications.count)")
 
             if social.notifications.isEmpty {
                 Text("When a friend completes a round, you will see it here.")
@@ -7877,7 +7879,7 @@ struct FriendsView: View {
                     .foregroundStyle(AppTheme.softText)
                     .lineSpacing(3)
             } else {
-                ForEach(social.notifications) { notification in
+                ForEach(Array(social.notifications.prefix(3))) { notification in
                     HStack(spacing: 12) {
                         Image(systemName: "bell.badge.fill")
                             .font(.system(size: 20, weight: .bold))
@@ -7912,32 +7914,6 @@ struct FriendsView: View {
         formatter.timeStyle = .none
         return formatter
     }()
-
-    private var activityFeedCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Friend Rounds", actionTitle: social.sharedRounds.isEmpty ? nil : "\(social.sharedRounds.count)")
-
-            if social.sharedRounds.isEmpty {
-                Text("Completed rounds from friends will appear here automatically.")
-                    .font(.system(.subheadline, design: .rounded).weight(.medium))
-                    .foregroundStyle(AppTheme.softText)
-                    .lineSpacing(3)
-            } else {
-                ForEach(social.sharedRounds) { round in
-                    Button {
-                        selectedRound = round
-                    } label: {
-                        SharedRoundRow(round: round)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(18)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
-    }
 
     private var requestsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -8036,7 +8012,11 @@ struct FriendsView: View {
                     Button {
                         selectedFriend = friend
                     } label: {
-                        FriendProfileRow(friend: friend)
+                        FriendProfileRow(
+                            friend: friend,
+                            rounds: Array(rounds(for: friend).prefix(3)),
+                            matchplayRecord: matchplayRecord(for: friend)
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -8052,6 +8032,10 @@ struct FriendsView: View {
         social.sharedRounds
             .filter { $0.ownerId == friend.uid }
             .sorted { $0.date > $1.date }
+    }
+
+    private func matchplayRecord(for friend: FirebaseFriendProfile) -> MatchplayFriendRecord {
+        MatchplayFriendRecord(friend: friend, matches: social.matchplayHistory, currentUserId: account.user?.uid)
     }
 
     private func rounds(for group: FirebaseGolfGroup) -> [FirebaseSharedRound] {
@@ -8672,8 +8656,14 @@ extension FirebaseSharedRound {
 struct FriendProfileDetailView: View {
     let friend: FirebaseFriendProfile
     let rounds: [FirebaseSharedRound]
+    let matchplayRecord: MatchplayFriendRecord
     @Environment(\.dismiss) private var dismiss
     @State private var selectedRound: FirebaseSharedRound?
+    @State private var showAllRounds = false
+
+    private var visibleRounds: [FirebaseSharedRound] {
+        showAllRounds ? rounds : Array(rounds.prefix(3))
+    }
 
     var body: some View {
         NavigationStack {
@@ -8697,6 +8687,7 @@ struct FriendProfileDetailView: View {
                         HStack(spacing: 10) {
                             SharedRoundMetric(title: "Handicap", value: String(format: "%.1f", friend.handicap))
                             SharedRoundMetric(title: "Shared Rounds", value: "\(rounds.count)")
+                            SharedRoundMetric(title: "Matchplay", value: matchplayRecord.summary)
                         }
                     }
                     .padding(18)
@@ -8707,7 +8698,7 @@ struct FriendProfileDetailView: View {
                     FriendSeasonStatsCard(rounds: rounds)
 
                     VStack(alignment: .leading, spacing: 12) {
-                        SectionHeader(title: "Rounds", actionTitle: rounds.isEmpty ? nil : "\(rounds.count)")
+                        SectionHeader(title: "Latest Rounds", actionTitle: rounds.isEmpty ? nil : "\(visibleRounds.count) of \(rounds.count)")
 
                         if rounds.isEmpty {
                             Text("When this friend completes a shared round, it will appear here.")
@@ -8715,13 +8706,25 @@ struct FriendProfileDetailView: View {
                                 .foregroundStyle(AppTheme.softText)
                                 .lineSpacing(3)
                         } else {
-                            ForEach(rounds) { round in
+                            ForEach(visibleRounds) { round in
                                 Button {
                                     selectedRound = round
                                 } label: {
                                     SharedRoundRow(round: round)
                                 }
                                 .buttonStyle(.plain)
+                            }
+
+                            if rounds.count > 3 {
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showAllRounds.toggle()
+                                    }
+                                } label: {
+                                    Label(showAllRounds ? "Show Latest 3" : "View More Rounds", systemImage: showAllRounds ? "chevron.up" : "chevron.down")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(FirebaseAccountButtonStyle(isPrimary: false))
                             }
                         }
                     }
@@ -9026,12 +9029,68 @@ struct FriendRequestRow: View {
     }
 }
 
+struct MatchplayFriendRecord {
+    let wins: Int
+    let losses: Int
+    let halves: Int
+
+    init(friend: FirebaseFriendProfile, matches: [FirebaseMatchplayMatch], currentUserId: String?) {
+        guard let currentUserId else {
+            wins = 0
+            losses = 0
+            halves = 0
+            return
+        }
+
+        let friendMatches = matches.filter {
+            $0.status == "completed"
+                && $0.memberIds.contains(currentUserId)
+                && $0.memberIds.contains(friend.uid)
+        }
+
+        wins = friendMatches.filter { $0.winnerId == currentUserId }.count
+        losses = friendMatches.filter { $0.winnerId == friend.uid }.count
+        halves = friendMatches.filter { $0.winnerId == nil }.count
+    }
+
+    var played: Int { wins + losses + halves }
+
+    var summary: String {
+        played == 0 ? "No matches yet" : "\(wins)W \(losses)L \(halves)H"
+    }
+}
+
 struct FriendProfileRow: View {
     let friend: FirebaseFriendProfile
+    let rounds: [FirebaseSharedRound]
+    let matchplayRecord: MatchplayFriendRecord
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             FriendProfileSummary(friend: friend)
+
+            HStack(spacing: 8) {
+                Label(matchplayRecord.summary, systemImage: "flag.2.crossed.fill")
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(matchplayRecord.played == 0 ? AppTheme.softText : AppTheme.mint)
+                    .padding(.horizontal, 10)
+                    .frame(height: 30)
+                    .background(Capsule().fill(Color.white))
+
+                Spacer(minLength: 8)
+
+                Text(rounds.isEmpty ? "No rounds shared" : "\(rounds.count) latest")
+                    .font(.system(.caption2, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.softText)
+            }
+
+            if !rounds.isEmpty {
+                VStack(spacing: 8) {
+                    ForEach(rounds) { round in
+                        FriendRoundPreviewRow(round: round)
+                    }
+                }
+            }
 
             Label("View Profile", systemImage: "person.crop.circle")
                 .font(.system(.subheadline, design: .rounded).weight(.heavy))
@@ -9043,6 +9102,50 @@ struct FriendProfileRow: View {
             .padding(14)
             .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
     }
+}
+
+struct FriendRoundPreviewRow: View {
+    let round: FirebaseSharedRound
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(round.courseName)
+                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                Text(Self.dateFormatter.string(from: round.date))
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.softText)
+            }
+
+            Spacer(minLength: 8)
+
+            Text("\(round.gross)")
+                .font(.system(.caption, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.mint)
+                .padding(.horizontal, 9)
+                .frame(height: 26)
+                .background(Capsule().fill(AppTheme.mintWash))
+
+            Text(round.stableford.map { "\($0) pts" } ?? "- pts")
+                .font(.system(.caption2, design: .rounded).weight(.heavy))
+                .foregroundStyle(AppTheme.gold)
+                .padding(.horizontal, 8)
+                .frame(height: 26)
+                .background(Capsule().fill(Color.white))
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.82)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.65)))
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
 }
 
 struct FriendAvatar: View {
