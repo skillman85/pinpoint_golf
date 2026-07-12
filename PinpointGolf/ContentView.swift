@@ -152,6 +152,7 @@ struct ContentView: View {
             FriendsView(
                 account: firebaseAccount,
                 social: firebaseSocial,
+                localRounds: roundArchive.rounds,
                 openSharedRoundId: $pendingSharedRoundId
             )
         case .settings:
@@ -8956,30 +8957,49 @@ struct GoalSettingsCard: View {
 struct FriendsView: View {
     @ObservedObject var account: FirebaseAccountService
     @ObservedObject var social: FirebaseSocialService
+    let localRounds: [SavedRound]
     @Binding var openSharedRoundId: String?
     @State private var selectedFriend: FirebaseFriendProfile?
     @State private var selectedRound: FirebaseSharedRound?
     @State private var selectedGroup: FirebaseGolfGroup?
     @State private var newGroupName = ""
+    @State private var selectedChallenge: WeeklyChallengeKind = .birdies
+    @State private var showAddFriendForm = false
+    @State private var showGroupForm = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
-                HeaderBlock(title: "Friends", subtitle: "See friend activity, round alerts and requests.")
+                friendsHubHero
 
                 if account.user == nil {
                     signedOutCard
                 } else {
+                    WeeklyChallengesHubCard(
+                        selectedChallenge: $selectedChallenge,
+                        currentPeriod: currentChallengePeriod,
+                        previousPeriod: previousChallengePeriod,
+                        currentParticipants: participants(in: currentChallengePeriod),
+                        previousParticipants: participants(in: previousChallengePeriod)
+                    )
+                    hubQuickActions
+                    if showAddFriendForm {
+                        addFriendCard
+                    }
+                    if showGroupForm {
+                        groupCreatorCard
+                    }
                     if !social.notifications.isEmpty {
                         notificationsCard
                     }
                     friendsCard
-                    groupsCard
                     if !social.groupInvites.isEmpty {
                         groupInvitesCard
                     }
-                    addFriendCard
-                    requestsCard
+                    if !social.incomingRequests.isEmpty {
+                        requestsCard
+                    }
+                    groupsCard
                 }
             }
             .padding(20)
@@ -9024,6 +9044,51 @@ struct FriendsView: View {
         }
     }
 
+    private var friendsHubHero: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Friends Hub")
+                        .font(.system(size: 32, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("Rounds, rivalries and weekly bragging rights.")
+                        .font(.system(.subheadline, design: .rounded).weight(.medium))
+                        .foregroundStyle(.white.opacity(0.76))
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 23, weight: .semibold))
+                    .foregroundStyle(AppTheme.lime)
+                    .frame(width: 54, height: 54)
+                    .background(Circle().fill(.white.opacity(0.10)))
+                    .overlay(Circle().stroke(.white.opacity(0.16)))
+            }
+
+            HStack(spacing: 10) {
+                FriendsHubMetric(title: "Friends", value: "\(social.friends.count)", icon: "person.2.fill")
+                FriendsHubMetric(title: "Groups", value: "\(social.groups.count)", icon: "person.3.fill")
+                FriendsHubMetric(
+                    title: "Inbox",
+                    value: "\(social.incomingRequests.count + social.groupInvites.count)",
+                    icon: "tray.fill"
+                )
+            }
+        }
+        .padding(20)
+        .background(
+            LinearGradient(
+                colors: [Color(red: 0.015, green: 0.16, blue: 0.09), Color(red: 0.02, green: 0.07, blue: 0.045)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.mint.opacity(0.32)))
+        .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 10)
+    }
+
     private var signedOutCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             Image(systemName: "person.crop.circle.badge.exclamationmark")
@@ -9042,6 +9107,32 @@ struct FriendsView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
         .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var hubQuickActions: some View {
+        HStack(spacing: 10) {
+            FriendsHubAction(
+                title: "Add Friend",
+                icon: "person.badge.plus",
+                isActive: showAddFriendForm
+            ) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showAddFriendForm.toggle()
+                    if showAddFriendForm { showGroupForm = false }
+                }
+            }
+
+            FriendsHubAction(
+                title: "New Group",
+                icon: "person.3.fill",
+                isActive: showGroupForm
+            ) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showGroupForm.toggle()
+                    if showGroupForm { showAddFriendForm = false }
+                }
+            }
+        }
     }
 
     private var addFriendCard: some View {
@@ -9087,6 +9178,42 @@ struct FriendsView: View {
         .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
     }
 
+    private var groupCreatorCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Create Golf Group")
+                .font(.system(.headline, design: .rounded).weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+
+            Text("Bring regular fourballs, society mates or trip players into one shared space.")
+                .font(.system(.caption, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.softText)
+
+            TextField("Group name", text: $newGroupName)
+                .font(.system(.subheadline, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.ink)
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+
+            Button {
+                let groupName = newGroupName
+                newGroupName = ""
+                showGroupForm = false
+                Task {
+                    await social.createGroup(name: groupName)
+                }
+            } label: {
+                Label("Create Group", systemImage: "person.3.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
+            .disabled(social.isWorking || newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
     private var notificationsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "Round Alerts", actionTitle: social.notifications.isEmpty ? nil : "\(min(3, social.notifications.count)) of \(social.notifications.count)")
@@ -9098,25 +9225,36 @@ struct FriendsView: View {
                     .lineSpacing(3)
             } else {
                 ForEach(Array(social.notifications.prefix(3))) { notification in
-                    HStack(spacing: 12) {
-                        Image(systemName: "bell.badge.fill")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(AppTheme.mint)
-                            .frame(width: 42, height: 42)
-                            .background(Circle().fill(AppTheme.mintWash))
+                    Button {
+                        Task {
+                            selectedRound = await social.loadSharedRound(id: notification.sharedRoundId)
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "bell.badge.fill")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(AppTheme.mint)
+                                .frame(width: 42, height: 42)
+                                .background(Circle().fill(AppTheme.mintWash))
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(notification.message)
-                                .font(.system(.subheadline, design: .rounded).weight(.heavy))
-                                .foregroundStyle(AppTheme.ink)
-                            Text("\(Self.friendRoundDateFormatter.string(from: notification.roundDate)) • Gross \(notification.gross) • \(notification.stableford.map { "\($0) pts" } ?? "Stableford pending")")
-                                .font(.system(.caption, design: .rounded).weight(.medium))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(notification.message)
+                                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                                    .foregroundStyle(AppTheme.ink)
+                                    .multilineTextAlignment(.leading)
+                                Text("\(Self.friendRoundDateFormatter.string(from: notification.roundDate)) • Gross \(notification.gross) • \(notification.stableford.map { "\($0) pts" } ?? "Stableford pending")")
+                                    .font(.system(.caption, design: .rounded).weight(.medium))
+                                    .foregroundStyle(AppTheme.softText)
+                            }
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(AppTheme.softText)
                         }
-                        Spacer(minLength: 8)
+                        .padding(13)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
                     }
-                    .padding(13)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -9169,7 +9307,7 @@ struct FriendsView: View {
 
     private var groupsCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionHeader(title: "Groups", actionTitle: social.groups.isEmpty ? nil : "\(social.groups.count)")
+            SectionHeader(title: "Golf Groups", actionTitle: social.groups.isEmpty ? nil : "\(social.groups.count)")
 
             if social.groups.isEmpty {
                 Text("Create a group for regular fourballs, society mates, trips or season-long bragging rights.")
@@ -9187,28 +9325,6 @@ struct FriendsView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                TextField("New group name", text: $newGroupName)
-                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                    .foregroundStyle(AppTheme.ink)
-                    .padding(13)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
-
-                Button {
-                    let groupName = newGroupName
-                    newGroupName = ""
-                    Task {
-                        await social.createGroup(name: groupName)
-                    }
-                } label: {
-                    Label("Create Group", systemImage: "person.3.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
-                .disabled(social.isWorking || newGroupName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
         }
         .padding(18)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
@@ -9218,7 +9334,7 @@ struct FriendsView: View {
 
     private var friendsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Friends", actionTitle: social.friends.isEmpty ? nil : "\(social.friends.count)")
+            SectionHeader(title: "Your Circle", actionTitle: social.friends.isEmpty ? nil : "\(social.friends.count)")
 
             if social.friends.isEmpty {
                 Text("Add your first friend by entering their Precision Golf friend code.")
@@ -9246,6 +9362,56 @@ struct FriendsView: View {
         .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
     }
 
+    private var currentChallengePeriod: WeeklyChallengePeriod {
+        WeeklyChallengePeriod.current(at: Date())
+    }
+
+    private var previousChallengePeriod: WeeklyChallengePeriod {
+        currentChallengePeriod.previous
+    }
+
+    private func participants(in period: WeeklyChallengePeriod) -> [WeeklyChallengeParticipant] {
+        var participants: [WeeklyChallengeParticipant] = []
+
+        let playerRounds = localRounds.filter { period.contains($0.date) }
+        participants.append(
+            WeeklyChallengeParticipant(
+                id: account.user?.uid ?? "current-player",
+                name: account.profile?.displayName.nonEmptyValue ?? "You",
+                photoURL: account.profile?.photoURL,
+                isCurrentUser: true,
+                roundsPlayed: playerRounds.count,
+                birdies: playerRounds.reduce(0) { $0 + $1.birdies },
+                fairways: playerRounds.reduce(0) { total, round in
+                    total + round.holes.filter { $0.par > 3 && $0.fairway == .hit }.count
+                },
+                totalPutts: playerRounds.reduce(0) { $0 + $1.totalPutts }
+            )
+        )
+
+        for friend in social.friends {
+            let friendRounds = social.sharedRounds.filter {
+                $0.ownerId == friend.uid && period.contains($0.date)
+            }
+            participants.append(
+                WeeklyChallengeParticipant(
+                    id: friend.uid,
+                    name: friend.displayName,
+                    photoURL: friend.photoURL,
+                    isCurrentUser: false,
+                    roundsPlayed: friendRounds.count,
+                    birdies: friendRounds.reduce(0) { $0 + $1.birdies },
+                    fairways: friendRounds.reduce(0) { total, round in
+                        total + round.holes.filter { $0.par > 3 && $0.fairway == .hit }.count
+                    },
+                    totalPutts: friendRounds.reduce(0) { $0 + $1.putts }
+                )
+            )
+        }
+
+        return participants
+    }
+
     private func rounds(for friend: FirebaseFriendProfile) -> [FirebaseSharedRound] {
         social.sharedRounds
             .filter { $0.ownerId == friend.uid }
@@ -9260,6 +9426,410 @@ struct FriendsView: View {
         social.sharedRounds
             .filter { $0.groupIds.contains(group.id) }
             .sorted { $0.date > $1.date }
+    }
+}
+
+private extension String {
+    var nonEmptyValue: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+struct FriendsHubMetric: View {
+    let title: String
+    let value: String
+    let icon: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(AppTheme.lime)
+            Text(value)
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+            Text(title)
+                .font(.system(.caption2, design: .rounded).weight(.medium))
+                .foregroundStyle(.white.opacity(0.68))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(.white.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.12)))
+    }
+}
+
+struct FriendsHubAction: View {
+    let title: String
+    let icon: String
+    let isActive: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                Text(title)
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                Spacer(minLength: 4)
+                Image(systemName: isActive ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(isActive ? Color.white : AppTheme.ink)
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isActive ? AppTheme.controlGreen : AppTheme.panel)
+            )
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(isActive ? AppTheme.mint.opacity(0.55) : AppTheme.border))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+enum WeeklyChallengeKind: String, CaseIterable, Identifiable {
+    case birdies = "Birdies"
+    case fairways = "Fairways"
+    case putting = "Putting"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .birdies: "bird.fill"
+        case .fairways: "flag.fill"
+        case .putting: "figure.golf"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .birdies: "Most birdies"
+        case .fairways: "Most fairways"
+        case .putting: "Lowest putting average"
+        }
+    }
+
+    var accent: Color {
+        switch self {
+        case .birdies: AppTheme.lime
+        case .fairways: AppTheme.mint
+        case .putting: AppTheme.gold
+        }
+    }
+}
+
+struct WeeklyChallengePeriod {
+    let start: Date
+    let end: Date
+
+    func contains(_ date: Date) -> Bool {
+        date >= start && date < end
+    }
+
+    var previous: WeeklyChallengePeriod {
+        let duration: TimeInterval = 7 * 24 * 60 * 60
+        return WeeklyChallengePeriod(start: start.addingTimeInterval(-duration), end: start)
+    }
+
+    static func current(at date: Date) -> WeeklyChallengePeriod {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/London") ?? .current
+
+        let startOfDay = calendar.startOfDay(for: date)
+        let weekday = calendar.component(.weekday, from: startOfDay)
+        let daysSinceSunday = (weekday - 1 + 7) % 7
+        let sunday = calendar.date(byAdding: .day, value: -daysSinceSunday, to: startOfDay) ?? startOfDay
+        let sundayAtNine = calendar.date(byAdding: .hour, value: 21, to: sunday) ?? sunday
+        let start = date >= sundayAtNine
+            ? sundayAtNine
+            : calendar.date(byAdding: .day, value: -7, to: sundayAtNine) ?? sundayAtNine
+        let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start.addingTimeInterval(7 * 24 * 60 * 60)
+        return WeeklyChallengePeriod(start: start, end: end)
+    }
+}
+
+struct WeeklyChallengeParticipant: Identifiable {
+    let id: String
+    let name: String
+    let photoURL: String?
+    let isCurrentUser: Bool
+    let roundsPlayed: Int
+    let birdies: Int
+    let fairways: Int
+    let totalPutts: Int
+
+    var puttingAverage: Double? {
+        guard roundsPlayed > 0 else { return nil }
+        return Double(totalPutts) / Double(roundsPlayed)
+    }
+
+    func value(for challenge: WeeklyChallengeKind) -> Double? {
+        guard roundsPlayed > 0 else { return nil }
+        switch challenge {
+        case .birdies: return Double(birdies)
+        case .fairways: return Double(fairways)
+        case .putting: return puttingAverage
+        }
+    }
+
+    func valueText(for challenge: WeeklyChallengeKind) -> String {
+        guard let value = value(for: challenge) else { return "No round" }
+        switch challenge {
+        case .birdies: return "\(Int(value))"
+        case .fairways: return "\(Int(value))"
+        case .putting: return String(format: "%.1f", value)
+        }
+    }
+}
+
+struct WeeklyChallengesHubCard: View {
+    @Binding var selectedChallenge: WeeklyChallengeKind
+    let currentPeriod: WeeklyChallengePeriod
+    let previousPeriod: WeeklyChallengePeriod
+    let currentParticipants: [WeeklyChallengeParticipant]
+    let previousParticipants: [WeeklyChallengeParticipant]
+
+    private var rankedCurrentParticipants: [WeeklyChallengeParticipant] {
+        ranked(currentParticipants, for: selectedChallenge)
+    }
+
+    private var hasPreviousWinners: Bool {
+        WeeklyChallengeKind.allCases.contains { previousWinner(for: $0) != nil }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "trophy.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.98, green: 0.77, blue: 0.24))
+                    .frame(width: 46, height: 46)
+                    .background(Circle().fill(Color(red: 0.98, green: 0.77, blue: 0.24).opacity(0.14)))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Weekly Challenges")
+                        .font(.system(.title3, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                    Text("Automatic awards every Sunday at 9pm")
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                }
+
+                Spacer(minLength: 8)
+
+                Text(Self.periodFormatter.string(from: currentPeriod.end))
+                    .font(.system(.caption2, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.mint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(AppTheme.mintWash))
+            }
+
+            HStack(spacing: 8) {
+                ForEach(WeeklyChallengeKind.allCases) { challenge in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            selectedChallenge = challenge
+                        }
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: challenge.icon)
+                                .font(.system(size: 15, weight: .semibold))
+                            Text(challenge.rawValue)
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.78)
+                        }
+                        .foregroundStyle(selectedChallenge == challenge ? Color.white : AppTheme.softText)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 58)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(selectedChallenge == challenge ? AppTheme.controlGreen : AppTheme.subtleFill)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(selectedChallenge == challenge ? challenge.accent.opacity(0.7) : AppTheme.border)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(selectedChallenge.title)
+                            .font(.system(.headline, design: .rounded).weight(.semibold))
+                            .foregroundStyle(AppTheme.ink)
+                        Text("This week • \(Self.rangeFormatter.string(from: currentPeriod.start))–\(Self.rangeFormatter.string(from: currentPeriod.end))")
+                            .font(.system(.caption2, design: .rounded).weight(.medium))
+                            .foregroundStyle(AppTheme.softText)
+                    }
+                    Spacer()
+                    Text(valueHeader)
+                        .font(.system(.caption2, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                        .textCase(.uppercase)
+                }
+
+                if rankedCurrentParticipants.isEmpty {
+                    Text("Complete a round this week to put a score on the board.")
+                        .font(.system(.subheadline, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                        .padding(.vertical, 14)
+                } else {
+                    ForEach(Array(rankedCurrentParticipants.prefix(5).enumerated()), id: \.element.id) { index, participant in
+                        WeeklyChallengeLeaderboardRow(
+                            position: index + 1,
+                            participant: participant,
+                            challenge: selectedChallenge
+                        )
+                    }
+                }
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.74)))
+
+            if hasPreviousWinners {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Label("Last week's winners", systemImage: "medal.fill")
+                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                            .foregroundStyle(AppTheme.ink)
+                        Spacer()
+                        Text("Awarded Sun 9pm")
+                            .font(.system(.caption2, design: .rounded).weight(.medium))
+                            .foregroundStyle(AppTheme.softText)
+                    }
+
+                    HStack(spacing: 8) {
+                        ForEach(WeeklyChallengeKind.allCases) { challenge in
+                            if let winner = previousWinner(for: challenge) {
+                                WeeklyWinnerTile(challenge: challenge, winner: winner)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.glassGradient))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
+        .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 10)
+    }
+
+    private var valueHeader: String {
+        switch selectedChallenge {
+        case .birdies: "Birdies"
+        case .fairways: "Hits"
+        case .putting: "Avg"
+        }
+    }
+
+    private func ranked(
+        _ participants: [WeeklyChallengeParticipant],
+        for challenge: WeeklyChallengeKind
+    ) -> [WeeklyChallengeParticipant] {
+        participants
+            .filter { $0.value(for: challenge) != nil }
+            .sorted { first, second in
+                let firstValue = first.value(for: challenge) ?? 0
+                let secondValue = second.value(for: challenge) ?? 0
+                if firstValue == secondValue {
+                    if first.roundsPlayed == second.roundsPlayed {
+                        return first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending
+                    }
+                    return first.roundsPlayed > second.roundsPlayed
+                }
+                return challenge == .putting ? firstValue < secondValue : firstValue > secondValue
+            }
+    }
+
+    private func previousWinner(for challenge: WeeklyChallengeKind) -> WeeklyChallengeParticipant? {
+        ranked(previousParticipants, for: challenge).first
+    }
+
+    private static let periodFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "Europe/London")
+        formatter.dateFormat = "E HH:mm"
+        return formatter
+    }()
+
+    private static let rangeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "Europe/London")
+        formatter.dateFormat = "d MMM"
+        return formatter
+    }()
+}
+
+struct WeeklyChallengeLeaderboardRow: View {
+    let position: Int
+    let participant: WeeklyChallengeParticipant
+    let challenge: WeeklyChallengeKind
+
+    var body: some View {
+        HStack(spacing: 11) {
+            Text("\(position)")
+                .font(.system(.caption, design: .rounded).weight(.semibold))
+                .foregroundStyle(position == 1 ? Color.white : AppTheme.softText)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(position == 1 ? AppTheme.controlGreen : AppTheme.elevated))
+
+            FriendAvatar(name: participant.name, photoURL: participant.photoURL, size: 36)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(participant.isCurrentUser ? "You" : participant.name)
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                Text("\(participant.roundsPlayed) round\(participant.roundsPlayed == 1 ? "" : "s")")
+                    .font(.system(.caption2, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+            }
+
+            Spacer(minLength: 8)
+
+            Text(participant.valueText(for: challenge))
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .foregroundStyle(challenge.accent)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+struct WeeklyWinnerTile: View {
+    let challenge: WeeklyChallengeKind
+    let winner: WeeklyChallengeParticipant
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: challenge.icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(challenge.accent)
+            Text(winner.isCurrentUser ? "You" : winner.name)
+                .font(.system(.caption, design: .rounded).weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text(winner.valueText(for: challenge))
+                .font(.system(.caption2, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.softText)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(challenge.accent.opacity(0.10)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(challenge.accent.opacity(0.22)))
     }
 }
 
