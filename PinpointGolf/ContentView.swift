@@ -152,7 +152,6 @@ struct ContentView: View {
             FriendsView(
                 account: firebaseAccount,
                 social: firebaseSocial,
-                localRounds: roundArchive.rounds,
                 openSharedRoundId: $pendingSharedRoundId
             )
         case .settings:
@@ -8957,13 +8956,11 @@ struct GoalSettingsCard: View {
 struct FriendsView: View {
     @ObservedObject var account: FirebaseAccountService
     @ObservedObject var social: FirebaseSocialService
-    let localRounds: [SavedRound]
     @Binding var openSharedRoundId: String?
     @State private var selectedFriend: FirebaseFriendProfile?
     @State private var selectedRound: FirebaseSharedRound?
     @State private var selectedGroup: FirebaseGolfGroup?
     @State private var newGroupName = ""
-    @State private var selectedChallenge: WeeklyChallengeKind = .birdies
     @State private var showAddFriendForm = false
     @State private var showGroupForm = false
 
@@ -8975,13 +8972,6 @@ struct FriendsView: View {
                 if account.user == nil {
                     signedOutCard
                 } else {
-                    WeeklyChallengesHubCard(
-                        selectedChallenge: $selectedChallenge,
-                        currentPeriod: currentChallengePeriod,
-                        previousPeriod: previousChallengePeriod,
-                        currentParticipants: participants(in: currentChallengePeriod),
-                        previousParticipants: participants(in: previousChallengePeriod)
-                    )
                     hubQuickActions
                     if showAddFriendForm {
                         addFriendCard
@@ -9051,7 +9041,7 @@ struct FriendsView: View {
                     Text("Friends Hub")
                         .font(.system(size: 32, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
-                    Text("Rounds, rivalries and weekly bragging rights.")
+                    Text("Rounds, rivalries and your golfing circle.")
                         .font(.system(.subheadline, design: .rounded).weight(.medium))
                         .foregroundStyle(.white.opacity(0.76))
                 }
@@ -9360,56 +9350,6 @@ struct FriendsView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
         .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
-    }
-
-    private var currentChallengePeriod: WeeklyChallengePeriod {
-        WeeklyChallengePeriod.current(at: Date())
-    }
-
-    private var previousChallengePeriod: WeeklyChallengePeriod {
-        currentChallengePeriod.previous
-    }
-
-    private func participants(in period: WeeklyChallengePeriod) -> [WeeklyChallengeParticipant] {
-        var participants: [WeeklyChallengeParticipant] = []
-
-        let playerRounds = localRounds.filter { period.contains($0.date) }
-        participants.append(
-            WeeklyChallengeParticipant(
-                id: account.user?.uid ?? "current-player",
-                name: account.profile?.displayName.nonEmptyValue ?? "You",
-                photoURL: account.profile?.photoURL,
-                isCurrentUser: true,
-                roundsPlayed: playerRounds.count,
-                birdies: playerRounds.reduce(0) { $0 + $1.birdies },
-                fairways: playerRounds.reduce(0) { total, round in
-                    total + round.holes.filter { $0.par > 3 && $0.fairway == .hit }.count
-                },
-                totalPutts: playerRounds.reduce(0) { $0 + $1.totalPutts }
-            )
-        )
-
-        for friend in social.friends {
-            let friendRounds = social.sharedRounds.filter {
-                $0.ownerId == friend.uid && period.contains($0.date)
-            }
-            participants.append(
-                WeeklyChallengeParticipant(
-                    id: friend.uid,
-                    name: friend.displayName,
-                    photoURL: friend.photoURL,
-                    isCurrentUser: false,
-                    roundsPlayed: friendRounds.count,
-                    birdies: friendRounds.reduce(0) { $0 + $1.birdies },
-                    fairways: friendRounds.reduce(0) { total, round in
-                        total + round.holes.filter { $0.par > 3 && $0.fairway == .hit }.count
-                    },
-                    totalPutts: friendRounds.reduce(0) { $0 + $1.putts }
-                )
-            )
-        }
-
-        return participants
     }
 
     private func rounds(for friend: FirebaseFriendProfile) -> [FirebaseSharedRound] {
