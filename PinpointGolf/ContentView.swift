@@ -8963,37 +8963,51 @@ struct FriendsView: View {
     @State private var newGroupName = ""
     @State private var showAddFriendForm = false
     @State private var showGroupForm = false
+    @State private var showInbox = false
+    @State private var pendingInboxSection: FriendsInboxSection?
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 18) {
-                friendsHubHero
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    friendsHubHero
 
-                if account.user == nil {
-                    signedOutCard
-                } else {
-                    hubQuickActions
-                    if showAddFriendForm {
-                        addFriendCard
+                    if account.user == nil {
+                        signedOutCard
+                    } else {
+                        hubQuickActions
+                        if showAddFriendForm {
+                            addFriendCard
+                        }
+                        if showGroupForm {
+                            groupCreatorCard
+                        }
+                        if !social.notifications.isEmpty {
+                            notificationsCard
+                                .id(FriendsInboxSection.roundAlerts)
+                        }
+                        friendsCard
+                        if !social.groupInvites.isEmpty {
+                            groupInvitesCard
+                                .id(FriendsInboxSection.groupInvites)
+                        }
+                        if !social.incomingRequests.isEmpty {
+                            requestsCard
+                                .id(FriendsInboxSection.friendRequests)
+                        }
+                        groupsCard
                     }
-                    if showGroupForm {
-                        groupCreatorCard
-                    }
-                    if !social.notifications.isEmpty {
-                        notificationsCard
-                    }
-                    friendsCard
-                    if !social.groupInvites.isEmpty {
-                        groupInvitesCard
-                    }
-                    if !social.incomingRequests.isEmpty {
-                        requestsCard
-                    }
-                    groupsCard
                 }
+                .padding(20)
+                .padding(.bottom, 20)
             }
-            .padding(20)
-            .padding(.bottom, 20)
+            .onChange(of: pendingInboxSection) { _, section in
+                guard let section else { return }
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                    proxy.scrollTo(section, anchor: .top)
+                }
+                pendingInboxSection = nil
+            }
         }
         .task {
             if account.user != nil {
@@ -9032,6 +9046,27 @@ struct FriendsView: View {
                 social: social
             )
         }
+        .sheet(isPresented: $showInbox) {
+            FriendsInboxView(
+                notifications: social.notifications,
+                requests: social.incomingRequests,
+                groupInvites: social.groupInvites,
+                openRound: { notification in
+                    Task {
+                        if let round = await social.loadSharedRound(id: notification.sharedRoundId) {
+                            selectedRound = round
+                            await social.markRead(notification)
+                        }
+                    }
+                },
+                openRequests: {
+                    pendingInboxSection = .friendRequests
+                },
+                openGroupInvites: {
+                    pendingInboxSection = .groupInvites
+                }
+            )
+        }
     }
 
     private var friendsHubHero: some View {
@@ -9059,11 +9094,17 @@ struct FriendsView: View {
             HStack(spacing: 10) {
                 FriendsHubMetric(title: "Friends", value: "\(social.friends.count)", icon: "person.2.fill")
                 FriendsHubMetric(title: "Groups", value: "\(social.groups.count)", icon: "person.3.fill")
-                FriendsHubMetric(
-                    title: "Inbox",
-                    value: "\(social.incomingRequests.count + social.groupInvites.count)",
-                    icon: "tray.fill"
-                )
+                Button {
+                    showInbox = true
+                } label: {
+                    FriendsHubMetric(
+                        title: "Inbox",
+                        value: "\(social.notifications.count + social.incomingRequests.count + social.groupInvites.count)",
+                        icon: "tray.fill"
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open inbox")
             }
         }
         .padding(20)
@@ -9218,6 +9259,7 @@ struct FriendsView: View {
                     Button {
                         Task {
                             selectedRound = await social.loadSharedRound(id: notification.sharedRoundId)
+                            await social.markRead(notification)
                         }
                     } label: {
                         HStack(spacing: 12) {
@@ -9373,6 +9415,246 @@ private extension String {
     var nonEmptyValue: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private enum FriendsInboxSection: Hashable {
+    case roundAlerts
+    case friendRequests
+    case groupInvites
+}
+
+struct FriendsInboxView: View {
+    let notifications: [FirebaseRoundNotification]
+    let requests: [FirebaseFriendRequest]
+    let groupInvites: [FirebaseGroupInvite]
+    let openRound: (FirebaseRoundNotification) -> Void
+    let openRequests: () -> Void
+    let openGroupInvites: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private var totalCount: Int {
+        notifications.count + requests.count + groupInvites.count
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+
+                    if totalCount == 0 {
+                        emptyState
+                    } else {
+                        if !requests.isEmpty {
+                            inboxSection(
+                                title: "Friend Requests",
+                                count: requests.count,
+                                icon: "person.badge.plus.fill",
+                                tint: AppTheme.mint
+                            ) {
+                                ForEach(requests) { request in
+                                    Button {
+                                        dismiss()
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                            openRequests()
+                                        }
+                                    } label: {
+                                        InboxActionRow(
+                                            icon: "person.crop.circle.badge.plus",
+                                            title: request.fromProfile.displayName,
+                                            subtitle: "Approve or decline this friend request",
+                                            meta: request.fromProfile.friendCode
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+
+                        if !groupInvites.isEmpty {
+                            inboxSection(
+                                title: "Group Invites",
+                                count: groupInvites.count,
+                                icon: "person.3.fill",
+                                tint: AppTheme.lime
+                            ) {
+                                ForEach(groupInvites) { invite in
+                                    Button {
+                                        dismiss()
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                            openGroupInvites()
+                                        }
+                                    } label: {
+                                        InboxActionRow(
+                                            icon: "flag.2.crossed.fill",
+                                            title: invite.groupName,
+                                            subtitle: "\(invite.fromProfile?.displayName ?? "A friend") invited you",
+                                            meta: "Join or decline"
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+
+                        if !notifications.isEmpty {
+                            inboxSection(
+                                title: "Round Alerts",
+                                count: notifications.count,
+                                icon: "bell.badge.fill",
+                                tint: AppTheme.mint
+                            ) {
+                                ForEach(notifications.prefix(5)) { notification in
+                                    Button {
+                                        dismiss()
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                            openRound(notification)
+                                        }
+                                    } label: {
+                                        InboxActionRow(
+                                            icon: "scorecard",
+                                            title: notification.actorName,
+                                            subtitle: notification.courseName,
+                                            meta: "Gross \(notification.gross) • \(notification.stableford.map { "\($0) pts" } ?? "Stableford pending")"
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(20)
+                .padding(.bottom, 24)
+            }
+            .background(AppTheme.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .foregroundStyle(AppTheme.mint)
+                }
+            }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "tray.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(AppTheme.lime)
+                    .frame(width: 50, height: 50)
+                    .background(Circle().fill(AppTheme.mintWash))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Inbox")
+                        .font(.system(size: 32, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
+                    Text(totalCount == 1 ? "1 item needs attention" : "\(totalCount) items need attention")
+                        .font(.system(.subheadline, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(AppTheme.mint)
+            Text("Nothing waiting")
+                .font(.system(.title3, design: .rounded).weight(.semibold))
+                .foregroundStyle(AppTheme.ink)
+            Text("Friend requests, group invites and round alerts will appear here.")
+                .font(.system(.subheadline, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.softText)
+                .lineSpacing(3)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+    }
+
+    private func inboxSection<Content: View>(
+        title: String,
+        count: Int,
+        icon: String,
+        tint: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(tint)
+                Text(title)
+                    .font(.system(.headline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer(minLength: 8)
+                Text("\(count)")
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(tint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(tint.opacity(0.14)))
+            }
+
+            content()
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.42), radius: 10, x: 0, y: 5)
+    }
+}
+
+struct InboxActionRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let meta: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(AppTheme.mint)
+                .frame(width: 42, height: 42)
+                .background(Circle().fill(AppTheme.mintWash))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(.system(.caption, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineLimit(2)
+                Text(meta)
+                    .font(.system(.caption2, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.mint)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(AppTheme.softText)
+        }
+        .padding(13)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
     }
 }
 

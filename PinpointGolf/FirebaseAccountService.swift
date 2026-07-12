@@ -1285,6 +1285,19 @@ final class FirebaseSocialService: ObservableObject {
         }
     }
 
+    func markRead(_ notification: FirebaseRoundNotification) async {
+        notifications.removeAll { $0.id == notification.id }
+
+        do {
+            try await database.collection("roundNotifications").document(notification.id).setData([
+                "read": true,
+                "readAt": Timestamp(date: Date())
+            ], merge: true)
+        } catch {
+            statusMessage = "Notification update failed: \(error.localizedDescription)"
+        }
+    }
+
     private func loadNotifications(for uid: String) async throws -> [FirebaseRoundNotification] {
         let snapshot = try await database.collection("roundNotifications")
             .whereField("recipientId", isEqualTo: uid)
