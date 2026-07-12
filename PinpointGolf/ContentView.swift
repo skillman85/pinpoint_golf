@@ -117,6 +117,7 @@ struct ContentView: View {
                     savedRounds: roundArchive.rounds,
                     entries: entries,
                     recentRounds: recentRounds,
+                    handicapHistory: handicapHistory.records,
                     isRoundActive: isRoundActive,
                     currentHandicap: playerSettings.handicap,
                     profileName: profileName,
@@ -631,6 +632,7 @@ struct HomeView: View {
     let savedRounds: [SavedRound]
     let entries: [RoundHoleEntry]
     let recentRounds: [RoundSummary]
+    let handicapHistory: [HandicapRecord]
     let isRoundActive: Bool
     let currentHandicap: Double
     let profileName: String
@@ -663,6 +665,8 @@ struct HomeView: View {
                     startRound: startRound,
                     discardRound: { showDiscardRoundAlert = true }
                 )
+
+                PremiumHandicapTrendCard(records: handicapHistory)
 
                 PremiumHomeRecentRounds(rounds: Array(savedRounds.prefix(3)), viewRound: { selectedRound = $0 })
 
@@ -740,6 +744,127 @@ struct PremiumScreenHeader: View {
             .accessibilityLabel(badgeCount > 0 ? "Notifications, \(badgeCount) unread" : "Notifications")
         }
     }
+}
+
+struct PremiumHandicapTrendCard: View {
+    let records: [HandicapRecord]
+
+    private var orderedRecords: [HandicapRecord] {
+        Array(records.sorted { $0.date < $1.date }.suffix(20))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Handicap Index Trend")
+                    .font(.system(.headline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text("Last 20 changes")
+                    .font(.system(.caption2, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+            }
+
+            if orderedRecords.isEmpty {
+                Text("Record a handicap change in Settings to start tracking your index.")
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .padding(.vertical, 16)
+            } else {
+                HStack(alignment: .bottom, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(String(format: "%.1f", orderedRecords.last?.handicap ?? 0))
+                            .font(.system(size: 32, weight: .semibold, design: .rounded))
+                            .foregroundStyle(AppTheme.mint)
+                        Text("current index")
+                            .font(.system(.caption, design: .rounded).weight(.medium))
+                            .foregroundStyle(AppTheme.softText)
+                        if let lowest = orderedRecords.map(\.handicap).min() {
+                            Text("Low \(String(format: "%.1f", lowest))")
+                                .font(.system(.caption2, design: .rounded).weight(.medium))
+                                .foregroundStyle(AppTheme.softText)
+                        }
+                    }
+                    PremiumHandicapLineChart(records: orderedRecords)
+                        .frame(height: 136)
+                }
+            }
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.glassGradient))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+        .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 10)
+    }
+}
+
+struct PremiumHandicapLineChart: View {
+    let records: [HandicapRecord]
+
+    private var values: [Double] { records.map(\.handicap) }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let minimum = max(floor((values.min() ?? 0) - 1), 0)
+            let maximum = ceil((values.max() ?? 1) + 1)
+            let range = max(maximum - minimum, 1)
+            let originX: CGFloat = 26
+            let plotWidth = max(size.width - originX - 4, 1)
+            let plotHeight = max(size.height - 24, 1)
+
+            ZStack {
+                ForEach(0..<3, id: \.self) { index in
+                    let fraction = CGFloat(index) / 2
+                    let y = 5 + fraction * plotHeight
+                    Text(String(format: "%.1f", maximum - Double(fraction) * range))
+                        .font(.system(size: 8, weight: .medium, design: .rounded))
+                        .foregroundStyle(AppTheme.softText)
+                        .position(x: 12, y: y)
+                    Rectangle()
+                        .fill(AppTheme.border.opacity(0.72))
+                        .frame(width: plotWidth, height: 1)
+                        .position(x: originX + plotWidth / 2, y: y)
+                }
+
+                Path { path in
+                    for (index, value) in values.enumerated() {
+                        let x = originX + (values.count == 1 ? plotWidth / 2 : CGFloat(index) / CGFloat(values.count - 1) * plotWidth)
+                        let y = 5 + plotHeight - CGFloat((value - minimum) / range) * plotHeight
+                        if index == 0 { path.move(to: CGPoint(x: x, y: y)) }
+                        else { path.addLine(to: CGPoint(x: x, y: y)) }
+                    }
+                }
+                .stroke(AppTheme.mint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+
+                ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                    let x = originX + (values.count == 1 ? plotWidth / 2 : CGFloat(index) / CGFloat(values.count - 1) * plotWidth)
+                    let y = 5 + plotHeight - CGFloat((record.handicap - minimum) / range) * plotHeight
+                    Circle()
+                        .fill(AppTheme.panel)
+                        .frame(width: 8, height: 8)
+                        .overlay(Circle().stroke(AppTheme.mint, lineWidth: 2))
+                        .position(x: x, y: y)
+                }
+
+                if let first = records.first, let last = records.last {
+                    Text(Self.shortDateFormatter.string(from: first.date))
+                        .font(.system(size: 8, weight: .medium, design: .rounded))
+                        .foregroundStyle(AppTheme.softText)
+                        .position(x: originX, y: size.height - 4)
+                    Text(Self.shortDateFormatter.string(from: last.date))
+                        .font(.system(size: 8, weight: .medium, design: .rounded))
+                        .foregroundStyle(AppTheme.softText)
+                        .position(x: originX + plotWidth, y: size.height - 4)
+                }
+            }
+        }
+    }
+
+    private static let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM"
+        return formatter
+    }()
 }
 
 struct PremiumHomeRecentRounds: View {
@@ -1607,11 +1732,11 @@ struct ScoringMixStrip: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Scoring Mix")
-                    .font(.system(.caption, design: .rounded).weight(.heavy))
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
                 Text("avg per round")
-                    .font(.system(.caption2, design: .rounded).weight(.bold))
+                    .font(.system(.caption2, design: .rounded).weight(.medium))
                     .foregroundStyle(AppTheme.softText)
             }
 
@@ -1723,12 +1848,12 @@ struct ScoringMixPill: View {
     var body: some View {
         VStack(spacing: 5) {
             Text(value)
-                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .font(.system(size: 22, weight: .medium, design: .rounded))
                 .foregroundStyle(AppTheme.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
             Text(title)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(AppTheme.softText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
@@ -8040,8 +8165,6 @@ struct SettingsView: View {
                 }
 
                 if selectedSection == .golf {
-                    GoalSettingsCard(goalArchive: goalArchive)
-
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Handicap Index")
                         .font(.system(.headline, design: .rounded).weight(.bold))
@@ -8098,78 +8221,6 @@ struct SettingsView: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
                 .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    SectionHeader(title: "Handicap History", actionTitle: handicapHistory.records.isEmpty ? nil : "\(handicapHistory.records.count) records")
-                    if handicapHistory.records.isEmpty {
-                        Text("Record a handicap change to start tracking movement over time.")
-                            .font(.system(.subheadline, design: .rounded).weight(.medium))
-                            .foregroundStyle(AppTheme.softText)
-                    } else {
-                        TrendLineChart(points: handicapHistory.records.reversed().map { TrendPoint(label: Self.shortDateFormatter.string(from: $0.date), value: $0.handicap) }, accent: AppTheme.gold)
-                            .frame(height: 92)
-                        ForEach(handicapHistory.records.prefix(4)) { record in
-                            HStack {
-                                Text(Self.longDateFormatter.string(from: record.date))
-                                    .font(.system(.caption, design: .rounded).weight(.bold))
-                                    .foregroundStyle(AppTheme.softText)
-                                Spacer()
-                                Text(String(format: "%.1f", record.handicap))
-                                    .font(.system(.headline, design: .rounded).weight(.bold))
-                                    .foregroundStyle(AppTheme.ink)
-                            }
-                            .padding(12)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
-                        }
-                    }
-                }
-                .padding(18)
-                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-                .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
-
-                SectionHeader(title: "Stableford", actionTitle: savedRounds.isEmpty ? nil : "Saved rounds")
-
-                HStack(spacing: 10) {
-                    StatTile(title: "Handicap", value: String(format: "%.1f", playerSettings.handicap), caption: "current")
-                    StatTile(title: "Best", value: bestStableford, caption: "points")
-                    StatTile(title: "Average", value: averageStableford, caption: "points")
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Recent Stableford Cards")
-                        .font(.system(.headline, design: .rounded).weight(.bold))
-                        .foregroundStyle(AppTheme.ink)
-
-                    if savedRounds.isEmpty {
-                        Text("Finish a round and Stableford points will appear here.")
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(AppTheme.softText)
-                            .lineSpacing(3)
-                    } else {
-                        ForEach(savedRounds.prefix(5)) { round in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(round.courseName)
-                                        .font(.system(.subheadline, design: .rounded).weight(.bold))
-                                        .foregroundStyle(AppTheme.ink)
-                                    Text("\(round.teeName) tees - gross \(round.totalScore) - \(stablefordCaption(for: round))")
-                                        .font(.system(.caption, design: .rounded).weight(.medium))
-                                        .foregroundStyle(AppTheme.softText)
-                                }
-                                Spacer()
-                                Text(stablefordPointsText(for: round))
-                                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                                    .foregroundStyle(AppTheme.mint)
-                            }
-                            .padding(14)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
-                        }
-                    }
-                }
-                .padding(18)
-                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-                    .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
                 }
 
                 if selectedSection == .data {
@@ -8319,30 +8370,8 @@ struct SettingsView: View {
         }
     }
 
-    private var bestStableford: String {
-        savedRounds.compactMap(\.stablefordPoints).max().map(String.init) ?? "-"
-    }
-
-    private var averageStableford: String {
-        let points = savedRounds.compactMap(\.stablefordPoints)
-        guard !points.isEmpty else { return "-" }
-        let average = Double(points.reduce(0, +)) / Double(points.count)
-        return String(format: "%.1f", average)
-    }
-
     private var displayedScorecards: [CourseScorecardOverride] {
         showAllCachedScorecards ? scorecardStore.overrides : Array(scorecardStore.overrides.prefix(5))
-    }
-
-    private func stablefordPointsText(for round: SavedRound) -> String {
-        round.stablefordPoints.map(String.init) ?? "-"
-    }
-
-    private func stablefordCaption(for round: SavedRound) -> String {
-        guard let handicap = round.handicap else {
-            return "No saved handicap"
-        }
-        return "CH \(round.courseHandicap(using: handicap))"
     }
 
     private func syncHandicapText() {
