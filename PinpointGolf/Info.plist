@@ -18,6 +18,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Precision Golf uses your approximate location to search for nearby golf courses.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Precision Golf lets you choose a contact to invite as a golfing friend. Contacts are only accessed when you open the invite flow.</string>
 	<key>PrecisionCourseAPIBaseURL</key>
 	<string>$(PINPOINT_COURSE_API_BASE_URL)</string>
 	<key>UIApplicationSceneManifest</key>

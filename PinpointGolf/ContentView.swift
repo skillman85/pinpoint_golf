@@ -2,6 +2,8 @@ import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
+import ContactsUI
+import MessageUI
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -8965,6 +8967,13 @@ struct FriendsView: View {
     @State private var showGroupForm = false
     @State private var showInbox = false
     @State private var pendingInboxSection: FriendsInboxSection?
+    @State private var showContactPicker = false
+    @State private var showMessageComposer = false
+    @State private var contactInviteRecipients: [String] = []
+    @State private var contactInviteBody = ""
+    @State private var contactInviteStatus: String?
+
+    private let betaInviteURL = "https://testflight.apple.com/join/5PvejjBZ"
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -9067,6 +9076,65 @@ struct FriendsView: View {
                 }
             )
         }
+        .sheet(isPresented: $showContactPicker) {
+            ContactPickerView { selection in
+                handleContactInviteSelection(selection)
+            }
+        }
+        .sheet(isPresented: $showMessageComposer) {
+            MessageComposerView(recipients: contactInviteRecipients, body: contactInviteBody) { result in
+                switch result {
+                case .sent:
+                    contactInviteStatus = "Invite sent"
+                case .cancelled:
+                    contactInviteStatus = "Invite cancelled"
+                case .failed:
+                    contactInviteStatus = "Invite failed"
+                @unknown default:
+                    contactInviteStatus = nil
+                }
+            }
+        }
+    }
+
+    private func startContactInvite() {
+        guard account.user != nil else {
+            contactInviteStatus = "Create an account before inviting golfers."
+            return
+        }
+        guard let friendCode = account.profile?.friendCode, !friendCode.isEmpty else {
+            contactInviteStatus = "Create your friend code first in Settings."
+            return
+        }
+        guard MFMessageComposeViewController.canSendText() else {
+            contactInviteStatus = "Messages is not available on this device."
+            return
+        }
+
+        contactInviteStatus = nil
+        showContactPicker = true
+    }
+
+    private func handleContactInviteSelection(_ selection: ContactInviteSelection) {
+        guard let phoneNumber = selection.phoneNumber, !phoneNumber.isEmpty else {
+            contactInviteStatus = "\(selection.displayName) has no phone number saved."
+            return
+        }
+        guard let friendCode = account.profile?.friendCode, !friendCode.isEmpty else {
+            contactInviteStatus = "Create your friend code first in Settings."
+            return
+        }
+
+        contactInviteRecipients = [phoneNumber]
+        contactInviteBody = """
+        Join me on Precision Golf.
+
+        My friend code is \(friendCode).
+
+        Beta/TestFlight link:
+        \(betaInviteURL)
+        """
+        showMessageComposer = true
     }
 
     private var friendsHubHero: some View {
@@ -9141,27 +9209,46 @@ struct FriendsView: View {
     }
 
     private var hubQuickActions: some View {
-        HStack(spacing: 10) {
-            FriendsHubAction(
-                title: "Add Friend",
-                icon: "person.badge.plus",
-                isActive: showAddFriendForm
-            ) {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showAddFriendForm.toggle()
-                    if showAddFriendForm { showGroupForm = false }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                FriendsHubAction(
+                    title: "Add Friend",
+                    icon: "person.badge.plus",
+                    isActive: showAddFriendForm
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showAddFriendForm.toggle()
+                        if showAddFriendForm { showGroupForm = false }
+                    }
+                }
+
+                FriendsHubAction(
+                    title: "New Group",
+                    icon: "person.3.fill",
+                    isActive: showGroupForm
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showGroupForm.toggle()
+                        if showGroupForm { showAddFriendForm = false }
+                    }
                 }
             }
 
             FriendsHubAction(
-                title: "New Group",
-                icon: "person.3.fill",
-                isActive: showGroupForm
+                title: "Invite Golfer",
+                icon: "message.badge.fill",
+                isActive: false,
+                showsDisclosure: false
             ) {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showGroupForm.toggle()
-                    if showGroupForm { showAddFriendForm = false }
-                }
+                startContactInvite()
+            }
+
+            if let contactInviteStatus {
+                Text(contactInviteStatus)
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(contactInviteStatus.localizedCaseInsensitiveContains("failed") || contactInviteStatus.localizedCaseInsensitiveContains("not") ? Color.red : AppTheme.softText)
+                    .lineSpacing(3)
+                    .padding(.horizontal, 2)
             }
         }
     }
@@ -9422,6 +9509,83 @@ private enum FriendsInboxSection: Hashable {
     case roundAlerts
     case friendRequests
     case groupInvites
+}
+
+struct ContactInviteSelection {
+    let displayName: String
+    let phoneNumber: String?
+
+    init(contact: CNContact) {
+        let name = CNContactFormatter.string(from: contact, style: .fullName) ?? "Golfer"
+        displayName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Golfer" : name
+        phoneNumber = contact.phoneNumbers.first?.value.stringValue
+    }
+}
+
+struct ContactPickerView: UIViewControllerRepresentable {
+    let onSelect: (ContactInviteSelection) -> Void
+
+    func makeUIViewController(context: Context) -> CNContactPickerViewController {
+        let picker = CNContactPickerViewController()
+        picker.delegate = context.coordinator
+        picker.displayedPropertyKeys = [CNContactPhoneNumbersKey]
+        picker.predicateForEnablingContact = NSPredicate(format: "phoneNumbers.@count > 0")
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: CNContactPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSelect: onSelect)
+    }
+
+    final class Coordinator: NSObject, CNContactPickerDelegate {
+        let onSelect: (ContactInviteSelection) -> Void
+
+        init(onSelect: @escaping (ContactInviteSelection) -> Void) {
+            self.onSelect = onSelect
+        }
+
+        func contactPicker(_ picker: CNContactPickerViewController, didSelect contact: CNContact) {
+            onSelect(ContactInviteSelection(contact: contact))
+        }
+    }
+}
+
+struct MessageComposerView: UIViewControllerRepresentable {
+    let recipients: [String]
+    let body: String
+    let onComplete: (MessageComposeResult) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> MFMessageComposeViewController {
+        let composer = MFMessageComposeViewController()
+        composer.messageComposeDelegate = context.coordinator
+        composer.recipients = recipients
+        composer.body = body
+        return composer
+    }
+
+    func updateUIViewController(_ uiViewController: MFMessageComposeViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onComplete: onComplete, dismiss: dismiss)
+    }
+
+    final class Coordinator: NSObject, MFMessageComposeViewControllerDelegate {
+        let onComplete: (MessageComposeResult) -> Void
+        let dismiss: DismissAction
+
+        init(onComplete: @escaping (MessageComposeResult) -> Void, dismiss: DismissAction) {
+            self.onComplete = onComplete
+            self.dismiss = dismiss
+        }
+
+        func messageComposeViewController(_ controller: MFMessageComposeViewController, didFinishWith result: MessageComposeResult) {
+            dismiss()
+            onComplete(result)
+        }
+    }
 }
 
 struct FriendsInboxView: View {
@@ -9686,6 +9850,7 @@ struct FriendsHubAction: View {
     let title: String
     let icon: String
     let isActive: Bool
+    var showsDisclosure = true
     let action: () -> Void
 
     var body: some View {
@@ -9698,8 +9863,10 @@ struct FriendsHubAction: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
                 Spacer(minLength: 4)
-                Image(systemName: isActive ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 11, weight: .semibold))
+                if showsDisclosure {
+                    Image(systemName: isActive ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                }
             }
             .foregroundStyle(isActive ? Color.white : AppTheme.ink)
             .padding(.horizontal, 14)
