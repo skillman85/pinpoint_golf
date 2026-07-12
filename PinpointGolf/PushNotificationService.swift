@@ -5,6 +5,7 @@ import FirebaseMessaging
 import GoogleSignIn
 import UIKit
 import UserNotifications
+import FirebaseCore
 
 extension Notification.Name {
     static let precisionOpenSharedRound = Notification.Name("precisionOpenSharedRound")
@@ -298,6 +299,20 @@ extension PushNotificationService: UNUserNotificationCenterDelegate {
 }
 
 final class PrecisionGolfAppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
+
+        Task { @MainActor in
+            PushNotificationService.shared.configure()
+        }
+        return true
+    }
+
     func application(
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
