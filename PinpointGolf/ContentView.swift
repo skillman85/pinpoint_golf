@@ -10974,7 +10974,7 @@ struct FriendSeasonStatsCard: View {
                         .font(.system(.caption, design: .rounded).weight(.semibold))
                         .foregroundStyle(AppTheme.mint)
                         .textCase(.uppercase)
-                    Text("\(seasonYear) Season Averages")
+                    Text("\(String(seasonYear)) Season Averages")
                         .font(.system(.title3, design: .rounded).weight(.semibold))
                         .foregroundStyle(AppTheme.ink)
                 }
