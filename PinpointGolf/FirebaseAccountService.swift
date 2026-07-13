@@ -232,13 +232,18 @@ final class FirebaseAccountService: NSObject, ObservableObject {
     private func saveProfile(uid: String, displayName: String, handicap: Double, homeClub: String) async throws {
         let document = database.collection("users").document(uid)
         let now = Timestamp(date: Date())
+        let trimmedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedHomeClub = homeClub.trimmingCharacters(in: .whitespacesAndNewlines)
         let friendCode = profile?.friendCode ?? Self.makeFriendCode(from: displayName)
         var payload: [String: Any] = [
             "uid": uid,
-            "displayName": displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+            "displayName": trimmedDisplayName,
+            "displayNameLower": Self.searchKey(trimmedDisplayName),
             "handicap": handicap,
-            "homeClub": homeClub.trimmingCharacters(in: .whitespacesAndNewlines),
+            "homeClub": trimmedHomeClub,
+            "homeClubLower": Self.searchKey(trimmedHomeClub),
             "friendCode": friendCode,
+            "searchable": true,
             "updatedAt": now
         ]
 
@@ -249,10 +254,18 @@ final class FirebaseAccountService: NSObject, ObservableObject {
         try await document.setData(payload, merge: true)
         try await database.collection("friendCodes").document(friendCode).setData([
             "uid": uid,
-            "displayName": displayName.trimmingCharacters(in: .whitespacesAndNewlines),
+            "displayName": trimmedDisplayName,
+            "displayNameLower": Self.searchKey(trimmedDisplayName),
             "updatedAt": now
         ], merge: true)
         await loadProfile(for: uid)
+    }
+
+    private static func searchKey(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
     }
 
     private static func makeFriendCode(from displayName: String) -> String {
@@ -572,6 +585,9 @@ final class FirebaseSocialService: ObservableObject {
     @Published private(set) var liveMatchplayMatches: [FirebaseMatchplayMatch] = []
     @Published private(set) var matchplayHistory: [FirebaseMatchplayMatch] = []
     @Published private(set) var liveGroupGames: [FirebaseLiveGroupGame] = []
+    @Published var golferSearchQuery = ""
+    @Published private(set) var golferSearchResults: [FirebaseFriendProfile] = []
+    @Published private(set) var isSearchingGolfers = false
     @Published var statusMessage: String?
     @Published var isWorking = false
 
@@ -595,6 +611,7 @@ final class FirebaseSocialService: ObservableObject {
             liveMatchplayMatches = []
             matchplayHistory = []
             liveGroupGames = []
+            golferSearchResults = []
             matchplayListener?.remove()
             matchplayListener = nil
             liveGroupGamesListener?.remove()
@@ -917,6 +934,94 @@ final class FirebaseSocialService: ObservableObject {
             ], merge: true)
             friendCodeInput = ""
             statusMessage = "Friend request sent"
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    func searchGolfers() async {
+        guard let currentUid = Auth.auth().currentUser?.uid else {
+            statusMessage = "Create an account before searching golfers."
+            golferSearchResults = []
+            return
+        }
+
+        let query = Self.searchKey(golferSearchQuery)
+        guard query.count >= 2 else {
+            golferSearchResults = []
+            statusMessage = "Type at least 2 letters to search."
+            return
+        }
+
+        isSearchingGolfers = true
+        defer { isSearchingGolfers = false }
+
+        do {
+            let snapshot = try await database.collection("users")
+                .order(by: "displayNameLower")
+                .start(at: [query])
+                .end(at: [query + "\u{f8ff}"])
+                .limit(to: 15)
+                .getDocuments()
+
+            let friendIds = Set(friends.map(\.uid))
+            let results = snapshot.documents.compactMap { document -> FirebaseFriendProfile? in
+                let data = document.data()
+                let uid = data["uid"] as? String ?? document.documentID
+                guard uid != currentUid, !friendIds.contains(uid) else { return nil }
+                let searchable = data["searchable"] as? Bool ?? true
+                guard searchable else { return nil }
+                return FirebaseFriendProfile(
+                    uid: uid,
+                    displayName: data["displayName"] as? String ?? "Golfer",
+                    handicap: data["handicap"] as? Double ?? 0,
+                    homeClub: data["homeClub"] as? String ?? "",
+                    friendCode: data["friendCode"] as? String ?? "",
+                    photoURL: data["photoURL"] as? String
+                )
+            }
+
+            golferSearchResults = results.sorted { $0.displayName < $1.displayName }
+            statusMessage = results.isEmpty ? "No synced golfers found for that name." : nil
+        } catch {
+            golferSearchResults = []
+            statusMessage = "Golfer search failed: \(error.localizedDescription)"
+        }
+    }
+
+    func clearGolferSearch() {
+        golferSearchQuery = ""
+        golferSearchResults = []
+    }
+
+    func sendFriendRequest(to golfer: FirebaseFriendProfile) async {
+        guard let fromUid = Auth.auth().currentUser?.uid else {
+            statusMessage = "Create an account before adding friends."
+            return
+        }
+        guard golfer.uid != fromUid else {
+            statusMessage = "That is your own profile."
+            return
+        }
+        guard !friends.contains(where: { $0.uid == golfer.uid }) else {
+            statusMessage = "You are already friends."
+            return
+        }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let requestId = requestDocumentId(fromUid: fromUid, toUid: golfer.uid)
+            try await database.collection("friendRequests").document(requestId).setData([
+                "fromUserId": fromUid,
+                "toUserId": golfer.uid,
+                "status": "pending",
+                "createdAt": Timestamp(date: Date()),
+                "updatedAt": Timestamp(date: Date())
+            ], merge: true)
+            golferSearchResults.removeAll { $0.uid == golfer.uid }
+            statusMessage = "Friend request sent to \(golfer.displayName)"
         } catch {
             statusMessage = error.localizedDescription
         }
@@ -1389,6 +1494,13 @@ final class FirebaseSocialService: ObservableObject {
         guard cleaned.count > 4 else { return cleaned }
         let splitIndex = cleaned.index(cleaned.endIndex, offsetBy: -4)
         return "\(cleaned[..<splitIndex])-\(cleaned[splitIndex...])"
+    }
+
+    private static func searchKey(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
     }
 
     private func requestDocumentId(fromUid: String, toUid: String) -> String {

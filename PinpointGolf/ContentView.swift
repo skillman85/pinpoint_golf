@@ -8964,6 +8964,7 @@ struct FriendsView: View {
     @State private var selectedGroup: FirebaseGolfGroup?
     @State private var newGroupName = ""
     @State private var showAddFriendForm = false
+    @State private var showFindGolferForm = false
     @State private var showGroupForm = false
     @State private var showInbox = false
     @State private var pendingInboxSection: FriendsInboxSection?
@@ -8987,6 +8988,9 @@ struct FriendsView: View {
                         hubQuickActions
                         if showAddFriendForm {
                             addFriendCard
+                        }
+                        if showFindGolferForm {
+                            findGolferCard
                         }
                         if showGroupForm {
                             groupCreatorCard
@@ -9218,10 +9222,31 @@ struct FriendsView: View {
                 ) {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         showAddFriendForm.toggle()
-                        if showAddFriendForm { showGroupForm = false }
+                        if showAddFriendForm {
+                            showFindGolferForm = false
+                            showGroupForm = false
+                        }
                     }
                 }
 
+                FriendsHubAction(
+                    title: "Find Golfer",
+                    icon: "magnifyingglass",
+                    isActive: showFindGolferForm
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showFindGolferForm.toggle()
+                        if showFindGolferForm {
+                            showAddFriendForm = false
+                            showGroupForm = false
+                        } else {
+                            social.clearGolferSearch()
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 10) {
                 FriendsHubAction(
                     title: "New Group",
                     icon: "person.3.fill",
@@ -9229,18 +9254,21 @@ struct FriendsView: View {
                 ) {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         showGroupForm.toggle()
-                        if showGroupForm { showAddFriendForm = false }
+                        if showGroupForm {
+                            showAddFriendForm = false
+                            showFindGolferForm = false
+                        }
                     }
                 }
-            }
 
-            FriendsHubAction(
-                title: "Invite Golfer",
-                icon: "message.badge.fill",
-                isActive: false,
-                showsDisclosure: false
-            ) {
-                startContactInvite()
+                FriendsHubAction(
+                    title: "Invite Golfer",
+                    icon: "message.badge.fill",
+                    isActive: false,
+                    showsDisclosure: false
+                ) {
+                    startContactInvite()
+                }
             }
 
             if let contactInviteStatus {
@@ -9287,6 +9315,88 @@ struct FriendsView: View {
                 Text(status)
                     .font(.system(.caption, design: .rounded).weight(.semibold))
                     .foregroundStyle(status.localizedCaseInsensitiveContains("error") ? Color.red : AppTheme.softText)
+                    .lineSpacing(3)
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+        .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+    }
+
+    private var findGolferCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Find Golfer")
+                    .font(.system(.headline, design: .rounded).weight(.heavy))
+                    .foregroundStyle(AppTheme.ink)
+                Text("Search synced Precision Golf profiles by name. New or existing users may need to sync their profile once before appearing.")
+                    .font(.system(.caption, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineSpacing(3)
+            }
+
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(AppTheme.softText)
+
+                TextField("Search name, e.g. Andy", text: $social.golferSearchQuery)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.ink)
+                    .onSubmit {
+                        Task { await social.searchGolfers() }
+                    }
+
+                Button {
+                    Task { await social.searchGolfers() }
+                } label: {
+                    Text("Search")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .frame(height: 34)
+                .background(Capsule().fill(AppTheme.controlGreen))
+                .disabled(social.isSearchingGolfers || social.golferSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+
+            if social.isSearchingGolfers {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .tint(AppTheme.mint)
+                    Text("Searching golfers...")
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                }
+            }
+
+            if !social.golferSearchResults.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(social.golferSearchResults) { golfer in
+                        GolferSearchResultRow(golfer: golfer) {
+                            Task {
+                                await social.sendFriendRequest(to: golfer)
+                            }
+                        }
+                    }
+                }
+            } else if !social.isSearchingGolfers && social.golferSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 {
+                Text("No results yet. Tap Search, or ask the golfer to sync their profile from Settings.")
+                    .font(.system(.caption, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineSpacing(3)
+            }
+
+            if let status = social.statusMessage {
+                Text(status)
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(status.localizedCaseInsensitiveContains("failed") || status.localizedCaseInsensitiveContains("No synced") ? Color.red : AppTheme.softText)
                     .lineSpacing(3)
             }
         }
@@ -9879,6 +9989,55 @@ struct FriendsHubAction: View {
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(isActive ? AppTheme.mint.opacity(0.55) : AppTheme.border))
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct GolferSearchResultRow: View {
+    let golfer: FirebaseFriendProfile
+    let sendRequest: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            FriendAvatar(name: golfer.displayName, photoURL: golfer.photoURL, size: 44)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(golfer.displayName)
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
+
+                HStack(spacing: 7) {
+                    if !golfer.homeClub.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(golfer.homeClub)
+                            .lineLimit(1)
+                    } else {
+                        Text("Home club not set")
+                            .lineLimit(1)
+                    }
+
+                    Text("HCP \(golfer.handicap, specifier: "%.1f")")
+                        .lineLimit(1)
+                }
+                .font(.system(.caption, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.softText)
+            }
+
+            Spacer(minLength: 8)
+
+            Button(action: sendRequest) {
+                Label("Add", systemImage: "person.badge.plus")
+                    .labelStyle(.iconOnly)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(Circle().fill(AppTheme.controlGreen))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Send friend request to \(golfer.displayName)")
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
     }
 }
 
