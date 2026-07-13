@@ -9577,7 +9577,6 @@ struct FriendsView: View {
                     } label: {
                         FriendProfileRow(
                             friend: friend,
-                            rounds: Array(rounds(for: friend).prefix(3)),
                             matchplayRecord: matchplayRecord(for: friend)
                         )
                     }
@@ -11258,7 +11257,7 @@ struct FriendProfileDetailView: View {
                     FriendSeasonStatsCard(rounds: rounds)
 
                     VStack(alignment: .leading, spacing: 12) {
-                        SectionHeader(title: "Latest Rounds", actionTitle: rounds.isEmpty ? nil : "\(visibleRounds.count) of \(rounds.count)")
+                        SectionHeader(title: "Latest Rounds", actionTitle: rounds.isEmpty ? nil : (showAllRounds ? "\(rounds.count) rounds" : "\(min(3, rounds.count)) latest"))
 
                         if rounds.isEmpty {
                             Text("When this friend completes a shared round, it will appear here.")
@@ -11281,7 +11280,7 @@ struct FriendProfileDetailView: View {
                                         showAllRounds.toggle()
                                     }
                                 } label: {
-                                    Label(showAllRounds ? "Show Latest 3" : "View More Rounds", systemImage: showAllRounds ? "chevron.up" : "chevron.down")
+                                    Label(showAllRounds ? "Show Latest 3" : "View All \(rounds.count) Rounds", systemImage: showAllRounds ? "chevron.up" : "chevron.down")
                                         .frame(maxWidth: .infinity)
                                 }
                                 .buttonStyle(FirebaseAccountButtonStyle(isPrimary: false))
@@ -11678,45 +11677,43 @@ struct MatchplayFriendRecord {
 
 struct FriendProfileRow: View {
     let friend: FirebaseFriendProfile
-    let rounds: [FirebaseSharedRound]
     let matchplayRecord: MatchplayFriendRecord
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            FriendProfileSummary(friend: friend)
+        HStack(spacing: 12) {
+            FriendAvatar(name: friend.displayName, photoURL: friend.photoURL, size: 46)
 
-            HStack(spacing: 8) {
-                Label(matchplayRecord.summary, systemImage: "flag.2.crossed.fill")
-                    .font(.system(.caption, design: .rounded).weight(.heavy))
-                    .foregroundStyle(matchplayRecord.played == 0 ? AppTheme.softText : AppTheme.mint)
-                    .padding(.horizontal, 10)
-                    .frame(height: 30)
-                    .background(Capsule().fill(AppTheme.elevated))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(friend.displayName.isEmpty ? "Golfer" : friend.displayName)
+                    .font(.system(.headline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(1)
 
-                Spacer(minLength: 8)
-
-                Text(rounds.isEmpty ? "No rounds shared" : "\(rounds.count) latest")
-                    .font(.system(.caption2, design: .rounded).weight(.heavy))
-                    .foregroundStyle(AppTheme.softText)
-            }
-
-            if !rounds.isEmpty {
-                VStack(spacing: 8) {
-                    ForEach(rounds) { round in
-                        FriendRoundPreviewRow(round: round)
-                    }
+                if matchplayRecord.played > 0 {
+                    Text(matchplayRecord.summary)
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                        .lineLimit(1)
                 }
             }
 
-            Label("View Profile", systemImage: "person.crop.circle")
-                .font(.system(.subheadline, design: .rounded).weight(.heavy))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
-                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.controlGreen))
+            Spacer(minLength: 8)
+
+            HStack(spacing: 7) {
+                Text("View Profile")
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .background(Capsule().fill(AppTheme.controlGreen))
         }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
     }
 }
 
