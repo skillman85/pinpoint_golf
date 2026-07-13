@@ -11699,17 +11699,17 @@ struct FriendProfileRow: View {
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 7) {
-                Text("View Profile")
+            HStack(spacing: 5) {
+                Text("View")
                     .font(.system(.caption, design: .rounded).weight(.semibold))
-                    .lineLimit(1)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
             }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 12)
-            .frame(height: 36)
-            .background(Capsule().fill(AppTheme.controlGreen))
+            .foregroundStyle(AppTheme.mint)
+            .padding(.horizontal, 8)
+            .frame(height: 30)
+            .background(Capsule().fill(AppTheme.mintWash))
+            .overlay(Capsule().stroke(AppTheme.mint.opacity(0.28)))
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
