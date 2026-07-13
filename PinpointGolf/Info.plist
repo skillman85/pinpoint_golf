@@ -27,6 +27,10 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>PrecisionLaunchScreen</string>
 	<key>UISupportedInterfaceOrientations</key>
