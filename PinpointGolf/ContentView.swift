@@ -10968,22 +10968,41 @@ struct FriendSeasonStatsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "\(seasonYear) Season Averages", actionTitle: seasonRounds.isEmpty ? nil : "\(seasonRounds.count) rounds")
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Performance Summary")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.mint)
+                        .textCase(.uppercase)
+                    Text("\(seasonYear) Season Averages")
+                        .font(.system(.title3, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                }
+                Spacer()
+                if !seasonRounds.isEmpty {
+                    Text("\(seasonRounds.count) \(seasonRounds.count == 1 ? "round" : "rounds")")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.mint)
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .background(Capsule().fill(AppTheme.mintWash))
+                }
+            }
 
             if seasonRounds.isEmpty {
                 Text("No shared rounds for this season yet.")
                     .font(.system(.subheadline, design: .rounded).weight(.medium))
                     .foregroundStyle(AppTheme.softText)
             } else {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    SharedRoundMetric(title: "Avg Gross", value: averageGross)
-                    SharedRoundMetric(title: "Avg Points", value: averageStableford)
-                    SharedRoundMetric(title: "Avg Putts", value: averagePutts)
-                    SharedRoundMetric(title: "Penalties", value: averagePenalties)
-                    SharedRoundMetric(title: "Fairways", value: "\(fairwayPercent)%")
-                    SharedRoundMetric(title: "GIR", value: "\(girPercent)%")
-                    SharedRoundMetric(title: "Scramble", value: "\(scramblePercent)%")
-                    SharedRoundMetric(title: "Sand Save", value: "\(sandSavePercent)%")
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                    FriendPerformanceMetric(icon: "number.circle", title: "Avg Gross", value: averageGross, caption: "gross score", progress: grossProgress, tint: AppTheme.mint)
+                    FriendPerformanceMetric(icon: "flag.checkered", title: "Avg Points", value: averageStableford, caption: "Stableford", progress: stablefordProgress, tint: AppTheme.gold)
+                    FriendPerformanceMetric(icon: "figure.golf", title: "Putts", value: averagePutts, caption: "per round", progress: puttsProgress, tint: AppTheme.mint)
+                    FriendPerformanceMetric(icon: "exclamationmark.triangle", title: "Penalties", value: averagePenalties, caption: "per round", progress: penaltyProgress, tint: Color(red: 0.88, green: 0.16, blue: 0.20))
+                    FriendPerformanceMetric(icon: "flag.circle", title: "Fairways", value: "\(fairwayPercent)%", caption: "hit fairways", progress: Double(fairwayPercent) / 100, tint: AppTheme.mint)
+                    FriendPerformanceMetric(icon: "target", title: "GIR", value: "\(girPercent)%", caption: "greens hit", progress: Double(girPercent) / 100, tint: AppTheme.mint)
+                    FriendPerformanceMetric(icon: "waveform.path.ecg", title: "Scramble", value: "\(scramblePercent)%", caption: "up and downs", progress: Double(scramblePercent) / 100, tint: AppTheme.lime)
+                    FriendPerformanceMetric(icon: "figure.golf", title: "Sand Save", value: "\(sandSavePercent)%", caption: "from bunkers", progress: Double(sandSavePercent) / 100, tint: AppTheme.gold)
                 }
             }
         }
@@ -10997,17 +11016,53 @@ struct FriendSeasonStatsCard: View {
         formatAverage(seasonRounds.map { Double($0.gross) })
     }
 
+    private var averageGrossValue: Double? {
+        averageValue(seasonRounds.map { Double($0.gross) })
+    }
+
     private var averageStableford: String {
         let points = seasonRounds.compactMap(\.stableford).map(Double.init)
         return points.isEmpty ? "-" : formatAverage(points)
+    }
+
+    private var averageStablefordValue: Double? {
+        averageValue(seasonRounds.compactMap(\.stableford).map(Double.init))
     }
 
     private var averagePutts: String {
         formatAverage(seasonRounds.map { Double($0.putts) })
     }
 
+    private var averagePuttsValue: Double? {
+        averageValue(seasonRounds.map { Double($0.putts) })
+    }
+
     private var averagePenalties: String {
         formatAverage(seasonRounds.map { Double($0.penalties) })
+    }
+
+    private var averagePenaltiesValue: Double? {
+        averageValue(seasonRounds.map { Double($0.penalties) })
+    }
+
+    private var grossProgress: Double {
+        guard let averageGrossValue else { return 0 }
+        return clampedProgress((110 - averageGrossValue) / 40)
+    }
+
+    private var stablefordProgress: Double {
+        guard let averageStablefordValue else { return 0 }
+        return clampedProgress(averageStablefordValue / 45)
+    }
+
+    private var puttsProgress: Double {
+        guard let averagePuttsValue else { return 0 }
+        return clampedProgress((42 - averagePuttsValue) / 16)
+    }
+
+    private var penaltyProgress: Double {
+        guard let averagePenaltiesValue else { return 0 }
+        return clampedProgress((4 - averagePenaltiesValue) / 4)
     }
 
     private var fairwayPercent: Int {
@@ -11039,9 +11094,72 @@ struct FriendSeasonStatsCard: View {
     }
 
     private func formatAverage(_ values: [Double]) -> String {
-        guard !values.isEmpty else { return "-" }
-        let average = values.reduce(0, +) / Double(values.count)
+        guard let average = averageValue(values) else { return "-" }
         return String(format: "%.1f", average)
+    }
+
+    private func averageValue(_ values: [Double]) -> Double? {
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / Double(values.count)
+    }
+
+    private func clampedProgress(_ value: Double) -> Double {
+        min(1, max(0.12, value))
+    }
+}
+
+struct FriendPerformanceMetric: View {
+    let icon: String
+    let title: String
+    let value: String
+    let caption: String
+    let progress: Double
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(AppTheme.mint)
+                    .frame(width: 42, height: 42)
+                    .background(Circle().fill(tint.opacity(0.20)))
+                    .overlay(Circle().stroke(tint.opacity(0.30)))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(.caption2, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                        .textCase(.uppercase)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Text(value)
+                        .font(.system(size: 27, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(1)
+                }
+            }
+
+            Text(caption)
+                .font(.system(.caption2, design: .rounded).weight(.medium))
+                .foregroundStyle(AppTheme.softText)
+                .lineLimit(1)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(AppTheme.border.opacity(0.40))
+                    Capsule()
+                        .fill(tint)
+                        .frame(width: max(16, proxy.size.width * progress))
+                }
+            }
+            .frame(height: 7)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 138, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.glassGradient))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
+        .shadow(color: AppTheme.shadow.opacity(0.45), radius: 12, x: 0, y: 7)
     }
 }
 
@@ -11228,31 +11346,7 @@ struct FriendProfileDetailView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack(spacing: 14) {
-                            FriendAvatar(name: friend.displayName, photoURL: friend.photoURL, size: 68)
-
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(friend.displayName.isEmpty ? "Golfer" : friend.displayName)
-                                    .font(.system(size: 30, weight: .heavy, design: .rounded))
-                                    .foregroundStyle(AppTheme.ink)
-                                    .minimumScaleFactor(0.75)
-                                Text(friend.homeClub.isEmpty ? "Home club not set" : friend.homeClub)
-                                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                                    .foregroundStyle(AppTheme.softText)
-                            }
-                        }
-
-                        HStack(spacing: 10) {
-                            SharedRoundMetric(title: "Handicap", value: String(format: "%.1f", friend.handicap))
-                            SharedRoundMetric(title: "Shared Rounds", value: "\(rounds.count)")
-                            SharedRoundMetric(title: "Matchplay", value: matchplayRecord.summary)
-                        }
-                    }
-                    .padding(18)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
-                    .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+                    FriendProfileHeroCard(friend: friend, rounds: rounds, matchplayRecord: matchplayRecord)
 
                     FriendSeasonStatsCard(rounds: rounds)
 
@@ -11306,6 +11400,92 @@ struct FriendProfileDetailView: View {
             SharedRoundDetailView(round: round)
         }
     }
+}
+
+struct FriendProfileHeroCard: View {
+    let friend: FirebaseFriendProfile
+    let rounds: [FirebaseSharedRound]
+    let matchplayRecord: MatchplayFriendRecord
+
+    private var latestRoundScore: String {
+        rounds.sorted { $0.date > $1.date }.first.map { "\($0.gross)" } ?? "-"
+    }
+
+    private var latestRoundCaption: String {
+        guard let latest = rounds.sorted(by: { $0.date > $1.date }).first else {
+            return "No rounds"
+        }
+        return Self.shortDateFormatter.string(from: latest.date)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                FriendAvatar(name: friend.displayName, photoURL: friend.photoURL, size: 72)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Friend Profile")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.mint)
+                        .textCase(.uppercase)
+                    Text(friend.displayName.isEmpty ? "Golfer" : friend.displayName)
+                        .font(.system(size: 30, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.72)
+                    Text(friend.homeClub.isEmpty ? "Home club not set" : friend.homeClub)
+                        .font(.system(.subheadline, design: .rounded).weight(.medium))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .lineLimit(1)
+                }
+            }
+
+            HStack(spacing: 0) {
+                SummaryMetric(title: "Handicap", value: String(format: "%.1f", friend.handicap), caption: "Current index")
+                Divider().overlay(Color.white.opacity(0.18)).padding(.vertical, 10)
+                SummaryMetric(title: "Rounds", value: "\(rounds.count)", caption: "Shared")
+                Divider().overlay(Color.white.opacity(0.18)).padding(.vertical, 10)
+                SummaryMetric(title: "Latest", value: latestRoundScore, caption: latestRoundCaption)
+            }
+
+            HStack(spacing: 9) {
+                Image(systemName: "flag.2.crossed.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                Text(matchplayRecord.summary)
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+            .foregroundStyle(.white.opacity(0.9))
+            .padding(.horizontal, 12)
+            .frame(height: 34)
+            .background(Capsule().fill(Color.white.opacity(0.10)))
+            .overlay(Capsule().stroke(Color.white.opacity(0.14)))
+        }
+        .padding(20)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(AppTheme.performanceCard)
+                FairwayCardBackdrop()
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                LinearGradient(
+                    colors: [Color.black.opacity(0.35), Color.black.opacity(0.06)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+            }
+        )
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+        .shadow(color: AppTheme.shadow, radius: 18, x: 0, y: 10)
+    }
+
+    private static let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter
+    }()
 }
 
 struct SharedRoundDetailView: View {
