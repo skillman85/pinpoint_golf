@@ -8240,21 +8240,75 @@ struct StrengthWeaknessPremiumCard: View {
     }
 
     var body: some View {
-        PremiumStatsCard(title: "Strengths & Weaknesses") {
-            VStack(alignment: .leading, spacing: 13) {
-                Text("Benchmarked against an average \(benchmark.handicapLabel) handicap golfer.")
-                    .font(.system(.caption, design: .rounded).weight(.semibold))
-                    .foregroundStyle(AppTheme.softText)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-                    .frame(maxWidth: .infinity)
+        PremiumStatsCard(title: "Performance Compass") {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "scope")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(AppTheme.mint)
+                        .frame(width: 38, height: 38)
+                        .background(Circle().fill(AppTheme.mint.opacity(0.14)))
 
-                PremiumBenchmarkRow(title: "Gross avg.", value: averageScore, percent: lowerIsBetterPercent(snapshot.averageScore, benchmark: benchmark.grossAverage, betterSpan: 6, worseSpan: 10), targetLabel: benchmark.grossAverageLabel)
-                PremiumBenchmarkRow(title: "Fairways", value: "\(snapshot.fairwayPercent)%", percent: higherIsBetterPercent(Double(snapshot.fairwayPercent), benchmark: benchmark.fairwayPercent, worseSpan: 20, betterSpan: 12), targetLabel: benchmark.fairwayPercentLabel)
-                PremiumBenchmarkRow(title: "GIR", value: "\(snapshot.girPercent)%", percent: higherIsBetterPercent(Double(snapshot.girPercent), benchmark: benchmark.girPercent, worseSpan: 18, betterSpan: 14), targetLabel: benchmark.girPercentLabel)
-                PremiumBenchmarkRow(title: "Up & Downs", value: "\(snapshot.scramblePercent)%", percent: higherIsBetterPercent(Double(snapshot.scramblePercent), benchmark: benchmark.scramblePercent, worseSpan: 18, betterSpan: 14), targetLabel: benchmark.scramblePercentLabel)
-                PremiumBenchmarkRow(title: "Putts / round", value: puttsPerRound, percent: lowerIsBetterPercent(snapshot.puttsPerRound, benchmark: benchmark.puttsPerRound, betterSpan: 5, worseSpan: 8), targetLabel: benchmark.puttsPerRoundLabel)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Compared with similar golfers")
+                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                            .foregroundStyle(AppTheme.ink)
+                        Text("Averages are benchmarked against an \(benchmark.handicapLabel) handicap profile.")
+                            .font(.system(.caption, design: .rounded).weight(.medium))
+                            .foregroundStyle(AppTheme.softText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    PerformanceCompassTile(
+                        title: "Scoring",
+                        icon: "flag.fill",
+                        value: averageScore,
+                        benchmark: benchmark.grossAverageLabel,
+                        gap: snapshot.averageScore - benchmark.grossAverage,
+                        unit: "strokes",
+                        lowerIsBetter: true
+                    )
+                    PerformanceCompassTile(
+                        title: "Fairways",
+                        icon: "arrow.up.and.down.and.arrow.left.and.right",
+                        value: "\(snapshot.fairwayPercent)%",
+                        benchmark: benchmark.fairwayPercentLabel,
+                        gap: Double(snapshot.fairwayPercent) - benchmark.fairwayPercent,
+                        unit: "pts",
+                        lowerIsBetter: false
+                    )
+                    PerformanceCompassTile(
+                        title: "GIR",
+                        icon: "target",
+                        value: "\(snapshot.girPercent)%",
+                        benchmark: benchmark.girPercentLabel,
+                        gap: Double(snapshot.girPercent) - benchmark.girPercent,
+                        unit: "pts",
+                        lowerIsBetter: false
+                    )
+                    PerformanceCompassTile(
+                        title: "Scramble",
+                        icon: "waveform.path.ecg",
+                        value: "\(snapshot.scramblePercent)%",
+                        benchmark: benchmark.scramblePercentLabel,
+                        gap: Double(snapshot.scramblePercent) - benchmark.scramblePercent,
+                        unit: "pts",
+                        lowerIsBetter: false
+                    )
+                }
+
+                PerformanceCompassTile(
+                    title: "Putting",
+                    icon: "figure.golf",
+                    value: puttsPerRound,
+                    benchmark: benchmark.puttsPerRoundLabel,
+                    gap: snapshot.puttsPerRound - benchmark.puttsPerRound,
+                    unit: "putts",
+                    lowerIsBetter: true,
+                    isWide: true
+                )
             }
         }
     }
@@ -8277,6 +8331,101 @@ struct StrengthWeaknessPremiumCard: View {
 
     private func clampPercent(_ value: Double) -> Int {
         max(0, min(100, Int(value.rounded())))
+    }
+}
+
+struct PerformanceCompassTile: View {
+    let title: String
+    let icon: String
+    let value: String
+    let benchmark: String
+    let gap: Double
+    let unit: String
+    let lowerIsBetter: Bool
+    var isWide = false
+
+    private var isBetter: Bool {
+        lowerIsBetter ? gap < -0.05 : gap > 0.05
+    }
+
+    private var isLevel: Bool {
+        abs(gap) <= 0.05
+    }
+
+    private var statusColor: Color {
+        if isLevel { return AppTheme.softText }
+        return isBetter ? AppTheme.mint : Color(red: 0.82, green: 0.36, blue: 0.14)
+    }
+
+    private var statusIcon: String {
+        if isLevel { return "equal" }
+        return isBetter ? "arrow.up.right" : "arrow.down.right"
+    }
+
+    private var statusText: String {
+        if isLevel { return "Level with peer" }
+        let amount = abs(gap)
+        let formatted = amount >= 10 ? String(format: "%.0f", amount) : String(format: "%.1f", amount)
+        return isBetter ? "\(formatted) \(unit) ahead" : "\(formatted) \(unit) behind"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(statusColor)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(statusColor.opacity(0.13)))
+                Text(title)
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(value)
+                    .font(.system(size: isWide ? 30 : 26, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Peer")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.softText.opacity(0.82))
+                    Text(benchmark)
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.ink.opacity(0.86))
+                        .monospacedDigit()
+                }
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: statusIcon)
+                    .font(.system(size: 11, weight: .bold))
+                Text(statusText)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+            }
+            .foregroundStyle(statusColor)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Capsule().fill(statusColor.opacity(0.12)))
+        }
+        .padding(13)
+        .frame(maxWidth: .infinity, minHeight: isWide ? 112 : 128, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AppTheme.elevated.opacity(0.82))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(statusColor.opacity(0.22), lineWidth: 1)
+                )
+        )
     }
 }
 
