@@ -45,11 +45,16 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             AppTheme.background.ignoresSafeArea()
-            VStack(spacing: 0) {
-                content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if firebaseAccount.user == nil && profileOnboardingComplete {
+                SignedOutAccountView(account: firebaseAccount)
+                    .transition(.opacity)
+            } else {
+                VStack(spacing: 0) {
+                    content
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                TabBar(selectedTab: $selectedTab)
+                    TabBar(selectedTab: $selectedTab)
+                }
             }
         }
         .preferredColorScheme(AppearanceMode(rawValue: appearanceMode)?.colorScheme)
@@ -700,6 +705,129 @@ extension ContentView {
                 )
             }
         }
+    }
+}
+
+struct SignedOutAccountView: View {
+    @ObservedObject var account: FirebaseAccountService
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundStyle(AppTheme.mint)
+                        .frame(width: 62, height: 62)
+                        .background(Circle().fill(AppTheme.mintWash))
+
+                    Text("Sign in to Precision Golf")
+                        .font(.system(.largeTitle, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.72)
+
+                    Text("Your local rounds are still on this phone. Sign back in to restore the full app, cloud sync, friends and groups.")
+                        .font(.system(.subheadline, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                        .lineSpacing(3)
+                }
+                .padding(.top, 44)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    SocialSignInButton(title: "Continue with Apple", systemImage: "apple.logo", style: .dark) {
+                        Task {
+                            await account.signInWithApple()
+                        }
+                    }
+                    .disabled(account.isWorking)
+
+                    SocialSignInButton(title: "Continue with Google", systemImage: "g.circle.fill", style: .light) {
+                        Task {
+                            await account.signInWithGoogle()
+                        }
+                    }
+                    .disabled(account.isWorking)
+
+                    HStack(spacing: 10) {
+                        Rectangle()
+                            .fill(AppTheme.border)
+                            .frame(height: 1)
+                        Text("or use email")
+                            .font(.system(.caption, design: .rounded).weight(.semibold))
+                            .foregroundStyle(AppTheme.softText)
+                        Rectangle()
+                            .fill(AppTheme.border)
+                            .frame(height: 1)
+                    }
+
+                    VStack(spacing: 10) {
+                        TextField("Email", text: $account.email)
+                            .textInputAutocapitalization(.never)
+                            .keyboardType(.emailAddress)
+                            .autocorrectionDisabled()
+                            .font(.system(.headline, design: .rounded).weight(.medium))
+                            .padding(14)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+
+                        SecureField("Password", text: $account.password)
+                            .font(.system(.headline, design: .rounded).weight(.medium))
+                            .padding(14)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                    }
+
+                    HStack(spacing: 10) {
+                        Button {
+                            Task {
+                                await account.signIn()
+                            }
+                        } label: {
+                            Text("Sign In")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(FirebaseAccountButtonStyle(isPrimary: false))
+                        .disabled(account.isWorking)
+
+                        Button {
+                            Task {
+                                await account.createAccount()
+                            }
+                        } label: {
+                            Text("Create")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
+                        .disabled(account.isWorking)
+                    }
+
+                    if account.isWorking {
+                        ProgressView()
+                            .tint(AppTheme.mint)
+                    }
+
+                    if let status = account.statusMessage {
+                        Text(status)
+                            .font(.system(.caption, design: .rounded).weight(.semibold))
+                            .foregroundStyle(status.localizedCaseInsensitiveContains("error") ? Color.red : AppTheme.softText)
+                            .lineSpacing(3)
+                    }
+                }
+                .padding(18)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                .shadow(color: AppTheme.shadow.opacity(0.48), radius: 12, x: 0, y: 6)
+
+                Text("Signing out does not delete local rounds. It only locks account features until you sign back in.")
+                    .font(.system(.footnote, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .lineSpacing(3)
+                    .padding(.horizontal, 4)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 34)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.background.ignoresSafeArea())
     }
 }
 
