@@ -38,6 +38,7 @@ struct ContentView: View {
     @State private var pendingStablefordGroup: FirebaseGolfGroup?
     @State private var sideMatch = MatchplaySideGame()
     @State private var didRestoreCloudDataForCurrentUser = false
+    @State private var allowSignedOutOfflineMode = false
     @State private var entries = DemoData.holes.map {
         ContentView.defaultEntry(for: $0)
     }
@@ -46,8 +47,10 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             AppTheme.background.ignoresSafeArea()
-            if firebaseAccount.user == nil && profileOnboardingComplete {
-                SignedOutAccountView(account: firebaseAccount)
+            if firebaseAccount.user == nil && profileOnboardingComplete && !allowSignedOutOfflineMode {
+                SignedOutAccountView(account: firebaseAccount) {
+                    allowSignedOutOfflineMode = true
+                }
                     .transition(.opacity)
             } else {
                 VStack(spacing: 0) {
@@ -87,10 +90,12 @@ struct ContentView: View {
             Task {
                 if uid == nil {
                     didRestoreCloudDataForCurrentUser = false
+                    allowSignedOutOfflineMode = false
                     await firebaseRoundSync.refreshCloudCount()
                     await firebaseSocial.refresh()
                 } else {
                     didRestoreCloudDataForCurrentUser = false
+                    allowSignedOutOfflineMode = false
                     await restoreAndSyncCloudDataIfNeeded(force: true)
                     await firebaseSocial.refresh()
                     await firebaseRoundSync.sync(rounds: roundArchive.rounds)
@@ -732,6 +737,7 @@ extension ContentView {
 
 struct SignedOutAccountView: View {
     @ObservedObject var account: FirebaseAccountService
+    let continueOffline: () -> Void
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -822,6 +828,19 @@ struct SignedOutAccountView: View {
                         .disabled(account.isWorking)
                     }
 
+                    Button {
+                        Task {
+                            await account.sendPasswordReset()
+                        }
+                    } label: {
+                        Text("Forgot Password?")
+                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                            .foregroundStyle(AppTheme.mint)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(account.isWorking)
+
                     if account.isWorking {
                         ProgressView()
                             .tint(AppTheme.mint)
@@ -838,6 +857,19 @@ struct SignedOutAccountView: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
                 .shadow(color: AppTheme.shadow.opacity(0.48), radius: 12, x: 0, y: 6)
+
+                Button {
+                    continueOffline()
+                } label: {
+                    Label("Use Offline Mode", systemImage: "iphone")
+                        .font(.system(.headline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.ink)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                }
+                .buttonStyle(.plain)
 
                 Text("Signing out does not delete local rounds. It only locks account features until you sign back in.")
                     .font(.system(.footnote, design: .rounded).weight(.medium))
@@ -9351,6 +9383,19 @@ struct FirebaseAccountCard: View {
                     .disabled(account.isWorking)
                 }
 
+                Button {
+                    Task {
+                        await account.sendPasswordReset()
+                    }
+                } label: {
+                    Text("Forgot Password?")
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.mint)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .disabled(account.isWorking)
+
                 Text("Accounts back up rounds on Firebase Spark. Rounds still save locally first, so live scoring works even when signal is poor.")
                     .font(.system(.caption, design: .rounded).weight(.medium))
                     .foregroundStyle(AppTheme.softText)
@@ -13386,6 +13431,19 @@ struct ProfileOnboardingView: View {
                     .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
                     .disabled(firebaseAccount.isWorking)
                 }
+
+                Button {
+                    Task {
+                        await firebaseAccount.sendPasswordReset()
+                    }
+                } label: {
+                    Text("Forgot Password?")
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(AppTheme.mint)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .disabled(firebaseAccount.isWorking)
             }
 
             if firebaseAccount.isWorking {
