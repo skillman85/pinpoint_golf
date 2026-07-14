@@ -8058,6 +8058,180 @@ struct PrecisionBackupDocument: FileDocument {
     }
 }
 
+struct AISeasonReportDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+
+    var report: AISeasonReport
+
+    init(report: AISeasonReport) {
+        self.report = report
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        report = try decoder.decode(AISeasonReport.self, from: data)
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return FileWrapper(regularFileWithContents: try encoder.encode(report))
+    }
+}
+
+struct AISeasonReport: Codable {
+    let version: Int
+    let exportedAt: Date
+    let player: AISeasonPlayer
+    let season: AISeasonWindow
+    let aiBrief: String
+    let summary: AISeasonSummary
+    let trends: AISeasonTrends
+    let parScoring: [AIParScoringExport]
+    let rounds: [AIRoundExport]
+    let handicapHistory: [HandicapRecord]
+}
+
+struct AISeasonPlayer: Codable {
+    let name: String
+    let homeClub: String
+    let currentHandicapIndex: Double
+}
+
+struct AISeasonWindow: Codable {
+    let year: Int
+    let includedRoundCount: Int
+    let firstRoundDate: Date?
+    let latestRoundDate: Date?
+}
+
+struct AISeasonSummary: Codable {
+    let averageGross: Double?
+    let bestGross: Int?
+    let latestGross: Int?
+    let averageStableford: Double?
+    let bestStableford: Int?
+    let averagePutts: Double?
+    let fairwaysHitPercent: Int?
+    let girPercent: Int?
+    let scramblingPercent: Int?
+    let sandSavePercent: Int?
+    let penaltiesPerRound: Double?
+    let scoringMixPerRound: AIScoringMixExport
+}
+
+struct AIScoringMixExport: Codable {
+    let eaglesOrBetter: Double
+    let birdies: Double
+    let pars: Double
+    let bogeys: Double
+    let doublesOrWorse: Double
+}
+
+struct AISeasonTrends: Codable {
+    let last5AverageGross: Double?
+    let previous5AverageGross: Double?
+    let last10AverageGross: Double?
+    let previous10AverageGross: Double?
+    let recentRoundScores: [AITrendPointExport]
+    let monthlyCheckpoints: [AISeasonCheckpointExport]
+}
+
+struct AITrendPointExport: Codable {
+    let date: Date
+    let courseName: String
+    let gross: Int
+    let toPar: Int
+    let stablefordPoints: Int?
+}
+
+struct AISeasonCheckpointExport: Codable {
+    let month: String
+    let roundsPlayed: Int
+    let averageGross: Double?
+    let averageStableford: Double?
+    let averagePutts: Double?
+    let fairwaysHitPercent: Int?
+    let girPercent: Int?
+    let scramblingPercent: Int?
+    let penaltiesPerRound: Double?
+}
+
+struct AIParScoringExport: Codable {
+    let par: Int
+    let holesPlayed: Int
+    let averageGross: Double?
+    let averageToPar: Double?
+    let stablefordPointsAverage: Double?
+}
+
+struct AIRoundExport: Codable {
+    let id: UUID
+    let date: Date
+    let courseName: String
+    let location: String
+    let teeName: String
+    let teeYards: Int
+    let teeRating: Double
+    let teeSlope: Int
+    let handicapIndex: Double?
+    let playingHandicap: Int?
+    let totalGross: Int
+    let totalPar: Int
+    let totalToPar: Int
+    let stablefordPoints: Int?
+    let totalPutts: Int
+    let fairwaysHit: Int
+    let fairwaysTracked: Int
+    let greensHit: Int
+    let greensTracked: Int
+    let scrambles: Int
+    let scramblingOpportunities: Int
+    let sandSaves: Int
+    let bunkerHoles: Int
+    let penalties: Int
+    let scoringMix: AIRoundScoringMixExport
+    let holes: [AIHoleExport]
+}
+
+struct AIRoundScoringMixExport: Codable {
+    let eaglesOrBetter: Int
+    let birdies: Int
+    let pars: Int
+    let bogeys: Int
+    let doublesOrWorse: Int
+}
+
+struct AIHoleExport: Codable {
+    let holeNumber: Int
+    let par: Int
+    let yards: Int
+    let strokeIndex: Int
+    let grossScore: Int
+    let toPar: Int
+    let stablefordPoints: Int?
+    let putts: Int
+    let pickedUp: Bool
+    let fairway: String
+    let greenInRegulation: String
+    let teeClub: String?
+    let approachRange: String?
+    let approachProximity: String?
+    let firstPuttDistance: String?
+    let penalties: Int
+    let penaltyType: String?
+    let bunker: Bool?
+    let upAndDown: Bool?
+    let sandSave: Bool?
+    let recovery: Bool?
+    let note: String
+}
+
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case account = "Account"
     case golf = "Golf"
@@ -8082,7 +8256,9 @@ struct SettingsView: View {
     @Binding var profileHomeClub: String
     @State private var handicapText = ""
     @State private var backupDocument: PrecisionBackupDocument?
+    @State private var aiSeasonReportDocument: AISeasonReportDocument?
     @State private var isExportingBackup = false
+    @State private var isExportingAISeasonReport = false
     @State private var isImportingBackup = false
     @State private var pendingBackup: PrecisionBackup?
     @State private var showRestoreConfirmation = false
@@ -8263,7 +8439,50 @@ struct SettingsView: View {
                 }
                 .padding(18)
                 .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
+                    .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        SectionHeader(title: "AI Season Export", actionTitle: "\(currentSeasonRounds.count) rounds")
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Download a structured season report for ChatGPT, Claude or another AI coach.")
+                                .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                                .foregroundStyle(AppTheme.ink)
+                            Text("Includes season averages, trends, par scoring, putting, fairways, GIR, scrambling, sand saves, penalties, handicap history and every hole from this season.")
+                                .font(.system(.caption, design: .rounded).weight(.medium))
+                                .foregroundStyle(AppTheme.softText)
+                                .lineSpacing(3)
+                        }
+
+                        Button {
+                            aiSeasonReportDocument = AISeasonReportDocument(report: makeAISeasonReport())
+                            isExportingAISeasonReport = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "brain.head.profile")
+                                Text("Export AI Season Report")
+                                Spacer()
+                                Text("\(currentSeasonYear)")
+                                    .font(.system(.caption, design: .rounded).weight(.bold))
+                            }
+                            .font(.system(.headline, design: .rounded).weight(.bold))
+                            .foregroundStyle(Color.white)
+                            .padding(15)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.controlGreen))
+                        }
+                        .disabled(currentSeasonRounds.isEmpty)
+                        .opacity(currentSeasonRounds.isEmpty ? 0.55 : 1)
+
+                        if currentSeasonRounds.isEmpty {
+                            Text("Save a completed round this season before exporting an AI report.")
+                                .font(.system(.caption, design: .rounded).weight(.semibold))
+                                .foregroundStyle(AppTheme.softText)
+                        }
+                    }
+                    .padding(18)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
                     .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
 
                     VStack(alignment: .leading, spacing: 14) {
@@ -8337,6 +8556,12 @@ struct SettingsView: View {
             contentType: .json,
             defaultFilename: "PrecisionGolf-Backup"
         ) { _ in }
+        .fileExporter(
+            isPresented: $isExportingAISeasonReport,
+            document: aiSeasonReportDocument,
+            contentType: .json,
+            defaultFilename: "PrecisionGolf-AI-Season-\(currentSeasonYear)"
+        ) { _ in }
         .fileImporter(isPresented: $isImportingBackup, allowedContentTypes: [.json], allowsMultipleSelection: false) { result in
             importBackup(result)
         }
@@ -8376,6 +8601,16 @@ struct SettingsView: View {
         showAllCachedScorecards ? scorecardStore.overrides : Array(scorecardStore.overrides.prefix(5))
     }
 
+    private var currentSeasonYear: Int {
+        Calendar.current.component(.year, from: Date())
+    }
+
+    private var currentSeasonRounds: [SavedRound] {
+        savedRounds
+            .filter { Calendar.current.component(.year, from: $0.date) == currentSeasonYear }
+            .sorted { $0.date < $1.date }
+    }
+
     private func syncHandicapText() {
         handicapText = String(format: "%.1f", playerSettings.handicap)
     }
@@ -8398,6 +8633,212 @@ struct SettingsView: View {
             handicapHistory: handicapHistory.records,
             courseScorecards: scorecardStore.overrides
         )
+    }
+
+    private func makeAISeasonReport() -> AISeasonReport {
+        let rounds = currentSeasonRounds
+        let sortedDescending = rounds.sorted { $0.date > $1.date }
+        let grossScores = rounds.map { Double($0.totalScore) }
+        let stablefordScores = rounds.compactMap(\.stablefordPoints)
+        let totalFairways = rounds.reduce(0) { $0 + $1.fairwaysTotal }
+        let totalFairwaysHit = rounds.reduce(0) { $0 + $1.fairwaysHit }
+        let totalGreens = rounds.reduce(0) { $0 + $1.greensTracked }
+        let totalGreensHit = rounds.reduce(0) { $0 + $1.greensInRegulation }
+        let scrambleOpportunities = rounds.reduce(0) { $0 + $1.scramblingOpportunities }
+        let scrambles = rounds.reduce(0) { $0 + $1.scrambles }
+        let bunkerHoles = rounds.reduce(0) { $0 + $1.bunkerHoles }
+        let sandSaves = rounds.reduce(0) { $0 + $1.sandSaves }
+        let roundCount = Double(max(rounds.count, 1))
+
+        return AISeasonReport(
+            version: 1,
+            exportedAt: Date(),
+            player: AISeasonPlayer(
+                name: profileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Player" : profileName,
+                homeClub: profileHomeClub,
+                currentHandicapIndex: playerSettings.handicap
+            ),
+            season: AISeasonWindow(
+                year: currentSeasonYear,
+                includedRoundCount: rounds.count,
+                firstRoundDate: rounds.first?.date,
+                latestRoundDate: rounds.last?.date
+            ),
+            aiBrief: """
+            You are my golf performance coach. Analyse this Precision Golf season export, identify the 3-5 biggest scoring opportunities, and create a practical practice plan for the next 6 months and 12 months. Focus on the data, explain trade-offs, and separate quick wins from long-term skill work.
+            """,
+            summary: AISeasonSummary(
+                averageGross: average(grossScores),
+                bestGross: rounds.map(\.totalScore).min(),
+                latestGross: sortedDescending.first?.totalScore,
+                averageStableford: average(stablefordScores.map(Double.init)),
+                bestStableford: stablefordScores.max(),
+                averagePutts: average(rounds.map { Double($0.totalPutts) }),
+                fairwaysHitPercent: percentage(totalFairwaysHit, totalFairways),
+                girPercent: percentage(totalGreensHit, totalGreens),
+                scramblingPercent: percentage(scrambles, scrambleOpportunities),
+                sandSavePercent: percentage(sandSaves, bunkerHoles),
+                penaltiesPerRound: rounded(Double(rounds.reduce(0) { $0 + $1.penalties }) / roundCount),
+                scoringMixPerRound: AIScoringMixExport(
+                    eaglesOrBetter: rounded(Double(rounds.reduce(0) { $0 + $1.eaglesOrBetter }) / roundCount),
+                    birdies: rounded(Double(rounds.reduce(0) { $0 + $1.birdies }) / roundCount),
+                    pars: rounded(Double(rounds.reduce(0) { $0 + $1.pars }) / roundCount),
+                    bogeys: rounded(Double(rounds.reduce(0) { $0 + $1.bogeys }) / roundCount),
+                    doublesOrWorse: rounded(Double(rounds.reduce(0) { $0 + $1.doublesOrWorse }) / roundCount)
+                )
+            ),
+            trends: AISeasonTrends(
+                last5AverageGross: average(Array(sortedDescending.prefix(5)).map { Double($0.totalScore) }),
+                previous5AverageGross: average(Array(sortedDescending.dropFirst(5).prefix(5)).map { Double($0.totalScore) }),
+                last10AverageGross: average(Array(sortedDescending.prefix(10)).map { Double($0.totalScore) }),
+                previous10AverageGross: average(Array(sortedDescending.dropFirst(10).prefix(10)).map { Double($0.totalScore) }),
+                recentRoundScores: sortedDescending.prefix(20).map {
+                    AITrendPointExport(
+                        date: $0.date,
+                        courseName: $0.courseName,
+                        gross: $0.totalScore,
+                        toPar: $0.totalScore - $0.totalPar,
+                        stablefordPoints: $0.stablefordPoints
+                    )
+                },
+                monthlyCheckpoints: makeMonthlyCheckpoints(rounds: rounds)
+            ),
+            parScoring: [3, 4, 5].map { par in
+                makeParScoringExport(par: par, rounds: rounds)
+            },
+            rounds: rounds.map(makeAIRoundExport),
+            handicapHistory: handicapHistory.records
+        )
+    }
+
+    private func makeParScoringExport(par: Int, rounds: [SavedRound]) -> AIParScoringExport {
+        let holes = rounds.flatMap(\.holes).filter { $0.par == par }
+        return AIParScoringExport(
+            par: par,
+            holesPlayed: holes.count,
+            averageGross: average(holes.map { Double($0.score) }),
+            averageToPar: average(holes.map { Double($0.score - $0.par) }),
+            stablefordPointsAverage: average(rounds.flatMap { round in
+                round.holes
+                    .filter { $0.par == par }
+                    .map { hole in
+                        Double(hole.stablefordPoints(using: Double(round.courseHandicap(using: round.handicap ?? playerSettings.handicap))))
+                    }
+            })
+        )
+    }
+
+    private func makeAIRoundExport(_ round: SavedRound) -> AIRoundExport {
+        let playingHandicap = round.handicap.map { round.courseHandicap(using: $0) }
+        return AIRoundExport(
+            id: round.id,
+            date: round.date,
+            courseName: round.courseName,
+            location: round.location,
+            teeName: round.teeName,
+            teeYards: round.teeYards,
+            teeRating: round.teeRating,
+            teeSlope: round.teeSlope,
+            handicapIndex: round.handicap,
+            playingHandicap: playingHandicap,
+            totalGross: round.totalScore,
+            totalPar: round.totalPar,
+            totalToPar: round.totalScore - round.totalPar,
+            stablefordPoints: round.stablefordPoints,
+            totalPutts: round.totalPutts,
+            fairwaysHit: round.fairwaysHit,
+            fairwaysTracked: round.fairwaysTotal,
+            greensHit: round.greensInRegulation,
+            greensTracked: round.greensTracked,
+            scrambles: round.scrambles,
+            scramblingOpportunities: round.scramblingOpportunities,
+            sandSaves: round.sandSaves,
+            bunkerHoles: round.bunkerHoles,
+            penalties: round.penalties,
+            scoringMix: AIRoundScoringMixExport(
+                eaglesOrBetter: round.eaglesOrBetter,
+                birdies: round.birdies,
+                pars: round.pars,
+                bogeys: round.bogeys,
+                doublesOrWorse: round.doublesOrWorse
+            ),
+            holes: round.holes.map { hole in
+                AIHoleExport(
+                    holeNumber: hole.holeNumber,
+                    par: hole.par,
+                    yards: hole.yards,
+                    strokeIndex: hole.strokeIndex,
+                    grossScore: hole.score,
+                    toPar: hole.score - hole.par,
+                    stablefordPoints: playingHandicap.map { hole.stablefordPoints(using: Double($0)) },
+                    putts: hole.putts,
+                    pickedUp: hole.pickedUp,
+                    fairway: hole.fairway.rawValue,
+                    greenInRegulation: hole.green.rawValue,
+                    teeClub: hole.teeClub?.rawValue,
+                    approachRange: hole.approachRange?.rawValue,
+                    approachProximity: hole.approachProximity?.rawValue,
+                    firstPuttDistance: hole.firstPuttDistance?.rawValue,
+                    penalties: hole.penalties,
+                    penaltyType: hole.penaltyType?.rawValue,
+                    bunker: hole.bunker,
+                    upAndDown: hole.upAndDown,
+                    sandSave: hole.sandSave,
+                    recovery: hole.recovery,
+                    note: hole.note
+                )
+            }
+        )
+    }
+
+    private func makeMonthlyCheckpoints(rounds: [SavedRound]) -> [AISeasonCheckpointExport] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: rounds) { round in
+            calendar.dateComponents([.year, .month], from: round.date)
+        }
+
+        return grouped
+            .compactMap { components, monthRounds -> (Date, AISeasonCheckpointExport)? in
+                guard let date = calendar.date(from: components) else { return nil }
+                let roundCount = Double(max(monthRounds.count, 1))
+                let fairwaysTracked = monthRounds.reduce(0) { $0 + $1.fairwaysTotal }
+                let fairwaysHit = monthRounds.reduce(0) { $0 + $1.fairwaysHit }
+                let greensTracked = monthRounds.reduce(0) { $0 + $1.greensTracked }
+                let greensHit = monthRounds.reduce(0) { $0 + $1.greensInRegulation }
+                let scrambleOpportunities = monthRounds.reduce(0) { $0 + $1.scramblingOpportunities }
+                let scrambles = monthRounds.reduce(0) { $0 + $1.scrambles }
+
+                return (
+                    date,
+                    AISeasonCheckpointExport(
+                        month: Self.monthFormatter.string(from: date),
+                        roundsPlayed: monthRounds.count,
+                        averageGross: average(monthRounds.map { Double($0.totalScore) }),
+                        averageStableford: average(monthRounds.compactMap(\.stablefordPoints).map(Double.init)),
+                        averagePutts: average(monthRounds.map { Double($0.totalPutts) }),
+                        fairwaysHitPercent: percentage(fairwaysHit, fairwaysTracked),
+                        girPercent: percentage(greensHit, greensTracked),
+                        scramblingPercent: percentage(scrambles, scrambleOpportunities),
+                        penaltiesPerRound: rounded(Double(monthRounds.reduce(0) { $0 + $1.penalties }) / roundCount)
+                    )
+                )
+            }
+            .sorted { $0.0 < $1.0 }
+            .map(\.1)
+    }
+
+    private func average(_ values: [Double]) -> Double? {
+        guard !values.isEmpty else { return nil }
+        return rounded(values.reduce(0, +) / Double(values.count))
+    }
+
+    private func percentage(_ numerator: Int, _ denominator: Int) -> Int? {
+        guard denominator > 0 else { return nil }
+        return Int((Double(numerator) / Double(denominator) * 100).rounded())
+    }
+
+    private func rounded(_ value: Double) -> Double {
+        (value * 10).rounded() / 10
     }
 
     private func importBackup(_ result: Result<[URL], Error>) {
@@ -8435,6 +8876,12 @@ struct SettingsView: View {
     private static let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "dd MMM"
+        return formatter
+    }()
+
+    private static let monthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM yyyy"
         return formatter
     }()
 
