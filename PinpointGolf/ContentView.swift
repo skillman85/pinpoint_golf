@@ -37,6 +37,7 @@ struct ContentView: View {
     @State private var pendingMatchplayFriend: FirebaseFriendProfile?
     @State private var pendingStablefordGroup: FirebaseGolfGroup?
     @State private var sideMatch = MatchplaySideGame()
+    @State private var didRestoreCloudDataForCurrentUser = false
     @State private var entries = DemoData.holes.map {
         ContentView.defaultEntry(for: $0)
     }
@@ -72,7 +73,7 @@ struct ContentView: View {
             restoreActiveRoundDraft()
             Task {
                 await PushNotificationService.shared.requestPermissionAndRegister()
-                await firebaseRoundSync.refreshCloudCount()
+                await restoreAndSyncCloudDataIfNeeded(force: false)
                 await firebaseSocial.refresh()
                 await websiteSeasonSync.retryPendingSync()
             }
@@ -80,10 +81,12 @@ struct ContentView: View {
         .onChange(of: firebaseAccount.user?.uid) { _, uid in
             Task {
                 if uid == nil {
+                    didRestoreCloudDataForCurrentUser = false
                     await firebaseRoundSync.refreshCloudCount()
                     await firebaseSocial.refresh()
                 } else {
-                    await firebaseRoundSync.refreshCloudCount()
+                    didRestoreCloudDataForCurrentUser = false
+                    await restoreAndSyncCloudDataIfNeeded(force: true)
                     await firebaseSocial.refresh()
                     await firebaseRoundSync.sync(rounds: roundArchive.rounds)
                     await websiteSeasonSync.sync(backup: makePrecisionBackup())
@@ -110,6 +113,9 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase != .active {
                 saveActiveRoundDraft()
+                Task {
+                    await syncCloudAppData()
+                }
             }
         }
     }
@@ -199,6 +205,129 @@ struct ContentView: View {
         return ids.sorted().joined(separator: "|")
     }
 
+    @MainActor
+    private func restoreAndSyncCloudDataIfNeeded(force: Bool) async {
+        guard firebaseAccount.user != nil else { return }
+        if didRestoreCloudDataForCurrentUser && !force {
+            await firebaseRoundSync.refreshCloudCount()
+            return
+        }
+
+        didRestoreCloudDataForCurrentUser = true
+
+        async let cloudRoundsResult = firebaseRoundSync.restoreRounds()
+        async let cloudAppDataResult = firebaseRoundSync.restoreAppData()
+
+        if let cloudRounds = await cloudRoundsResult {
+            mergeCloudRounds(cloudRounds)
+        }
+
+        if let cloudAppData = await cloudAppDataResult {
+            applyCloudAppData(cloudAppData)
+        }
+
+        await firebaseRoundSync.sync(rounds: roundArchive.rounds)
+        await syncCloudAppData()
+    }
+
+    @MainActor
+    private func mergeCloudRounds(_ cloudRounds: [SavedRound]) {
+        guard !cloudRounds.isEmpty else { return }
+
+        var mergedByID = Dictionary(uniqueKeysWithValues: cloudRounds.map { ($0.id, $0) })
+        for localRound in roundArchive.rounds {
+            mergedByID[localRound.id] = localRound
+        }
+
+        roundArchive.replace(with: Array(mergedByID.values))
+    }
+
+    @MainActor
+    private func applyCloudAppData(_ cloudData: PrecisionCloudAppData) {
+        playerSettings.replaceHandicap(cloudData.handicap)
+
+        let mergedFavorites = courseFavorites.favoriteKeys.union(Set(cloudData.favoriteCourseKeys))
+        courseFavorites.replace(with: mergedFavorites)
+
+        let mergedGoals = mergeCustomGoals(local: goalArchive.customGoals, cloud: cloudData.customGoals)
+        goalArchive.replace(with: mergedGoals)
+
+        if !cloudData.clubYardages.isEmpty {
+            clubYardages.replace(with: mergeClubYardages(local: clubYardages.clubs, cloud: cloudData.clubYardages))
+        }
+
+        let mergedHandicapHistory = mergeHandicapHistory(local: handicapHistory.records, cloud: cloudData.handicapHistory)
+        handicapHistory.replace(with: mergedHandicapHistory)
+
+        let mergedScorecards = mergeScorecards(local: scorecardStore.overrides, cloud: cloudData.courseScorecards)
+        scorecardStore.replace(with: mergedScorecards)
+    }
+
+    private func mergeCustomGoals(local: [CustomGoal], cloud: [CustomGoal]) -> [CustomGoal] {
+        var merged = Dictionary(uniqueKeysWithValues: cloud.map { ($0.id, $0) })
+        for goal in local {
+            if let cloudGoal = merged[goal.id] {
+                merged[goal.id] = CustomGoal(
+                    id: goal.id,
+                    title: goal.title.isEmpty ? cloudGoal.title : goal.title,
+                    isComplete: goal.isComplete || cloudGoal.isComplete,
+                    createdAt: min(goal.createdAt, cloudGoal.createdAt)
+                )
+            } else {
+                merged[goal.id] = goal
+            }
+        }
+        return Array(merged.values).sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private func mergeClubYardages(local: [ClubYardage], cloud: [ClubYardage]) -> [ClubYardage] {
+        var merged = Dictionary(uniqueKeysWithValues: cloud.map { ($0.id, $0) })
+        for club in local {
+            if club.yards != nil || club.isInBag {
+                merged[club.id] = club
+            }
+        }
+        return Array(merged.values)
+    }
+
+    private func mergeHandicapHistory(local: [HandicapRecord], cloud: [HandicapRecord]) -> [HandicapRecord] {
+        var recordsByID = Dictionary(uniqueKeysWithValues: cloud.map { ($0.id, $0) })
+        for record in local {
+            recordsByID[record.id] = record
+        }
+        return Array(recordsByID.values).sorted { $0.date > $1.date }
+    }
+
+    private func mergeScorecards(local: [CourseScorecardOverride], cloud: [CourseScorecardOverride]) -> [CourseScorecardOverride] {
+        var scorecardsByKey = Dictionary(uniqueKeysWithValues: cloud.map { ($0.courseKey, $0) })
+        for scorecard in local {
+            if let cloudScorecard = scorecardsByKey[scorecard.courseKey],
+               cloudScorecard.updatedAt > scorecard.updatedAt {
+                continue
+            }
+            scorecardsByKey[scorecard.courseKey] = scorecard
+        }
+        return Array(scorecardsByKey.values).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private func syncCloudAppData() async {
+        guard firebaseAccount.user != nil else { return }
+        await firebaseRoundSync.syncAppData(makeCloudAppData())
+    }
+
+    private func makeCloudAppData() -> PrecisionCloudAppData {
+        PrecisionCloudAppData(
+            version: 1,
+            updatedAt: Date(),
+            handicap: playerSettings.handicap,
+            favoriteCourseKeys: Array(courseFavorites.favoriteKeys).sorted(),
+            customGoals: goalArchive.customGoals,
+            clubYardages: clubYardages.clubs,
+            handicapHistory: handicapHistory.records,
+            courseScorecards: scorecardStore.overrides
+        )
+    }
+
     private func beginRound() {
         currentHoleIndex = 0
         entries = selectedTee.holes.map {
@@ -222,6 +351,7 @@ struct ContentView: View {
         let websiteBackup = makePrecisionBackup()
         Task {
             await firebaseRoundSync.sync(round: savedRound)
+            await syncCloudAppData()
             await firebaseSocial.publishCompletedRound(savedRound, ownerProfile: firebaseAccount.profile, groupIds: sharedGroupIds)
             await firebaseSocial.finishMatchplayRound(course: selectedCourse, tee: selectedTee, entries: entries)
             await websiteSeasonSync.sync(backup: websiteBackup)
@@ -242,6 +372,7 @@ struct ContentView: View {
         Task {
             await firebaseRoundSync.sync(round: round)
             await websiteSeasonSync.sync(backup: websiteBackup)
+            await syncCloudAppData()
         }
     }
 
@@ -263,6 +394,7 @@ struct ContentView: View {
         roundArchive.delete(roundID: round.id)
         Task {
             await firebaseRoundSync.delete(roundID: round.id)
+            await syncCloudAppData()
         }
     }
 
