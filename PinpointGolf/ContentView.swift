@@ -131,6 +131,9 @@ struct ContentView: View {
                         selectedTab = .friends
                         Task { await firebaseSocial.refresh() }
                     },
+                    openAllRounds: {
+                        selectedTab = .insights
+                    },
                     startRound: {
                         openRoundFlow()
                     },
@@ -642,6 +645,7 @@ struct HomeView: View {
     @Binding var profileImageData: Data
     let notificationCount: Int
     let openNotifications: () -> Void
+    let openAllRounds: () -> Void
     let startRound: () -> Void
     let discardRound: () -> Void
     let deleteRound: (SavedRound) -> Void
@@ -670,7 +674,11 @@ struct HomeView: View {
 
                 PremiumHandicapTrendCard(records: handicapHistory)
 
-                PremiumHomeRecentRounds(rounds: Array(savedRounds.prefix(3)), viewRound: { selectedRound = $0 })
+                PremiumHomeRecentRounds(
+                    rounds: Array(savedRounds.prefix(3)),
+                    viewAllRounds: openAllRounds,
+                    viewRound: { selectedRound = $0 }
+                )
 
                 InsightsDashboardContent(entries: entries, savedRounds: savedRounds, isRoundActive: isRoundActive, currentHandicap: currentHandicap)
 
@@ -871,6 +879,7 @@ struct PremiumHandicapLineChart: View {
 
 struct PremiumHomeRecentRounds: View {
     let rounds: [SavedRound]
+    let viewAllRounds: () -> Void
     let viewRound: (SavedRound) -> Void
 
     var body: some View {
@@ -881,9 +890,12 @@ struct PremiumHomeRecentRounds: View {
                         .font(.system(.headline, design: .rounded).weight(.semibold))
                         .foregroundStyle(AppTheme.ink)
                     Spacer()
-                    Text("View all")
-                        .font(.system(.caption, design: .rounded).weight(.semibold))
-                        .foregroundStyle(AppTheme.mint)
+                    Button(action: viewAllRounds) {
+                        Text("View all")
+                            .font(.system(.caption, design: .rounded).weight(.semibold))
+                            .foregroundStyle(AppTheme.mint)
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 VStack(spacing: 0) {
@@ -8463,7 +8475,7 @@ struct SettingsView: View {
                                 Image(systemName: "brain.head.profile")
                                 Text("Export AI Season Report")
                                 Spacer()
-                                Text("\(currentSeasonYear)")
+                                Text(String(currentSeasonYear))
                                     .font(.system(.caption, design: .rounded).weight(.bold))
                             }
                             .font(.system(.headline, design: .rounded).weight(.bold))
