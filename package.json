@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "check": "node --check api/health.js && node --check api/courses/search.js && node --check api/courses/near.js && node --check api/courses/scorecard.js"
+    "check": "node --check api/health.js && node --check api/courses/search.js && node --check api/courses/near.js && node --check api/courses/scorecard.js",
+    "firebase:deploy": "npx firebase-tools deploy --only functions,firestore:rules"
   },
   "engines": {
     "node": ">=20"

@@ -168,6 +168,11 @@ final class CourseScorecardStore: ObservableObject {
         database.saveCourseScorecardOverrides(overrides)
     }
 
+    func delete(_ override: CourseScorecardOverride) {
+        overrides.removeAll { $0.courseKey == override.courseKey }
+        database.saveCourseScorecardOverrides(overrides)
+    }
+
     func replace(with restored: [CourseScorecardOverride]) {
         overrides = restored
         database.saveCourseScorecardOverrides(restored)
@@ -1005,7 +1010,8 @@ final class RoundArchive: ObservableObject {
         rounds.map(\.summary)
     }
 
-    func save(course: GolfCourse, tee: TeeBox, handicap: Double?, entries: [RoundHoleEntry]) {
+    @discardableResult
+    func save(course: GolfCourse, tee: TeeBox, handicap: Double?, entries: [RoundHoleEntry]) -> SavedRound {
         let savedRound = SavedRound(
             id: UUID(),
             date: Date(),
@@ -1046,6 +1052,7 @@ final class RoundArchive: ObservableObject {
 
         rounds.insert(savedRound, at: 0)
         database.saveRound(savedRound)
+        return savedRound
     }
 
     func update(_ round: SavedRound) {
