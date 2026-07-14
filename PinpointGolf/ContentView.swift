@@ -789,8 +789,7 @@ struct SignedOutAccountView: View {
                 .ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    Spacer(minLength: max(76, proxy.safeAreaInsets.top + 52))
-
+                    Spacer(minLength: proxy.safeAreaInsets.top + 18)
                     VStack(spacing: 18) {
                         VStack(spacing: 10) {
                             Text("PRECISION GOLF")
@@ -885,16 +884,16 @@ struct SignedOutAccountView: View {
                     }
                     .padding(22)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(red: 0.0, green: 0.08, blue: 0.05).opacity(0.86))
+                        RoundedRectangle(cornerRadius: 22)
+                            .fill(Color(red: 0.0, green: 0.08, blue: 0.05).opacity(0.72))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 22)
+                            .stroke(Color(red: 0.55, green: 0.82, blue: 0.19).opacity(0.24), lineWidth: 1)
                     )
                     .shadow(color: .black.opacity(0.44), radius: 24, x: 0, y: 14)
                     .padding(.horizontal, 22)
-                    .padding(.bottom, max(28, proxy.safeAreaInsets.bottom + 20))
+                    Spacer(minLength: proxy.safeAreaInsets.bottom + 18)
                 }
             }
         }
