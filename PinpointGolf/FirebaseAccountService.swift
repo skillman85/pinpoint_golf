@@ -422,14 +422,17 @@ struct FirebaseUserProfile: Identifiable {
 final class FirebaseRoundSyncService: ObservableObject {
     @Published private(set) var cloudRoundCount = 0
     @Published private(set) var lastSyncDate: Date?
+    @Published private(set) var lastAppDataSyncDate: Date?
     @Published var statusMessage: String?
     @Published var isWorking = false
 
     private let database = Firestore.firestore()
     private let lastSyncKey = "precision.cloudRoundsLastSync"
+    private let lastAppDataSyncKey = "precision.cloudAppDataLastSync"
 
     init() {
         lastSyncDate = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
+        lastAppDataSyncDate = UserDefaults.standard.object(forKey: lastAppDataSyncKey) as? Date
     }
 
     func refreshCloudCount() async {
@@ -486,6 +489,48 @@ final class FirebaseRoundSyncService: ObservableObject {
             statusMessage = "Cloud backup updated"
         } catch {
             statusMessage = "Local round deleted. Cloud delete failed: \(error.localizedDescription)"
+        }
+    }
+
+    func syncAppData(_ appData: PrecisionCloudAppData) async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+
+        do {
+            let data = try Self.encoder.encode(appData)
+            guard let appDataJSON = String(data: data, encoding: .utf8) else {
+                throw NSError(domain: "PrecisionGolf.AppDataSync", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "Could not prepare app data for cloud backup."
+                ])
+            }
+
+            try await appDataDocument(for: uid).setData([
+                "ownerId": uid,
+                "version": appData.version,
+                "updatedAt": Timestamp(date: appData.updatedAt),
+                "appDataJSON": appDataJSON
+            ], merge: true)
+
+            lastAppDataSyncDate = Date()
+            UserDefaults.standard.set(lastAppDataSyncDate, forKey: lastAppDataSyncKey)
+            statusMessage = "Cloud app data updated"
+        } catch {
+            statusMessage = "App data saved locally. Cloud backup failed: \(error.localizedDescription)"
+        }
+    }
+
+    func restoreAppData() async -> PrecisionCloudAppData? {
+        guard let uid = Auth.auth().currentUser?.uid else { return nil }
+
+        do {
+            let document = try await appDataDocument(for: uid).getDocument()
+            guard let encoded = document.data()?["appDataJSON"] as? String,
+                  let data = encoded.data(using: .utf8) else {
+                return nil
+            }
+            return try Self.decoder.decode(PrecisionCloudAppData.self, from: data)
+        } catch {
+            statusMessage = "Cloud app data restore failed: \(error.localizedDescription)"
+            return nil
         }
     }
 
@@ -551,6 +596,10 @@ final class FirebaseRoundSyncService: ObservableObject {
 
     private func roundsCollection(for uid: String) -> CollectionReference {
         database.collection("users").document(uid).collection("roundBackups")
+    }
+
+    private func appDataDocument(for uid: String) -> DocumentReference {
+        database.collection("users").document(uid).collection("appData").document("current")
     }
 
     private func markSynced(count: Int) {

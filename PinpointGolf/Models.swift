@@ -796,6 +796,17 @@ struct PrecisionBackup: Codable {
     let courseScorecards: [CourseScorecardOverride]?
 }
 
+struct PrecisionCloudAppData: Codable {
+    let version: Int
+    let updatedAt: Date
+    let handicap: Double
+    let favoriteCourseKeys: [String]
+    let customGoals: [CustomGoal]
+    let clubYardages: [ClubYardage]
+    let handicapHistory: [HandicapRecord]
+    let courseScorecards: [CourseScorecardOverride]
+}
+
 struct HandicapRecord: Identifiable, Codable, Hashable {
     let id: UUID
     let date: Date
