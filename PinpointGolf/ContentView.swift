@@ -722,12 +722,14 @@ struct SignedOutAccountView: View {
         GeometryReader { proxy in
             ZStack {
                 loginBackground
+                    .blur(radius: 3)
+                    .scaleEffect(1.04)
 
                 LinearGradient(
                     colors: [
-                        Color.black.opacity(0.28),
-                        Color(red: 0.0, green: 0.14, blue: 0.09).opacity(0.22),
-                        Color.black.opacity(0.66)
+                        Color(red: 0.0, green: 0.08, blue: 0.05).opacity(0.82),
+                        Color(red: 0.0, green: 0.12, blue: 0.08).opacity(0.78),
+                        Color.black.opacity(0.9)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -735,12 +737,17 @@ struct SignedOutAccountView: View {
                 .ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    Spacer(minLength: max(34, proxy.size.height * 0.45))
+                    Spacer(minLength: max(76, proxy.safeAreaInsets.top + 52))
 
-                    VStack(spacing: 16) {
+                    VStack(spacing: 18) {
                         VStack(spacing: 10) {
+                            Text("PRECISION GOLF")
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .tracking(4)
+                                .foregroundStyle(.white.opacity(0.92))
+
                             Text("Welcome back")
-                                .font(.system(size: 34, weight: .semibold, design: .rounded))
+                                .font(.system(size: 32, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.white)
                                 .shadow(color: .black.opacity(0.38), radius: 12, x: 0, y: 6)
 
@@ -750,7 +757,6 @@ struct SignedOutAccountView: View {
                                 .multilineTextAlignment(.center)
                                 .lineSpacing(3)
                         }
-                        .padding(.bottom, 8)
 
                         VStack(spacing: 14) {
                             BrandedLoginButton(
@@ -834,7 +840,17 @@ struct SignedOutAccountView: View {
                         .buttonStyle(.plain)
                         .padding(.top, 2)
                     }
-                    .padding(.horizontal, 26)
+                    .padding(22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(red: 0.0, green: 0.08, blue: 0.05).opacity(0.86))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.44), radius: 24, x: 0, y: 14)
+                    .padding(.horizontal, 22)
                     .padding(.bottom, max(28, proxy.safeAreaInsets.bottom + 20))
                 }
             }
@@ -890,8 +906,10 @@ private struct BrandedLoginButton: View {
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(border, lineWidth: style == .outline ? 1.5 : 1))
 
                 Text(title)
-                    .font(.system(size: 19, weight: .semibold, design: .rounded))
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
                     .foregroundStyle(textColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
 
                 HStack {
                     icon
@@ -899,7 +917,7 @@ private struct BrandedLoginButton: View {
                 }
                 .padding(.horizontal, 22)
             }
-            .frame(height: 62)
+            .frame(height: 58)
             .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 5)
         }
         .buttonStyle(.plain)
