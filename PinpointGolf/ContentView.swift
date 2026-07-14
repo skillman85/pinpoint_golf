@@ -956,101 +956,319 @@ private struct BrandedLoginButton: View {
 private struct EmailAuthSheet: View {
     @ObservedObject var account: FirebaseAccountService
     @Environment(\.dismiss) private var dismiss
+    @State private var mode: EmailAuthMode = .signIn
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Email account")
-                        .font(.system(.title2, design: .rounded).weight(.semibold))
-                        .foregroundStyle(AppTheme.ink)
-                    Text("Sign in, create an account, or reset your password.")
-                        .font(.system(.subheadline, design: .rounded).weight(.medium))
-                        .foregroundStyle(AppTheme.softText)
-                }
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.01, green: 0.08, blue: 0.05),
+                        Color(red: 0.03, green: 0.17, blue: 0.10),
+                        Color(red: 0.91, green: 0.97, blue: 0.93)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
 
-                VStack(spacing: 10) {
-                    TextField("Email", text: $account.email)
-                        .textInputAutocapitalization(.never)
-                        .keyboardType(.emailAddress)
-                        .autocorrectionDisabled()
-                        .font(.system(.headline, design: .rounded).weight(.medium))
-                        .padding(14)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
+                VStack(spacing: 0) {
+                    Capsule()
+                        .fill(.white.opacity(0.34))
+                        .frame(width: 44, height: 5)
+                        .padding(.top, 10)
+                        .padding(.bottom, 18)
 
-                    SecureField("Password", text: $account.password)
-                        .font(.system(.headline, design: .rounded).weight(.medium))
-                        .padding(14)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.subtleFill))
-                }
-
-                HStack(spacing: 10) {
-                    Button {
-                        Task {
-                            await account.signIn()
-                            if account.user != nil {
-                                dismiss()
-                            }
-                        }
-                    } label: {
-                        Text("Sign In")
-                            .frame(maxWidth: .infinity)
+                    VStack(alignment: .leading, spacing: 18) {
+                        header
+                        modePicker
+                        inputFields
+                        primaryAction
+                        resetAction
+                        statusArea
                     }
-                    .buttonStyle(FirebaseAccountButtonStyle(isPrimary: false))
-                    .disabled(account.isWorking)
+                    .padding(22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 24)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 24)
+                                    .stroke(.white.opacity(0.24), lineWidth: 1)
+                            )
+                            .shadow(color: .black.opacity(0.24), radius: 24, x: 0, y: 16)
+                    )
+                    .padding(.horizontal, 18)
 
-                    Button {
-                        Task {
-                            await account.createAccount()
-                            if account.user != nil {
-                                dismiss()
-                            }
-                        }
-                    } label: {
-                        Text("Create")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
-                    .disabled(account.isWorking)
+                    Spacer(minLength: 20)
                 }
-
-                Button {
-                    Task {
-                        await account.sendPasswordReset()
-                    }
-                } label: {
-                    Text("Forgot Password?")
-                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                        .foregroundStyle(AppTheme.mint)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.plain)
-                .disabled(account.isWorking)
-
-                if account.isWorking {
-                    ProgressView()
-                        .tint(AppTheme.mint)
-                }
-
-                if let status = account.statusMessage {
-                    Text(status)
-                        .font(.system(.caption, design: .rounded).weight(.semibold))
-                        .foregroundStyle(status.localizedCaseInsensitiveContains("error") ? Color.red : AppTheme.softText)
-                        .lineSpacing(3)
-                }
-
-                Spacer()
             }
-            .padding(20)
-            .background(AppTheme.background.ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
                         dismiss()
                     }
-                    .foregroundStyle(AppTheme.mint)
+                    .font(.system(.headline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 9)
+                    .background(Capsule().fill(.white.opacity(0.16)))
                 }
             }
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(Color(red: 0.55, green: 0.82, blue: 0.19).opacity(0.18))
+                Image(systemName: mode.icon)
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.55, green: 0.82, blue: 0.19))
+            }
+            .frame(width: 54, height: 54)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(mode.title)
+                    .font(.system(.title2, design: .rounded).weight(.semibold))
+                    .foregroundStyle(.white)
+                Text(mode.subtitle)
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var modePicker: some View {
+        HStack(spacing: 6) {
+            ForEach(EmailAuthMode.allCases, id: \.self) { option in
+                Button {
+                    withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
+                        mode = option
+                    }
+                } label: {
+                    Text(option.pickerTitle)
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(mode == option ? AppTheme.ink : .white.opacity(0.72))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            Capsule()
+                                .fill(mode == option ? Color(red: 0.55, green: 0.82, blue: 0.19) : .white.opacity(0.08))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(5)
+        .background(Capsule().fill(.black.opacity(0.22)))
+    }
+
+    private var inputFields: some View {
+        VStack(spacing: 10) {
+            authField(icon: "envelope.fill", placeholder: "Email address") {
+                TextField("Email address", text: $account.email)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.emailAddress)
+                    .autocorrectionDisabled()
+            }
+
+            if mode != .reset {
+                authField(icon: "lock.fill", placeholder: "Password") {
+                    SecureField("Password", text: $account.password)
+                }
+            }
+        }
+    }
+
+    private var primaryAction: some View {
+        Button {
+            Task {
+                switch mode {
+                case .signIn:
+                    await account.signIn()
+                    if account.user != nil {
+                        dismiss()
+                    }
+                case .create:
+                    await account.createAccount()
+                    if account.user != nil {
+                        dismiss()
+                    }
+                case .reset:
+                    await account.sendPasswordReset()
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                if account.isWorking {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: mode.buttonIcon)
+                        .font(.system(size: 18, weight: .semibold))
+                }
+                Text(mode.buttonTitle)
+                    .font(.system(.headline, design: .rounded).weight(.semibold))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(red: 0.02, green: 0.46, blue: 0.18), Color(red: 0.02, green: 0.31, blue: 0.14)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(.white.opacity(0.16), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(account.isWorking)
+    }
+
+    private var resetAction: some View {
+        HStack(spacing: 4) {
+            Text(mode.footerPrompt)
+                .foregroundStyle(.white.opacity(0.68))
+
+            Button {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
+                    mode = mode.footerMode
+                }
+            } label: {
+                Text(mode.footerAction)
+                    .foregroundStyle(Color(red: 0.55, green: 0.82, blue: 0.19))
+            }
+            .buttonStyle(.plain)
+        }
+        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var statusArea: some View {
+        if let status = account.statusMessage {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: status.localizedCaseInsensitiveContains("error") ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
+                    .foregroundStyle(status.localizedCaseInsensitiveContains("error") ? Color(red: 1.0, green: 0.36, blue: 0.32) : Color(red: 0.55, green: 0.82, blue: 0.19))
+                Text(status)
+                    .font(.system(.caption, design: .rounded).weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .lineSpacing(3)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12).fill(.black.opacity(0.22)))
+        }
+    }
+
+    private func authField<Field: View>(
+        icon: String,
+        placeholder: String,
+        @ViewBuilder field: () -> Field
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color(red: 0.55, green: 0.82, blue: 0.19))
+                .frame(width: 22)
+
+            field()
+                .font(.system(.headline, design: .rounded).weight(.medium))
+                .foregroundStyle(.white)
+                .submitLabel(.done)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 56)
+        .background(RoundedRectangle(cornerRadius: 14).fill(.white.opacity(0.10)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(.white.opacity(0.18), lineWidth: 1)
+        )
+    }
+}
+
+private enum EmailAuthMode: CaseIterable {
+    case signIn
+    case create
+    case reset
+
+    var pickerTitle: String {
+        switch self {
+        case .signIn: return "Sign in"
+        case .create: return "Create"
+        case .reset: return "Reset"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .signIn: return "Sign in with email"
+        case .create: return "Create your account"
+        case .reset: return "Reset password"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .signIn: return "Use your Precision Golf account to sync rounds, friends and groups."
+        case .create: return "Set up your account so your golf data can follow you across devices."
+        case .reset: return "Enter your email and we will send a secure reset link."
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .signIn: return "person.crop.circle.badge.checkmark"
+        case .create: return "person.badge.plus"
+        case .reset: return "key.fill"
+        }
+    }
+
+    var buttonTitle: String {
+        switch self {
+        case .signIn: return "Sign in"
+        case .create: return "Create account"
+        case .reset: return "Send reset link"
+        }
+    }
+
+    var buttonIcon: String {
+        switch self {
+        case .signIn: return "arrow.right.circle.fill"
+        case .create: return "plus.circle.fill"
+        case .reset: return "paperplane.fill"
+        }
+    }
+
+    var footerPrompt: String {
+        switch self {
+        case .signIn: return "Need an account?"
+        case .create: return "Already registered?"
+        case .reset: return "Remembered it?"
+        }
+    }
+
+    var footerAction: String {
+        switch self {
+        case .signIn: return "Create one"
+        case .create: return "Sign in"
+        case .reset: return "Back to sign in"
+        }
+    }
+
+    var footerMode: EmailAuthMode {
+        switch self {
+        case .signIn: return .create
+        case .create, .reset: return .signIn
         }
     }
 }
