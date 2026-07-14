@@ -87,6 +87,24 @@ final class FirebaseAccountService: NSObject, ObservableObject {
         isWorking = false
     }
 
+    func sendPasswordReset() async {
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedEmail.contains("@") else {
+            statusMessage = "Enter your email address first, then tap Forgot Password."
+            return
+        }
+
+        isWorking = true
+        statusMessage = nil
+        do {
+            try await Auth.auth().sendPasswordReset(withEmail: trimmedEmail)
+            statusMessage = "Password reset email sent to \(trimmedEmail)."
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+        isWorking = false
+    }
+
     func signInWithApple() async {
         isWorking = true
         statusMessage = nil
@@ -123,6 +141,9 @@ final class FirebaseAccountService: NSObject, ObservableObject {
             }
             guard let clientID = FirebaseAppClientID.current else {
                 throw AuthFlowError.missingGoogleClientID
+            }
+            guard FirebaseAppClientID.hasMatchingURLScheme else {
+                throw AuthFlowError.missingGoogleURLScheme
             }
 
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientID)
@@ -169,6 +190,7 @@ final class FirebaseAccountService: NSObject, ObservableObject {
                     await PushNotificationService.shared.removeCurrentToken(from: signedInUid)
                 }
             }
+            GIDSignIn.sharedInstance.signOut()
             try Auth.auth().signOut()
             user = nil
             profile = nil
@@ -381,6 +403,7 @@ private enum AuthFlowError: LocalizedError {
     case missingAppleIdentityToken
     case missingGoogleClientID
     case missingGoogleIDToken
+    case missingGoogleURLScheme
     case missingPresentingViewController
 
     var errorDescription: String? {
@@ -388,9 +411,11 @@ private enum AuthFlowError: LocalizedError {
         case .missingAppleIdentityToken:
             return "Apple did not return an identity token. Please try again."
         case .missingGoogleClientID:
-            return "Google Sign-In needs an updated GoogleService-Info.plist with CLIENT_ID and the reversed client URL scheme."
+            return "Google Sign-In needs the updated iOS GoogleService-Info.plist with CLIENT_ID and REVERSED_CLIENT_ID."
         case .missingGoogleIDToken:
             return "Google did not return an identity token. Please try again."
+        case .missingGoogleURLScheme:
+            return "Google Sign-In needs the REVERSED_CLIENT_ID from GoogleService-Info.plist added to Info.plist URL Types."
         case .missingPresentingViewController:
             return "Could not open the Google sign-in screen. Please try again."
         }
@@ -403,6 +428,22 @@ private enum FirebaseAppClientID {
               let plist = NSDictionary(contentsOfFile: path)
         else { return nil }
         return plist["CLIENT_ID"] as? String
+    }
+
+    static var reversedClientID: String? {
+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+              let plist = NSDictionary(contentsOfFile: path)
+        else { return nil }
+        return plist["REVERSED_CLIENT_ID"] as? String
+    }
+
+    static var hasMatchingURLScheme: Bool {
+        guard let reversedClientID else { return false }
+        let urlTypes = Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]]
+        return urlTypes?.contains { urlType in
+            guard let schemes = urlType["CFBundleURLSchemes"] as? [String] else { return false }
+            return schemes.contains(reversedClientID)
+        } ?? false
     }
 }
 
