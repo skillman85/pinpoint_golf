@@ -37,7 +37,6 @@ struct ContentView: View {
     @State private var pendingStablefordGroup: FirebaseGolfGroup?
     @State private var sideMatch = MatchplaySideGame()
     @State private var didRestoreCloudDataForCurrentUser = false
-    @State private var allowSignedOutOfflineMode = false
     @State private var entries = DemoData.holes.map {
         ContentView.defaultEntry(for: $0)
     }
@@ -46,10 +45,8 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             AppTheme.background.ignoresSafeArea()
-            if firebaseAccount.user == nil && profileOnboardingComplete && !allowSignedOutOfflineMode {
-                SignedOutAccountView(account: firebaseAccount) {
-                    allowSignedOutOfflineMode = true
-                }
+            if firebaseAccount.user == nil && profileOnboardingComplete {
+                SignedOutAccountView(account: firebaseAccount)
                     .transition(.opacity)
             } else {
                 VStack(spacing: 0) {
@@ -88,12 +85,10 @@ struct ContentView: View {
             Task {
                 if uid == nil {
                     didRestoreCloudDataForCurrentUser = false
-                    allowSignedOutOfflineMode = false
                     await firebaseRoundSync.refreshCloudCount()
                     await firebaseSocial.refresh()
                 } else {
                     didRestoreCloudDataForCurrentUser = false
-                    allowSignedOutOfflineMode = false
                     await restoreAndSyncCloudDataIfNeeded(force: true)
                     await firebaseSocial.refresh()
                 }
@@ -715,7 +710,6 @@ extension ContentView {
 
 struct SignedOutAccountView: View {
     @ObservedObject var account: FirebaseAccountService
-    let continueOffline: () -> Void
     @State private var showEmailForm = false
 
     var body: some View {
@@ -830,15 +824,6 @@ struct SignedOutAccountView: View {
                         .font(.system(.body, design: .rounded).weight(.medium))
                         .buttonStyle(.plain)
 
-                        Button {
-                            continueOffline()
-                        } label: {
-                            Text("Use offline mode")
-                                .font(.system(.caption, design: .rounded).weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.62))
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.top, 2)
                     }
                     .padding(22)
                     .background(
