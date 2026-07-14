@@ -7415,13 +7415,13 @@ struct InsightsDashboardContent: View {
             TabView(selection: $selectedInsightPage) {
                 StrengthWeaknessPremiumCard(snapshot: snapshot, currentHandicap: currentHandicap, averageScore: formatAverage(snapshot.averageScore), puttsPerRound: formatAverage(snapshot.puttsPerRound))
                     .tag(0)
-                FairwayPremiumCard(snapshot: snapshot)
+                FairwayPremiumCard(snapshot: snapshot, benchmark: HandicapBenchmark(handicap: currentHandicap))
                     .tag(1)
-                PuttingPremiumCard(snapshot: snapshot, puttsPerRound: formatAverage(snapshot.puttsPerRound))
+                PuttingPremiumCard(snapshot: snapshot, puttsPerRound: formatAverage(snapshot.puttsPerRound), benchmark: HandicapBenchmark(handicap: currentHandicap))
                     .tag(2)
-                ApproachPremiumCard(snapshot: snapshot, averageProximity: formatFeet(snapshot.averageGirProximity))
+                ApproachPremiumCard(snapshot: snapshot, averageProximity: formatFeet(snapshot.averageGirProximity), benchmark: HandicapBenchmark(handicap: currentHandicap))
                     .tag(3)
-                ShortGamePremiumCard(snapshot: snapshot)
+                ShortGamePremiumCard(snapshot: snapshot, benchmark: HandicapBenchmark(handicap: currentHandicap))
                     .tag(4)
                 PenaltyPremiumCard(
                     snapshot: snapshot,
@@ -8241,190 +8241,109 @@ struct StrengthWeaknessPremiumCard: View {
 
     var body: some View {
         PremiumStatsCard(title: "Performance Compass") {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 12) {
                     Image(systemName: "scope")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: 19, weight: .semibold))
                         .foregroundStyle(AppTheme.mint)
-                        .frame(width: 38, height: 38)
+                        .frame(width: 42, height: 42)
                         .background(Circle().fill(AppTheme.mint.opacity(0.14)))
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Compared with similar golfers")
-                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Your game vs \(benchmark.handicapLabel) handicap")
+                            .font(.system(.headline, design: .rounded).weight(.semibold))
                             .foregroundStyle(AppTheme.ink)
-                        Text("Averages are benchmarked against an \(benchmark.handicapLabel) handicap profile.")
+                        Text("The centre mark is the peer average")
                             .font(.system(.caption, design: .rounded).weight(.medium))
                             .foregroundStyle(AppTheme.softText)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
 
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    PerformanceCompassTile(
-                        title: "Scoring",
-                        icon: "flag.fill",
-                        value: averageScore,
-                        benchmark: benchmark.grossAverageLabel,
-                        gap: snapshot.averageScore - benchmark.grossAverage,
-                        unit: "strokes",
-                        lowerIsBetter: true
-                    )
-                    PerformanceCompassTile(
-                        title: "Fairways",
-                        icon: "arrow.up.and.down.and.arrow.left.and.right",
-                        value: "\(snapshot.fairwayPercent)%",
-                        benchmark: benchmark.fairwayPercentLabel,
-                        gap: Double(snapshot.fairwayPercent) - benchmark.fairwayPercent,
-                        unit: "pts",
-                        lowerIsBetter: false
-                    )
-                    PerformanceCompassTile(
-                        title: "GIR",
-                        icon: "target",
-                        value: "\(snapshot.girPercent)%",
-                        benchmark: benchmark.girPercentLabel,
-                        gap: Double(snapshot.girPercent) - benchmark.girPercent,
-                        unit: "pts",
-                        lowerIsBetter: false
-                    )
-                    PerformanceCompassTile(
-                        title: "Scramble",
-                        icon: "waveform.path.ecg",
-                        value: "\(snapshot.scramblePercent)%",
-                        benchmark: benchmark.scramblePercentLabel,
-                        gap: Double(snapshot.scramblePercent) - benchmark.scramblePercent,
-                        unit: "pts",
-                        lowerIsBetter: false
-                    )
+                VStack(spacing: 9) {
+                    PerformanceBenchmarkRow(title: "Scoring", icon: "flag.fill", player: snapshot.averageScore, peer: benchmark.grossAverage, value: averageScore, peerValue: benchmark.grossAverageLabel, lowerIsBetter: true, span: 12)
+                    PerformanceBenchmarkRow(title: "Fairways", icon: "point.topleft.down.to.point.bottomright.curvepath", player: Double(snapshot.fairwayPercent), peer: benchmark.fairwayPercent, value: "\(snapshot.fairwayPercent)%", peerValue: benchmark.fairwayPercentLabel, lowerIsBetter: false, span: 30)
+                    PerformanceBenchmarkRow(title: "Approach", icon: "scope", player: Double(snapshot.girPercent), peer: benchmark.girPercent, value: "\(snapshot.girPercent)% GIR", peerValue: benchmark.girPercentLabel, lowerIsBetter: false, span: 30)
+                    PerformanceBenchmarkRow(title: "Short game", icon: "waveform.path.ecg", player: Double(snapshot.scramblePercent), peer: benchmark.scramblePercent, value: "\(snapshot.scramblePercent)%", peerValue: benchmark.scramblePercentLabel, lowerIsBetter: false, span: 28)
+                    PerformanceBenchmarkRow(title: "Putting", icon: "figure.golf", player: snapshot.puttsPerRound, peer: benchmark.puttsPerRound, value: puttsPerRound, peerValue: benchmark.puttsPerRoundLabel, lowerIsBetter: true, span: 7)
                 }
 
-                PerformanceCompassTile(
-                    title: "Putting",
-                    icon: "figure.golf",
-                    value: puttsPerRound,
-                    benchmark: benchmark.puttsPerRoundLabel,
-                    gap: snapshot.puttsPerRound - benchmark.puttsPerRound,
-                    unit: "putts",
-                    lowerIsBetter: true,
-                    isWide: true
-                )
+                HStack(spacing: 7) {
+                    Image(systemName: "hand.draw")
+                    Text("Swipe for driving, approach, putting and short-game detail")
+                }
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.softText)
             }
         }
-    }
-
-    private func higherIsBetterPercent(_ value: Double, benchmark: Double, worseSpan: Double, betterSpan: Double) -> Int {
-        guard value > 0 else { return 0 }
-        if value < benchmark {
-            return clampPercent(50 - ((benchmark - value) / worseSpan) * 50)
-        }
-        return clampPercent(50 + ((value - benchmark) / betterSpan) * 50)
-    }
-
-    private func lowerIsBetterPercent(_ value: Double, benchmark: Double, betterSpan: Double, worseSpan: Double) -> Int {
-        guard value > 0 else { return 0 }
-        if value < benchmark {
-            return clampPercent(50 + ((benchmark - value) / betterSpan) * 50)
-        }
-        return clampPercent(50 - ((value - benchmark) / worseSpan) * 50)
-    }
-
-    private func clampPercent(_ value: Double) -> Int {
-        max(0, min(100, Int(value.rounded())))
     }
 }
 
-struct PerformanceCompassTile: View {
+struct PerformanceBenchmarkRow: View {
     let title: String
     let icon: String
+    let player: Double
+    let peer: Double
     let value: String
-    let benchmark: String
-    let gap: Double
-    let unit: String
+    let peerValue: String
     let lowerIsBetter: Bool
-    var isWide = false
+    let span: Double
 
     private var isBetter: Bool {
-        lowerIsBetter ? gap < -0.05 : gap > 0.05
+        lowerIsBetter ? player < peer : player > peer
     }
 
-    private var isLevel: Bool {
-        abs(gap) <= 0.05
+    private var playerPosition: CGFloat {
+        let signedDifference = lowerIsBetter ? peer - player : player - peer
+        return CGFloat(max(0.08, min(0.92, 0.5 + (signedDifference / max(span, 1)) * 0.42)))
     }
 
-    private var statusColor: Color {
-        if isLevel { return AppTheme.softText }
-        return isBetter ? AppTheme.mint : Color(red: 0.82, green: 0.36, blue: 0.14)
-    }
-
-    private var statusIcon: String {
-        if isLevel { return "equal" }
-        return isBetter ? "arrow.up.right" : "arrow.down.right"
-    }
-
-    private var statusText: String {
-        if isLevel { return "Level with peer" }
-        let amount = abs(gap)
-        let formatted = amount >= 10 ? String(format: "%.0f", amount) : String(format: "%.1f", amount)
-        return isBetter ? "\(formatted) \(unit) ahead" : "\(formatted) \(unit) behind"
-    }
+    private var accent: Color { isBetter ? AppTheme.mint : Color(red: 0.88, green: 0.39, blue: 0.16) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
+        VStack(spacing: 8) {
+            HStack(spacing: 9) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(statusColor)
-                    .frame(width: 30, height: 30)
-                    .background(Circle().fill(statusColor.opacity(0.13)))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(accent)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(accent.opacity(0.13)))
                 Text(title)
-                    .font(.system(.caption, design: .rounded).weight(.semibold))
-                    .foregroundStyle(AppTheme.softText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-            }
-
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
                 Text(value)
-                    .font(.system(size: isWide ? 30 : 26, weight: .semibold, design: .rounded))
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
                     .foregroundStyle(AppTheme.ink)
                     .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                Spacer(minLength: 0)
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("Peer")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(AppTheme.softText.opacity(0.82))
-                    Text(benchmark)
-                        .font(.system(.caption, design: .rounded).weight(.semibold))
-                        .foregroundStyle(AppTheme.ink.opacity(0.86))
-                        .monospacedDigit()
-                }
+                Text("Peer \(peerValue)")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(AppTheme.softText)
+                    .monospacedDigit()
             }
 
-            HStack(spacing: 6) {
-                Image(systemName: statusIcon)
-                    .font(.system(size: 11, weight: .bold))
-                Text(statusText)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(AppTheme.border.opacity(0.5)).frame(height: 5)
+                    Rectangle()
+                        .fill(AppTheme.softText.opacity(0.55))
+                        .frame(width: 2, height: 15)
+                        .offset(x: proxy.size.width * 0.5 - 1)
+                    Circle()
+                        .fill(accent)
+                        .frame(width: 13, height: 13)
+                        .overlay(Circle().stroke(AppTheme.elevated, lineWidth: 2))
+                        .offset(x: proxy.size.width * playerPosition - 6.5)
+                }
+                .frame(maxHeight: .infinity)
             }
-            .foregroundStyle(statusColor)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(Capsule().fill(statusColor.opacity(0.12)))
+            .frame(height: 15)
         }
-        .padding(13)
-        .frame(maxWidth: .infinity, minHeight: isWide ? 112 : 128, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(AppTheme.elevated.opacity(0.82))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(statusColor.opacity(0.22), lineWidth: 1)
-                )
+                .fill(AppTheme.elevated.opacity(0.72))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.72)))
         )
     }
 }
@@ -8487,63 +8406,71 @@ struct HandicapBenchmark {
 
 struct FairwayPremiumCard: View {
     let snapshot: InsightSnapshot
+    let benchmark: HandicapBenchmark
+
+    private var segments: [PremiumChartSegment] {
+        [
+            PremiumChartSegment(value: Double(snapshot.fairwaysHit), color: AppTheme.mint, label: "HIT"),
+            PremiumChartSegment(value: Double(missCount(.left)), color: Color(red: 0.92, green: 0.30, blue: 0.25), label: "LEFT"),
+            PremiumChartSegment(value: Double(missCount(.right)), color: AppTheme.gold, label: "RIGHT")
+        ]
+    }
 
     var body: some View {
-        PremiumStatsCard(title: "Fairways") {
-            VStack(spacing: 22) {
-                ZStack {
-                    FairwayFanShape()
-                        .stroke(AppTheme.border.opacity(0.8), lineWidth: 1.5)
-                        .frame(height: 175)
-
-                    VStack(spacing: 8) {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 34, weight: .heavy))
-                            .foregroundStyle(.white)
-                            .frame(width: 126, height: 82)
-                            .background(
-                                UnevenRoundedRectangle(topLeadingRadius: 64, bottomLeadingRadius: 8, bottomTrailingRadius: 8, topTrailingRadius: 64)
-                                    .fill(AppTheme.mint)
-                            )
-                        HStack(spacing: 14) {
-                            PremiumDirectionPill(title: "LEFT", value: "\(snapshot.fairwayMissLeftPercent)%", color: .red)
-                            PremiumDirectionPill(title: "CENTER", value: "\(snapshot.fairwayPercent)%", color: AppTheme.mint)
-                            PremiumDirectionPill(title: "RIGHT", value: "\(snapshot.fairwayMissRightPercent)%", color: .red)
-                        }
-                    }
-                    .padding(.top, 44)
-                }
-
-                Text("\(snapshot.fairwaysHit)/\(max(snapshot.fairwaysTotal, 0)) tracked tee shots")
-                    .font(.system(.headline, design: .rounded).weight(.heavy))
-                    .foregroundStyle(AppTheme.ink)
-
-                Divider()
+        PremiumStatsCard(title: "Fairway Control") {
+            VStack(spacing: 16) {
+                PeerComparisonStrip(
+                    title: "Fairways hit",
+                    playerValue: "\(snapshot.fairwayPercent)%",
+                    peerValue: benchmark.fairwayPercentLabel,
+                    gap: Double(snapshot.fairwayPercent) - benchmark.fairwayPercent,
+                    lowerIsBetter: false
+                )
 
                 HStack(spacing: 18) {
-                    PremiumBottomMetric(title: "Score with hit", value: hitScoreText, accent: AppTheme.mint)
-                    PremiumBottomMetric(title: "Common miss", value: commonMissText, accent: .red)
+                    PremiumDonutChart(segments: segments, centerTitle: "\(snapshot.fairwayPercent)%", centerSubtitle: "Hit")
+                        .frame(width: 166, height: 166)
+
+                    VStack(spacing: 10) {
+                        DistributionLegendRow(color: AppTheme.mint, title: "Hit", value: snapshot.fairwayPercent, count: snapshot.fairwaysHit)
+                        DistributionLegendRow(color: Color(red: 0.92, green: 0.30, blue: 0.25), title: "Left", value: snapshot.fairwayMissLeftPercent, count: missCount(.left))
+                        DistributionLegendRow(color: AppTheme.gold, title: "Right", value: snapshot.fairwayMissRightPercent, count: missCount(.right))
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    CompactDataMetric(title: "Tracked drives", value: "\(snapshot.fairwaysTotal)", icon: "figure.golf")
+                    CompactDataMetric(title: "Common miss", value: commonMissText, icon: "location.north.line")
                 }
             }
         }
     }
 
-    private var hitScoreText: String {
-        snapshot.fairwaysTotal == 0 ? "-" : "\(snapshot.fairwayPercent)%"
-    }
-
     private var commonMissText: String {
         snapshot.fairwayMissLeftPercent >= snapshot.fairwayMissRightPercent ? "Left" : "Right"
+    }
+
+    private func missCount(_ direction: MissDirection) -> Int {
+        snapshot.fairwayMisses.filter { $0 == direction }.count
     }
 }
 
 struct PuttingPremiumCard: View {
     let snapshot: InsightSnapshot
     let puttsPerRound: String
+    let benchmark: HandicapBenchmark
 
     var body: some View {
         PremiumStatsCard(title: "Putts") {
             VStack(spacing: 20) {
+                PeerComparisonStrip(
+                    title: "Putts per round",
+                    playerValue: puttsPerRound,
+                    peerValue: benchmark.puttsPerRoundLabel,
+                    gap: snapshot.puttsPerRound - benchmark.puttsPerRound,
+                    lowerIsBetter: true
+                )
+
                 PremiumDonutChart(
                     segments: [
                         PremiumChartSegment(value: Double(snapshot.onePutts), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "1 PUTT"),
@@ -8575,50 +8502,70 @@ struct PuttingPremiumCard: View {
 struct ApproachPremiumCard: View {
     let snapshot: InsightSnapshot
     let averageProximity: String
+    let benchmark: HandicapBenchmark
+
+    private var approachSegments: [PremiumChartSegment] {
+        [
+            PremiumChartSegment(value: Double(snapshot.greensHit), color: AppTheme.mint, label: "HIT"),
+            PremiumChartSegment(value: Double(missCount(.short)), color: Color(red: 0.95, green: 0.42, blue: 0.18), label: "SHORT"),
+            PremiumChartSegment(value: Double(missCount(.right)), color: AppTheme.gold, label: "RIGHT"),
+            PremiumChartSegment(value: Double(missCount(.left)), color: Color(red: 0.50, green: 0.45, blue: 0.78), label: "LEFT"),
+            PremiumChartSegment(value: Double(missCount(.long)), color: Color(red: 0.22, green: 0.55, blue: 0.72), label: "LONG")
+        ]
+    }
 
     var body: some View {
         PremiumStatsCard(title: "Approach Play") {
-            VStack(spacing: 18) {
-                HStack(spacing: 14) {
-                    PremiumBottomMetric(title: "GIR", value: "\(snapshot.girPercent)%", accent: AppTheme.mint)
-                    PremiumBottomMetric(title: "Avg Proximity", value: averageProximity, accent: AppTheme.mint)
-                }
+            VStack(spacing: 16) {
+                PeerComparisonStrip(
+                    title: "Greens in regulation",
+                    playerValue: "\(snapshot.girPercent)%",
+                    peerValue: benchmark.girPercentLabel,
+                    gap: Double(snapshot.girPercent) - benchmark.girPercent,
+                    lowerIsBetter: false
+                )
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Approach miss pattern")
-                        .font(.system(.headline, design: .rounded).weight(.heavy))
-                        .foregroundStyle(AppTheme.ink)
-                    PremiumHorizontalBar(label: "Short", value: snapshot.greenMissShortPercent, color: AppTheme.gold)
-                    PremiumHorizontalBar(label: "Left", value: snapshot.greenMissLeftPercent, color: .red)
-                    PremiumHorizontalBar(label: "Right", value: snapshot.greenMissRightPercent, color: .red)
-                    PremiumHorizontalBar(label: "Long", value: snapshot.greenMissLongPercent, color: AppTheme.gold)
-                }
+                HStack(spacing: 18) {
+                    PremiumDonutChart(segments: approachSegments, centerTitle: "\(snapshot.girPercent)%", centerSubtitle: "GIR")
+                        .frame(width: 166, height: 166)
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("GIR proximity")
-                        .font(.system(.headline, design: .rounded).weight(.heavy))
-                        .foregroundStyle(AppTheme.ink)
-                    ForEach(ApproachProximity.allCases) { proximity in
-                        PremiumHorizontalBar(label: proximity.rawValue.replacingOccurrences(of: " ft", with: ""), value: proximityPercent(proximity), color: AppTheme.mint)
+                    VStack(spacing: 8) {
+                        DistributionLegendRow(color: AppTheme.mint, title: "Hit", value: snapshot.girPercent, count: snapshot.greensHit)
+                        DistributionLegendRow(color: Color(red: 0.95, green: 0.42, blue: 0.18), title: "Short", value: snapshot.greenMissShortPercent, count: missCount(.short))
+                        DistributionLegendRow(color: AppTheme.gold, title: "Right", value: snapshot.greenMissRightPercent, count: missCount(.right))
+                        DistributionLegendRow(color: Color(red: 0.50, green: 0.45, blue: 0.78), title: "Left", value: snapshot.greenMissLeftPercent, count: missCount(.left))
+                        DistributionLegendRow(color: Color(red: 0.22, green: 0.55, blue: 0.72), title: "Long", value: snapshot.greenMissLongPercent, count: missCount(.long))
                     }
+                }
+
+                HStack(spacing: 10) {
+                    CompactDataMetric(title: "Approaches", value: "\(snapshot.greensTotal)", icon: "scope")
+                    CompactDataMetric(title: "Avg proximity", value: averageProximity, icon: "ruler")
                 }
             }
         }
     }
 
-    private func proximityPercent(_ proximity: ApproachProximity) -> Int {
-        guard !snapshot.girProximities.isEmpty else { return 0 }
-        let count = snapshot.girProximities.filter { $0 == proximity }.count
-        return Int((Double(count) / Double(snapshot.girProximities.count) * 100).rounded())
+    private func missCount(_ direction: MissDirection) -> Int {
+        snapshot.greenMisses.filter { $0 == direction }.count
     }
 }
 
 struct ShortGamePremiumCard: View {
     let snapshot: InsightSnapshot
+    let benchmark: HandicapBenchmark
 
     var body: some View {
         PremiumStatsCard(title: "Short Game") {
             VStack(spacing: 20) {
+                PeerComparisonStrip(
+                    title: "Scrambling",
+                    playerValue: "\(snapshot.scramblePercent)%",
+                    peerValue: benchmark.scramblePercentLabel,
+                    gap: Double(snapshot.scramblePercent) - benchmark.scramblePercent,
+                    lowerIsBetter: false
+                )
+
                 PremiumDonutChart(
                     segments: [
                         PremiumChartSegment(value: Double(snapshot.scrambles), color: AppTheme.mint, label: "SAVED"),
@@ -8724,6 +8671,126 @@ struct PenaltyPremiumCard: View {
         case "Unplayable": return .orange
         default: return .red
         }
+    }
+}
+
+struct PeerComparisonStrip: View {
+    let title: String
+    let playerValue: String
+    let peerValue: String
+    let gap: Double
+    let lowerIsBetter: Bool
+
+    private var isBetter: Bool {
+        lowerIsBetter ? gap < 0 : gap > 0
+    }
+
+    private var isLevel: Bool { abs(gap) < 0.05 }
+
+    private var accent: Color {
+        if isLevel { return AppTheme.softText }
+        return isBetter ? AppTheme.mint : Color(red: 0.88, green: 0.39, blue: 0.16)
+    }
+
+    private var comparisonText: String {
+        if isLevel { return "Level with peer" }
+        let amount = abs(gap)
+        let value = amount >= 10 ? String(format: "%.0f", amount) : String(format: "%.1f", amount)
+        return "\(value) \(lowerIsBetter ? "strokes" : "pts") \(isBetter ? "better" : "behind")"
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title.uppercased())
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.softText)
+                Text(playerValue)
+                    .font(.system(size: 29, weight: .medium, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .monospacedDigit()
+            }
+
+            Spacer(minLength: 6)
+
+            VStack(alignment: .trailing, spacing: 5) {
+                Text("PEER  \(peerValue)")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.softText)
+                    .monospacedDigit()
+                HStack(spacing: 5) {
+                    Image(systemName: isLevel ? "equal" : (isBetter ? "arrow.up.right" : "arrow.down.right"))
+                    Text(comparisonText)
+                }
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(accent)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AppTheme.elevated.opacity(0.76))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(accent.opacity(0.3)))
+        )
+    }
+}
+
+struct DistributionLegendRow: View {
+    let color: Color
+    let title: String
+    let value: Int
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 7) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(color)
+                .frame(width: 10, height: 10)
+            Text(title)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.softText)
+                .lineLimit(1)
+            Spacer(minLength: 3)
+            Text("\(value)%")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+                .monospacedDigit()
+            Text("(\(count))")
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.softText.opacity(0.8))
+                .monospacedDigit()
+        }
+    }
+}
+
+struct CompactDataMetric: View {
+    let title: String
+    let value: String
+    let icon: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(AppTheme.mint)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(AppTheme.mint.opacity(0.13)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title.uppercased())
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.softText)
+                Text(value)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.ink)
+                    .monospacedDigit()
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated.opacity(0.68)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.68)))
     }
 }
 
