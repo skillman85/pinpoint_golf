@@ -24,6 +24,7 @@ struct ContentView: View {
     @AppStorage("precision.profileOnboardingComplete") private var profileOnboardingComplete = false
     @AppStorage("precision.appearanceMode") private var appearanceMode = AppearanceMode.system.rawValue
     @AppStorage("precision.seenSocialActivity") private var seenSocialActivitySignature = ""
+    @AppStorage("precision.lastSignedInUID") private var lastSignedInUID = ""
     @State private var selectedTab: Tab = .home
     @State private var selectedCourse = CourseDatabase.courses[0]
     @State private var selectedTee = CourseDatabase.courses[0].tees[0]
@@ -78,6 +79,9 @@ struct ContentView: View {
             restoreActiveRoundDraft()
             Task {
                 await PushNotificationService.shared.requestPermissionAndRegister()
+                if let uid = firebaseAccount.user?.uid {
+                    prepareLocalDataForSignedInUser(uid)
+                }
                 await restoreAndSyncCloudDataIfNeeded(force: false)
                 await firebaseSocial.refresh()
                 await websiteSeasonSync.retryPendingSync()
@@ -91,6 +95,9 @@ struct ContentView: View {
                     await firebaseSocial.refresh()
                 } else {
                     didRestoreCloudDataForCurrentUser = false
+                    if let uid {
+                        prepareLocalDataForSignedInUser(uid)
+                    }
                     await restoreAndSyncCloudDataIfNeeded(force: true)
                     await firebaseSocial.refresh()
                     await firebaseRoundSync.sync(rounds: roundArchive.rounds)
@@ -211,6 +218,40 @@ struct ContentView: View {
     }
 
     @MainActor
+    private func prepareLocalDataForSignedInUser(_ uid: String) {
+        guard !uid.isEmpty else { return }
+
+        if !lastSignedInUID.isEmpty && lastSignedInUID != uid {
+            clearLocalAccountScopedData()
+        }
+
+        lastSignedInUID = uid
+    }
+
+    @MainActor
+    private func clearLocalAccountScopedData() {
+        roundArchive.replace(with: [])
+        playerSettings.replaceHandicap(18.0)
+        courseFavorites.replace(with: [])
+        goalArchive.replace(with: [])
+        clubYardages.replace(with: [])
+        handicapHistory.replace(with: [])
+        scorecardStore.replace(with: [])
+
+        profileName = ""
+        profileHomeClub = ""
+        profileImageData = Data()
+
+        isRoundActive = false
+        isRoundFlowPresented = false
+        isRoundReviewPresented = false
+        currentHoleIndex = 0
+        sideMatch = MatchplaySideGame()
+        entries = selectedTee.holes.map { Self.defaultEntry(for: $0) }
+        UserDefaults.standard.removeObject(forKey: activeRoundDraftKey)
+    }
+
+    @MainActor
     private func restoreAndSyncCloudDataIfNeeded(force: Bool) async {
         guard firebaseAccount.user != nil else { return }
         if didRestoreCloudDataForCurrentUser && !force {
@@ -224,11 +265,15 @@ struct ContentView: View {
         async let cloudAppDataResult = firebaseRoundSync.restoreAppData()
 
         if let cloudRounds = await cloudRoundsResult {
-            mergeCloudRounds(cloudRounds)
+            if force {
+                replaceLocalRoundsWithCloud(cloudRounds)
+            } else {
+                mergeCloudRounds(cloudRounds)
+            }
         }
 
         if let cloudAppData = await cloudAppDataResult {
-            applyCloudAppData(cloudAppData)
+            applyCloudAppData(cloudAppData, mergeWithLocal: !force)
         }
 
         await firebaseRoundSync.sync(rounds: roundArchive.rounds)
@@ -248,24 +293,37 @@ struct ContentView: View {
     }
 
     @MainActor
-    private func applyCloudAppData(_ cloudData: PrecisionCloudAppData) {
+    private func replaceLocalRoundsWithCloud(_ cloudRounds: [SavedRound]) {
+        roundArchive.replace(with: cloudRounds)
+    }
+
+    @MainActor
+    private func applyCloudAppData(_ cloudData: PrecisionCloudAppData, mergeWithLocal: Bool) {
         playerSettings.replaceHandicap(cloudData.handicap)
 
-        let mergedFavorites = courseFavorites.favoriteKeys.union(Set(cloudData.favoriteCourseKeys))
-        courseFavorites.replace(with: mergedFavorites)
+        if mergeWithLocal {
+            let mergedFavorites = courseFavorites.favoriteKeys.union(Set(cloudData.favoriteCourseKeys))
+            courseFavorites.replace(with: mergedFavorites)
 
-        let mergedGoals = mergeCustomGoals(local: goalArchive.customGoals, cloud: cloudData.customGoals)
-        goalArchive.replace(with: mergedGoals)
+            let mergedGoals = mergeCustomGoals(local: goalArchive.customGoals, cloud: cloudData.customGoals)
+            goalArchive.replace(with: mergedGoals)
 
-        if !cloudData.clubYardages.isEmpty {
-            clubYardages.replace(with: mergeClubYardages(local: clubYardages.clubs, cloud: cloudData.clubYardages))
+            if !cloudData.clubYardages.isEmpty {
+                clubYardages.replace(with: mergeClubYardages(local: clubYardages.clubs, cloud: cloudData.clubYardages))
+            }
+
+            let mergedHandicapHistory = mergeHandicapHistory(local: handicapHistory.records, cloud: cloudData.handicapHistory)
+            handicapHistory.replace(with: mergedHandicapHistory)
+
+            let mergedScorecards = mergeScorecards(local: scorecardStore.overrides, cloud: cloudData.courseScorecards)
+            scorecardStore.replace(with: mergedScorecards)
+        } else {
+            courseFavorites.replace(with: Set(cloudData.favoriteCourseKeys))
+            goalArchive.replace(with: cloudData.customGoals)
+            clubYardages.replace(with: cloudData.clubYardages)
+            handicapHistory.replace(with: cloudData.handicapHistory)
+            scorecardStore.replace(with: cloudData.courseScorecards)
         }
-
-        let mergedHandicapHistory = mergeHandicapHistory(local: handicapHistory.records, cloud: cloudData.handicapHistory)
-        handicapHistory.replace(with: mergedHandicapHistory)
-
-        let mergedScorecards = mergeScorecards(local: scorecardStore.overrides, cloud: cloudData.courseScorecards)
-        scorecardStore.replace(with: mergedScorecards)
     }
 
     private func mergeCustomGoals(local: [CustomGoal], cloud: [CustomGoal]) -> [CustomGoal] {
@@ -864,10 +922,8 @@ struct SignedOutAccountView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(red: 0.0, green: 0.08, blue: 0.05).ignoresSafeArea())
-        .sheet(isPresented: $showEmailForm) {
+        .fullScreenCover(isPresented: $showEmailForm) {
             EmailAuthSheet(account: account)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
         }
     }
 
@@ -982,61 +1038,71 @@ private struct EmailAuthSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.01, green: 0.08, blue: 0.05),
-                        Color(red: 0.03, green: 0.17, blue: 0.10),
-                        Color(red: 0.91, green: 0.97, blue: 0.93)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
+            GeometryReader { proxy in
+                ZStack {
+                    loginBackground
+                        .blur(radius: 8)
+                        .scaleEffect(1.08)
+                        .overlay(Color(red: 0.0, green: 0.06, blue: 0.04).opacity(0.78))
+                        .ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    Capsule()
-                        .fill(.white.opacity(0.34))
-                        .frame(width: 44, height: 5)
-                        .padding(.top, 10)
-                        .padding(.bottom, 18)
+                    VStack {
+                        Spacer(minLength: proxy.safeAreaInsets.top + 20)
 
-                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 18) {
+                            closeButton
+                                .frame(maxWidth: .infinity, alignment: .trailing)
                         header
                         modePicker
                         inputFields
                         primaryAction
                         resetAction
                         statusArea
-                    }
-                    .padding(22)
-                    .background(
-                        RoundedRectangle(cornerRadius: 24)
-                            .fill(.ultraThinMaterial)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 24)
-                                    .stroke(.white.opacity(0.24), lineWidth: 1)
-                            )
-                            .shadow(color: .black.opacity(0.24), radius: 24, x: 0, y: 16)
-                    )
-                    .padding(.horizontal, 18)
+                        }
+                        .padding(22)
+                        .background(
+                            RoundedRectangle(cornerRadius: 22)
+                                .fill(Color(red: 0.02, green: 0.11, blue: 0.075).opacity(0.96))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 22)
+                                        .stroke(Color(red: 0.55, green: 0.82, blue: 0.19).opacity(0.32), lineWidth: 1)
+                                )
+                                .shadow(color: .black.opacity(0.38), radius: 26, x: 0, y: 18)
+                        )
+                        .padding(.horizontal, 18)
+                        .frame(maxWidth: 560)
 
-                    Spacer(minLength: 20)
-                }
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        dismiss()
+                        Spacer(minLength: max(24, proxy.safeAreaInsets.bottom + 20))
                     }
-                    .font(.system(.headline, design: .rounded).weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 9)
-                    .background(Capsule().fill(.white.opacity(0.16)))
                 }
             }
+            .toolbar(.hidden, for: .navigationBar)
         }
+    }
+
+    private var closeButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                Text("Done")
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .background(
+                Capsule()
+                    .fill(.white.opacity(0.11))
+                    .overlay(
+                        Capsule()
+                            .stroke(.white.opacity(0.18), lineWidth: 1)
+                    )
+                            )
+        }
+        .buttonStyle(.plain)
     }
 
     private var header: some View {
@@ -1059,6 +1125,24 @@ private struct EmailAuthSheet: View {
                     .foregroundStyle(.white.opacity(0.72))
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var loginBackground: some View {
+        if let image = UIImage(named: "LaunchScreenImage") {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+        } else {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.0, green: 0.18, blue: 0.12),
+                    Color(red: 0.0, green: 0.06, blue: 0.04)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
         }
     }
 
