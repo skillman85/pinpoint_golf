@@ -8211,7 +8211,7 @@ struct PremiumStatsCard<Content: View>: View {
             content
                 .padding(.horizontal, 20)
                 .padding(.bottom, 22)
-                .frame(maxWidth: .infinity, minHeight: 410, alignment: .top)
+                .frame(maxWidth: .infinity, minHeight: 410, maxHeight: 410, alignment: .top)
         }
         .frame(maxWidth: .infinity)
         .background(
@@ -8413,7 +8413,7 @@ struct FairwayPremiumCard: View {
 
     var body: some View {
         PremiumStatsCard(title: "Fairway Control") {
-            VStack(spacing: 16) {
+            VStack(spacing: 0) {
                 PeerComparisonStrip(
                     title: "Fairways hit",
                     playerValue: "\(snapshot.fairwayPercent)%",
@@ -8421,6 +8421,8 @@ struct FairwayPremiumCard: View {
                     gap: Double(snapshot.fairwayPercent) - benchmark.fairwayPercent,
                     lowerIsBetter: false
                 )
+
+                Spacer(minLength: 14)
 
                 HStack(spacing: 14) {
                     PremiumDonutChart(segments: segments, showsCenter: false)
@@ -8433,11 +8435,14 @@ struct FairwayPremiumCard: View {
                     }
                 }
 
+                Spacer(minLength: 14)
+
                 HStack(spacing: 10) {
                     CompactDataMetric(title: "Tracked drives", value: "\(snapshot.fairwaysTotal)", icon: "figure.golf")
                     CompactDataMetric(title: "Common miss", value: commonMissText, icon: "location.north.line")
                 }
             }
+            .frame(maxHeight: .infinity)
         }
     }
 
@@ -8511,7 +8516,7 @@ struct ApproachPremiumCard: View {
 
     var body: some View {
         PremiumStatsCard(title: "Approach Play") {
-            VStack(spacing: 16) {
+            VStack(spacing: 0) {
                 PeerComparisonStrip(
                     title: "Greens in regulation",
                     playerValue: "\(snapshot.girPercent)%",
@@ -8519,6 +8524,8 @@ struct ApproachPremiumCard: View {
                     gap: Double(snapshot.girPercent) - benchmark.girPercent,
                     lowerIsBetter: false
                 )
+
+                Spacer(minLength: 14)
 
                 HStack(spacing: 14) {
                     PremiumDonutChart(segments: approachSegments, showsCenter: false)
@@ -8533,11 +8540,14 @@ struct ApproachPremiumCard: View {
                     }
                 }
 
+                Spacer(minLength: 14)
+
                 HStack(spacing: 10) {
                     CompactDataMetric(title: "Approaches", value: "\(snapshot.greensTotal)", icon: "scope")
                     CompactDataMetric(title: "Avg proximity", value: averageProximity, icon: "ruler")
                 }
             }
+            .frame(maxHeight: .infinity)
         }
     }
 
@@ -8552,7 +8562,7 @@ struct ShortGamePremiumCard: View {
 
     var body: some View {
         PremiumStatsCard(title: "Short Game") {
-            VStack(spacing: 14) {
+            VStack(spacing: 0) {
                 PeerComparisonStrip(
                     title: "Scrambling",
                     playerValue: "\(snapshot.scramblePercent)%",
@@ -8560,6 +8570,8 @@ struct ShortGamePremiumCard: View {
                     gap: Double(snapshot.scramblePercent) - benchmark.scramblePercent,
                     lowerIsBetter: false
                 )
+
+                Spacer(minLength: 14)
 
                 HStack(spacing: 16) {
                     PremiumDonutChart(segments: scrambleSegments, showsCenter: false)
@@ -8571,12 +8583,15 @@ struct ShortGamePremiumCard: View {
                     }
                 }
 
+                Spacer(minLength: 14)
+
                 HStack(spacing: 10) {
                     PremiumBottomMetric(title: "Scrambles", value: "\(snapshot.scrambles)/\(snapshot.scrambleOpportunities)", accent: AppTheme.mint)
                     PremiumBottomMetric(title: "Sand Save", value: "\(snapshot.sandSavePercent)%", accent: AppTheme.gold)
                     PremiumBottomMetric(title: "Bunkers", value: "\(snapshot.bunkerHoles)", accent: AppTheme.ink)
                 }
             }
+            .frame(maxHeight: .infinity)
         }
     }
 
