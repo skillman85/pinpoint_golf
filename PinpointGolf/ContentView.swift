@@ -1461,7 +1461,7 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
                 PremiumScreenHeader(
                     title: "Precision Golf",
                     subtitle: greetingLine,
@@ -7431,7 +7431,7 @@ struct InsightsDashboardContent: View {
                 .tag(5)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 535)
+            .frame(height: 570)
 
             PremiumPageDots(count: 6, selection: $selectedInsightPage)
                 .frame(maxWidth: .infinity)
@@ -8190,7 +8190,12 @@ struct PremiumPageDots: View {
 
 struct PremiumStatsCard<Content: View>: View {
     let title: String
-    @ViewBuilder let content: Content
+    let content: Content
+
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -8211,7 +8216,7 @@ struct PremiumStatsCard<Content: View>: View {
             content
                 .padding(.horizontal, 20)
                 .padding(.bottom, 22)
-                .frame(maxWidth: .infinity, minHeight: 410, maxHeight: 410, alignment: .top)
+                .frame(maxWidth: .infinity, minHeight: 445, alignment: .top)
         }
         .frame(maxWidth: .infinity)
         .background(
@@ -8260,7 +8265,7 @@ struct StrengthWeaknessPremiumCard: View {
                     }
                 }
 
-                VStack(spacing: 9) {
+                VStack(spacing: 7) {
                     PerformanceBenchmarkRow(title: "Scoring", icon: "flag.fill", player: snapshot.averageScore, peer: benchmark.grossAverage, value: averageScore, peerValue: benchmark.grossAverageLabel, lowerIsBetter: true, span: 12)
                     PerformanceBenchmarkRow(title: "Fairways", icon: "point.topleft.down.to.point.bottomright.curvepath", player: Double(snapshot.fairwayPercent), peer: benchmark.fairwayPercent, value: "\(snapshot.fairwayPercent)%", peerValue: benchmark.fairwayPercentLabel, lowerIsBetter: false, span: 30)
                     PerformanceBenchmarkRow(title: "Approach", icon: "scope", player: Double(snapshot.girPercent), peer: benchmark.girPercent, value: "\(snapshot.girPercent)% GIR", peerValue: benchmark.girPercentLabel, lowerIsBetter: false, span: 30)
@@ -8295,15 +8300,15 @@ struct PerformanceBenchmarkRow: View {
     private var accent: Color { isBetter ? AppTheme.mint : Color(red: 0.88, green: 0.39, blue: 0.16) }
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 9) {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(accent)
-                    .frame(width: 28, height: 28)
+                    .frame(width: 24, height: 24)
                     .background(Circle().fill(accent.opacity(0.13)))
                 Text(title)
-                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundStyle(AppTheme.ink)
                 Spacer()
                 Text(value)
@@ -8331,10 +8336,10 @@ struct PerformanceBenchmarkRow: View {
                 }
                 .frame(maxHeight: .infinity)
             }
-            .frame(height: 15)
+            .frame(height: 13)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(AppTheme.elevated.opacity(0.72))
@@ -8413,7 +8418,7 @@ struct FairwayPremiumCard: View {
 
     var body: some View {
         PremiumStatsCard(title: "Fairway Control") {
-            VStack(spacing: 0) {
+            VStack(spacing: 20) {
                 PeerComparisonStrip(
                     title: "Fairways hit",
                     playerValue: "\(snapshot.fairwayPercent)%",
@@ -8422,27 +8427,23 @@ struct FairwayPremiumCard: View {
                     lowerIsBetter: false
                 )
 
-                Spacer(minLength: 14)
-
-                HStack(spacing: 14) {
+                HStack(spacing: 30) {
                     PremiumDonutChart(segments: segments, showsCenter: false)
-                        .frame(width: 128, height: 128)
+                        .frame(width: 112, height: 112)
 
                     VStack(spacing: 10) {
                         DistributionLegendRow(color: AppTheme.mint, title: "Hit", value: snapshot.fairwayPercent, count: snapshot.fairwaysHit)
                         DistributionLegendRow(color: Color(red: 0.92, green: 0.30, blue: 0.25), title: "Left", value: snapshot.fairwayMissLeftPercent, count: missCount(.left))
                         DistributionLegendRow(color: AppTheme.gold, title: "Right", value: snapshot.fairwayMissRightPercent, count: missCount(.right))
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                Spacer(minLength: 14)
 
                 HStack(spacing: 10) {
                     CompactDataMetric(title: "Tracked drives", value: "\(snapshot.fairwaysTotal)", icon: "figure.golf")
                     CompactDataMetric(title: "Common miss", value: commonMissText, icon: "location.north.line")
                 }
             }
-            .frame(maxHeight: .infinity)
         }
     }
 
@@ -8462,7 +8463,7 @@ struct PuttingPremiumCard: View {
 
     var body: some View {
         PremiumStatsCard(title: "Putts") {
-            VStack(spacing: 20) {
+            VStack(spacing: 12) {
                 PeerComparisonStrip(
                     title: "Putts per round",
                     playerValue: puttsPerRound,
@@ -8480,7 +8481,7 @@ struct PuttingPremiumCard: View {
                     centerTitle: puttsPerRound,
                     centerSubtitle: "Putts / round"
                 )
-                .frame(width: 190, height: 190)
+                .frame(width: 150, height: 150)
 
                 PremiumLegend(segments: [
                     PremiumChartSegment(value: Double(snapshot.onePutts), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "1 PUTT"),
@@ -8516,7 +8517,7 @@ struct ApproachPremiumCard: View {
 
     var body: some View {
         PremiumStatsCard(title: "Approach Play") {
-            VStack(spacing: 0) {
+            VStack(spacing: 18) {
                 PeerComparisonStrip(
                     title: "Greens in regulation",
                     playerValue: "\(snapshot.girPercent)%",
@@ -8525,11 +8526,9 @@ struct ApproachPremiumCard: View {
                     lowerIsBetter: false
                 )
 
-                Spacer(minLength: 14)
-
-                HStack(spacing: 14) {
+                HStack(spacing: 30) {
                     PremiumDonutChart(segments: approachSegments, showsCenter: false)
-                        .frame(width: 128, height: 128)
+                        .frame(width: 106, height: 106)
 
                     VStack(spacing: 8) {
                         DistributionLegendRow(color: AppTheme.mint, title: "Hit", value: snapshot.girPercent, count: snapshot.greensHit)
@@ -8538,16 +8537,14 @@ struct ApproachPremiumCard: View {
                         DistributionLegendRow(color: Color(red: 0.50, green: 0.45, blue: 0.78), title: "Left", value: snapshot.greenMissLeftPercent, count: missCount(.left))
                         DistributionLegendRow(color: Color(red: 0.22, green: 0.55, blue: 0.72), title: "Long", value: snapshot.greenMissLongPercent, count: missCount(.long))
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                Spacer(minLength: 14)
 
                 HStack(spacing: 10) {
                     CompactDataMetric(title: "Approaches", value: "\(snapshot.greensTotal)", icon: "scope")
                     CompactDataMetric(title: "Avg proximity", value: averageProximity, icon: "ruler")
                 }
             }
-            .frame(maxHeight: .infinity)
         }
     }
 
@@ -8562,7 +8559,7 @@ struct ShortGamePremiumCard: View {
 
     var body: some View {
         PremiumStatsCard(title: "Short Game") {
-            VStack(spacing: 0) {
+            VStack(spacing: 18) {
                 PeerComparisonStrip(
                     title: "Scrambling",
                     playerValue: "\(snapshot.scramblePercent)%",
@@ -8571,19 +8568,16 @@ struct ShortGamePremiumCard: View {
                     lowerIsBetter: false
                 )
 
-                Spacer(minLength: 14)
-
-                HStack(spacing: 16) {
+                HStack(spacing: 24) {
                     PremiumDonutChart(segments: scrambleSegments, showsCenter: false)
-                        .frame(width: 132, height: 132)
+                        .frame(width: 122, height: 122)
 
                     VStack(spacing: 12) {
                         DistributionLegendRow(color: AppTheme.mint, title: "Saved", value: snapshot.scramblePercent, count: snapshot.scrambles)
                         DistributionLegendRow(color: Color(red: 0.54, green: 0.78, blue: 0.54), title: "Missed", value: max(100 - snapshot.scramblePercent, 0), count: missedScrambles)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                Spacer(minLength: 14)
 
                 HStack(spacing: 10) {
                     PremiumBottomMetric(title: "Scrambles", value: "\(snapshot.scrambles)/\(snapshot.scrambleOpportunities)", accent: AppTheme.mint)
@@ -8591,7 +8585,6 @@ struct ShortGamePremiumCard: View {
                     PremiumBottomMetric(title: "Bunkers", value: "\(snapshot.bunkerHoles)", accent: AppTheme.ink)
                 }
             }
-            .frame(maxHeight: .infinity)
         }
     }
 
