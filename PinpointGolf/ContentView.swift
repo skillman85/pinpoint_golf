@@ -174,7 +174,10 @@ struct ContentView: View {
             FriendsView(
                 account: firebaseAccount,
                 social: firebaseSocial,
-                openSharedRoundId: $pendingSharedRoundId
+                openSharedRoundId: $pendingSharedRoundId,
+                currentUserName: profileName,
+                currentUserHandicap: playerSettings.handicap,
+                currentUserRounds: roundArchive.rounds
             )
         case .settings:
             SettingsView(
@@ -7370,7 +7373,7 @@ struct InsightsDashboardContent: View {
     let savedRounds: [SavedRound]
     let isRoundActive: Bool
     let currentHandicap: Double
-    @State private var selectedRange: InsightRange = .all
+    @State private var selectedRange: InsightRange = .last5
     @State private var selectedInsightPage = 0
 
     var body: some View {
@@ -10583,6 +10586,9 @@ struct FriendsView: View {
     @ObservedObject var account: FirebaseAccountService
     @ObservedObject var social: FirebaseSocialService
     @Binding var openSharedRoundId: String?
+    let currentUserName: String
+    let currentUserHandicap: Double
+    let currentUserRounds: [SavedRound]
     @State private var selectedFriend: FirebaseFriendProfile?
     @State private var selectedRound: FirebaseSharedRound?
     @State private var selectedGroup: FirebaseGolfGroup?
@@ -10668,7 +10674,10 @@ struct FriendsView: View {
             FriendProfileDetailView(
                 friend: friend,
                 rounds: rounds(for: friend),
-                matchplayRecord: matchplayRecord(for: friend)
+                matchplayRecord: matchplayRecord(for: friend),
+                currentUserName: currentUserName,
+                currentUserHandicap: currentUserHandicap,
+                currentUserRounds: currentUserRounds
             )
         }
         .sheet(item: $selectedRound) { round in
@@ -10779,12 +10788,14 @@ struct FriendsView: View {
 
                 Spacer(minLength: 8)
 
-                Image(systemName: "person.3.fill")
-                    .font(.system(size: 23, weight: .semibold))
-                    .foregroundStyle(AppTheme.lime)
-                    .frame(width: 54, height: 54)
-                    .background(Circle().fill(.white.opacity(0.10)))
-                    .overlay(Circle().stroke(.white.opacity(0.16)))
+                Image("FriendsHubArtwork")
+                    .resizable()
+                    .scaledToFill()
+                    .offset(y: 4)
+                    .frame(width: 76, height: 58)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(.white.opacity(0.28), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.28), radius: 8, y: 4)
             }
 
             HStack(spacing: 10) {
@@ -12958,9 +12969,13 @@ struct FriendProfileDetailView: View {
     let friend: FirebaseFriendProfile
     let rounds: [FirebaseSharedRound]
     let matchplayRecord: MatchplayFriendRecord
+    let currentUserName: String
+    let currentUserHandicap: Double
+    let currentUserRounds: [SavedRound]
     @Environment(\.dismiss) private var dismiss
     @State private var selectedRound: FirebaseSharedRound?
     @State private var showAllRounds = false
+    @State private var showComparison = false
 
     private var visibleRounds: [FirebaseSharedRound] {
         showAllRounds ? rounds : Array(rounds.prefix(3))
@@ -12970,7 +12985,12 @@ struct FriendProfileDetailView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
-                    FriendProfileHeroCard(friend: friend, rounds: rounds, matchplayRecord: matchplayRecord)
+                    FriendProfileHeroCard(
+                        friend: friend,
+                        rounds: rounds,
+                        matchplayRecord: matchplayRecord,
+                        compareAction: { showComparison = true }
+                    )
 
                     FriendSeasonStatsCard(rounds: rounds)
 
@@ -13013,6 +13033,15 @@ struct FriendProfileDetailView: View {
                 .padding(20)
             }
             .background(AppTheme.background.ignoresSafeArea())
+            .navigationDestination(isPresented: $showComparison) {
+                FriendStatsComparisonView(
+                    currentUserName: currentUserName,
+                    currentUserHandicap: currentUserHandicap,
+                    currentUserRounds: currentUserRounds,
+                    friend: friend,
+                    friendRounds: rounds
+                )
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
@@ -13030,6 +13059,7 @@ struct FriendProfileHeroCard: View {
     let friend: FirebaseFriendProfile
     let rounds: [FirebaseSharedRound]
     let matchplayRecord: MatchplayFriendRecord
+    let compareAction: () -> Void
 
     private var latestRoundScore: String {
         rounds.sorted { $0.date > $1.date }.first.map { "\($0.gross)" } ?? "-"
@@ -13072,19 +13102,34 @@ struct FriendProfileHeroCard: View {
                 SummaryMetric(title: "Latest", value: latestRoundScore, caption: latestRoundCaption)
             }
 
-            HStack(spacing: 9) {
-                Image(systemName: "flag.2.crossed.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                Text(matchplayRecord.summary)
-                    .font(.system(.caption, design: .rounded).weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+            HStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "flag.2.crossed.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(matchplayRecord.summary)
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 11)
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .background(Capsule().fill(Color.white.opacity(0.10)))
+                .overlay(Capsule().stroke(Color.white.opacity(0.14)))
+
+                Button(action: compareAction) {
+                    Label("Compare Stats", systemImage: "chart.bar.xaxis")
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
+                        .foregroundStyle(Color(red: 0.02, green: 0.14, blue: 0.09))
+                        .background(Capsule().fill(AppTheme.lime))
+                }
+                .buttonStyle(.plain)
             }
-            .foregroundStyle(.white.opacity(0.9))
-            .padding(.horizontal, 12)
-            .frame(height: 34)
-            .background(Capsule().fill(Color.white.opacity(0.10)))
-            .overlay(Capsule().stroke(Color.white.opacity(0.14)))
         }
         .padding(20)
         .background(
@@ -13110,6 +13155,382 @@ struct FriendProfileHeroCard: View {
         formatter.dateFormat = "MMM d"
         return formatter
     }()
+}
+
+private struct FriendComparisonSnapshot {
+    let handicap: Double
+    let roundCount: Int
+    let averageGross: Double?
+    let averageStableford: Double?
+    let fairways: Double?
+    let gir: Double?
+    let putts: Double?
+    let scrambling: Double?
+    let sandSaves: Double?
+    let penalties: Double?
+
+    static func current(handicap: Double, rounds: [SavedRound]) -> FriendComparisonSnapshot {
+        let seasonRounds = rounds.filter { Self.isCurrentSeason(date: $0.date) }
+        return FriendComparisonSnapshot(
+            handicap: handicap,
+            roundCount: seasonRounds.count,
+            averageGross: average(seasonRounds.map { Double($0.totalScore) }),
+            averageStableford: average(seasonRounds.compactMap { $0.stablefordPoints.map(Double.init) }),
+            fairways: percentage(
+                numerator: seasonRounds.reduce(0) { $0 + $1.fairwaysHit },
+                denominator: seasonRounds.reduce(0) { $0 + $1.fairwaysTotal }
+            ),
+            gir: percentage(
+                numerator: seasonRounds.reduce(0) { $0 + $1.greensInRegulation },
+                denominator: seasonRounds.reduce(0) { $0 + $1.greensTracked }
+            ),
+            putts: average(seasonRounds.map { Double($0.totalPutts) }),
+            scrambling: percentage(
+                numerator: seasonRounds.reduce(0) { $0 + $1.scrambles },
+                denominator: seasonRounds.reduce(0) { $0 + $1.scramblingOpportunities }
+            ),
+            sandSaves: percentage(
+                numerator: seasonRounds.reduce(0) { $0 + $1.sandSaves },
+                denominator: seasonRounds.reduce(0) { $0 + $1.bunkerHoles }
+            ),
+            penalties: average(seasonRounds.map { Double($0.penalties) })
+        )
+    }
+
+    static func friend(handicap: Double, rounds: [FirebaseSharedRound]) -> FriendComparisonSnapshot {
+        let seasonRounds = rounds.filter { Self.isCurrentSeason(date: $0.date) }
+        return FriendComparisonSnapshot(
+            handicap: handicap,
+            roundCount: seasonRounds.count,
+            averageGross: average(seasonRounds.map { Double($0.gross) }),
+            averageStableford: average(seasonRounds.compactMap { $0.stableford.map(Double.init) }),
+            fairways: percentage(
+                numerator: seasonRounds.reduce(0) { $0 + $1.fairwaysHit },
+                denominator: seasonRounds.reduce(0) { $0 + $1.fairwaysTracked }
+            ),
+            gir: percentage(
+                numerator: seasonRounds.reduce(0) { $0 + $1.greensHit },
+                denominator: seasonRounds.reduce(0) { $0 + $1.greensTracked }
+            ),
+            putts: average(seasonRounds.map { Double($0.putts) }),
+            scrambling: percentage(
+                numerator: seasonRounds.reduce(0) { $0 + $1.scrambles },
+                denominator: seasonRounds.reduce(0) { $0 + $1.scrambleOpportunities }
+            ),
+            sandSaves: percentage(
+                numerator: seasonRounds.reduce(0) { $0 + $1.sandSaves },
+                denominator: seasonRounds.reduce(0) { $0 + $1.bunkerHoles }
+            ),
+            penalties: average(seasonRounds.map { Double($0.penalties) })
+        )
+    }
+
+    private static func isCurrentSeason(date: Date) -> Bool {
+        Calendar.current.component(.year, from: date) == Calendar.current.component(.year, from: Date())
+    }
+
+    private static func average(_ values: [Double]) -> Double? {
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / Double(values.count)
+    }
+
+    private static func percentage(numerator: Int, denominator: Int) -> Double? {
+        guard denominator > 0 else { return nil }
+        return Double(numerator) / Double(denominator) * 100
+    }
+}
+
+private struct FriendComparisonMetric: Identifiable {
+    enum Format {
+        case decimal
+        case percent
+    }
+
+    let id: String
+    let title: String
+    let systemImage: String
+    let currentValue: Double?
+    let friendValue: Double?
+    let format: Format
+    let lowerIsBetter: Bool
+
+    func display(_ value: Double?) -> String {
+        guard let value else { return "-" }
+        switch format {
+        case .decimal:
+            return String(format: "%.1f", value)
+        case .percent:
+            return "\(Int(value.rounded()))%"
+        }
+    }
+
+    func result(forCurrentUser: Bool) -> ComparisonResult {
+        guard let currentValue, let friendValue, abs(currentValue - friendValue) > 0.049 else {
+            return currentValue == nil || friendValue == nil ? .unavailable : .level
+        }
+        let currentWins = lowerIsBetter ? currentValue < friendValue : currentValue > friendValue
+        return currentWins == forCurrentUser ? .ahead : .behind
+    }
+
+    enum ComparisonResult: Equatable {
+        case ahead
+        case behind
+        case level
+        case unavailable
+    }
+}
+
+struct FriendStatsComparisonView: View {
+    let currentUserName: String
+    let currentUserHandicap: Double
+    let currentUserRounds: [SavedRound]
+    let friend: FirebaseFriendProfile
+    let friendRounds: [FirebaseSharedRound]
+
+    private var current: FriendComparisonSnapshot {
+        .current(handicap: currentUserHandicap, rounds: currentUserRounds)
+    }
+
+    private var friendSnapshot: FriendComparisonSnapshot {
+        .friend(handicap: friend.handicap, rounds: friendRounds)
+    }
+
+    private var sections: [(title: String, metrics: [FriendComparisonMetric])] {
+        [
+            ("Scoring", [
+                metric("Average gross", icon: "flag.fill", current.averageGross, friendSnapshot.averageGross, lower: true),
+                metric("Stableford", icon: "star.circle.fill", current.averageStableford, friendSnapshot.averageStableford, lower: false)
+            ]),
+            ("Tee to Green", [
+                metric("Fairways", icon: "arrow.triangle.branch", current.fairways, friendSnapshot.fairways, format: .percent, lower: false),
+                metric("Greens in regulation", icon: "scope", current.gir, friendSnapshot.gir, format: .percent, lower: false)
+            ]),
+            ("Short Game & Control", [
+                metric("Putts per round", icon: "figure.golf", current.putts, friendSnapshot.putts, lower: true),
+                metric("Scrambling", icon: "waveform.path.ecg", current.scrambling, friendSnapshot.scrambling, format: .percent, lower: false),
+                metric("Sand saves", icon: "circle.grid.cross.fill", current.sandSaves, friendSnapshot.sandSaves, format: .percent, lower: false),
+                metric("Penalties per round", icon: "exclamationmark.triangle.fill", current.penalties, friendSnapshot.penalties, lower: true)
+            ])
+        ]
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 18) {
+                comparisonHeader
+
+                ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
+                    ComparisonSectionCard(
+                        title: section.title,
+                        metrics: section.metrics,
+                        currentName: firstName(currentUserName),
+                        friendName: firstName(friend.displayName)
+                    )
+                }
+
+                Text("Based on completed rounds shared in the \(Calendar.current.component(.year, from: Date())) season. Percentages use tracked holes only.")
+                    .font(.system(.caption, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.softText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+            .padding(20)
+        }
+        .background(AppTheme.background.ignoresSafeArea())
+        .navigationTitle("Compare Stats")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var comparisonHeader: some View {
+        VStack(spacing: 18) {
+            Text("HEAD TO HEAD")
+                .font(.system(.caption, design: .rounded).weight(.semibold))
+                .foregroundStyle(AppTheme.lime)
+
+            HStack(spacing: 12) {
+                comparisonPlayer(
+                    name: currentUserName,
+                    handicap: current.handicap,
+                    rounds: current.roundCount,
+                    photoURL: nil,
+                    isCurrentUser: true
+                )
+
+                VStack(spacing: 4) {
+                    Text("VS")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                    Text("THIS SEASON")
+                        .font(.system(size: 8, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.58))
+                }
+                .frame(width: 48, height: 48)
+                .background(Circle().fill(Color.white.opacity(0.10)))
+                .overlay(Circle().stroke(Color.white.opacity(0.15)))
+
+                comparisonPlayer(
+                    name: friend.displayName,
+                    handicap: friendSnapshot.handicap,
+                    rounds: friendSnapshot.roundCount,
+                    photoURL: friend.photoURL,
+                    isCurrentUser: false
+                )
+            }
+        }
+        .padding(20)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 16).fill(AppTheme.performanceCard)
+                FairwayCardBackdrop().clipShape(RoundedRectangle(cornerRadius: 16))
+                LinearGradient(colors: [.black.opacity(0.1), .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+            }
+        )
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(AppTheme.border))
+        .shadow(color: AppTheme.shadow, radius: 16, y: 8)
+    }
+
+    private func comparisonPlayer(name: String, handicap: Double, rounds: Int, photoURL: String?, isCurrentUser: Bool) -> some View {
+        VStack(spacing: 8) {
+            if isCurrentUser {
+                ZStack {
+                    Circle().fill(AppTheme.mint)
+                    Text(initials(name))
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 54, height: 54)
+                .overlay(Circle().stroke(.white.opacity(0.7), lineWidth: 2))
+            } else {
+                FriendAvatar(name: name, photoURL: photoURL, size: 54)
+            }
+
+            Text(firstName(name))
+                .font(.system(.headline, design: .rounded).weight(.semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Text("HCP \(String(format: "%.1f", handicap)) · \(rounds) rounds")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.68))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func metric(
+        _ title: String,
+        icon: String,
+        _ currentValue: Double?,
+        _ friendValue: Double?,
+        format: FriendComparisonMetric.Format = .decimal,
+        lower: Bool
+    ) -> FriendComparisonMetric {
+        FriendComparisonMetric(
+            id: title,
+            title: title,
+            systemImage: icon,
+            currentValue: currentValue,
+            friendValue: friendValue,
+            format: format,
+            lowerIsBetter: lower
+        )
+    }
+
+    private func firstName(_ name: String) -> String {
+        name.split(separator: " ").first.map(String.init) ?? "Golfer"
+    }
+
+    private func initials(_ name: String) -> String {
+        let parts = name.split(separator: " ")
+        return parts.prefix(2).compactMap(\.first).map(String.init).joined().uppercased()
+    }
+}
+
+private struct ComparisonSectionCard: View {
+    let title: String
+    let metrics: [FriendComparisonMetric]
+    let currentName: String
+    let friendName: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(title)
+                    .font(.system(.headline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(AppTheme.ink)
+                Spacer()
+                Text(currentName)
+                    .frame(width: 76)
+                Text(friendName)
+                    .frame(width: 76)
+            }
+            .font(.system(.caption, design: .rounded).weight(.semibold))
+            .foregroundStyle(AppTheme.softText)
+            .padding(.bottom, 12)
+
+            ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
+                ComparisonMetricRow(metric: metric)
+                if index < metrics.count - 1 {
+                    Divider().overlay(AppTheme.border.opacity(0.7))
+                }
+            }
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow.opacity(0.7), radius: 12, y: 6)
+    }
+}
+
+private struct ComparisonMetricRow: View {
+    let metric: FriendComparisonMetric
+
+    var body: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 9) {
+                Image(systemName: metric.systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AppTheme.mint)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(AppTheme.mintWash))
+                Text(metric.title)
+                    .font(.system(.subheadline, design: .rounded).weight(.medium))
+                    .foregroundStyle(AppTheme.ink)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.78)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            comparisonValue(metric.currentValue, result: metric.result(forCurrentUser: true))
+            comparisonValue(metric.friendValue, result: metric.result(forCurrentUser: false))
+        }
+        .frame(minHeight: 58)
+    }
+
+    private func comparisonValue(_ value: Double?, result: FriendComparisonMetric.ComparisonResult) -> some View {
+        VStack(spacing: 3) {
+            Text(metric.display(value))
+                .font(.system(size: 19, weight: .semibold, design: .rounded))
+                .foregroundStyle(result == .ahead ? AppTheme.mint : AppTheme.ink)
+            if result == .ahead {
+                Label("Edge", systemImage: "arrow.up.right")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .foregroundStyle(AppTheme.mint)
+            } else if result == .level {
+                Text("Level")
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundStyle(AppTheme.softText)
+            }
+        }
+        .frame(width: 76)
+        .frame(minHeight: 44)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(result == .ahead ? AppTheme.mintWash : Color.clear)
+        )
+    }
 }
 
 struct SharedRoundDetailView: View {
