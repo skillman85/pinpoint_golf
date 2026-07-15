@@ -6611,7 +6611,7 @@ struct LiveRoundView: View {
         guard entries.indices.contains(index) else { return true }
         let holeEntry = entries[index]
         guard holeEntry.score > 0 else { return true }
-        return holeEntry.pickedUp || confirmedPuttsHoleIndexes.contains(index)
+        return holeEntry.pickedUp || holeEntry.putts > 0 || confirmedPuttsHoleIndexes.contains(index)
     }
 
     private func firstHoleMissingPutts() -> Int? {
@@ -7403,6 +7403,7 @@ struct InsightsDashboardContent: View {
                     .tag(4)
                 PenaltyPremiumCard(
                     snapshot: snapshot,
+                    rounds: selectedRounds,
                     penaltyTypes: trackedPenaltyTypes.map { ($0.rawValue, penaltyCount($0, in: snapshot), penaltyPercent($0, in: snapshot)) }
                 )
                 .tag(5)
@@ -8245,12 +8246,6 @@ struct StrengthWeaknessPremiumCard: View {
                     PerformanceBenchmarkRow(title: "Putting", icon: "figure.golf", player: snapshot.puttsPerRound, peer: benchmark.puttsPerRound, value: puttsPerRound, peerValue: benchmark.puttsPerRoundLabel, lowerIsBetter: true, span: 7)
                 }
 
-                HStack(spacing: 7) {
-                    Image(systemName: "hand.draw")
-                    Text("Swipe for driving, approach, putting and short-game detail")
-                }
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(AppTheme.softText)
             }
         }
     }
@@ -8405,9 +8400,9 @@ struct FairwayPremiumCard: View {
                     lowerIsBetter: false
                 )
 
-                HStack(spacing: 18) {
-                    PremiumDonutChart(segments: segments, centerTitle: "\(snapshot.fairwayPercent)%", centerSubtitle: "Hit")
-                        .frame(width: 166, height: 166)
+                HStack(spacing: 14) {
+                    PremiumDonutChart(segments: segments, showsCenter: false)
+                        .frame(width: 128, height: 128)
 
                     VStack(spacing: 10) {
                         DistributionLegendRow(color: AppTheme.mint, title: "Hit", value: snapshot.fairwayPercent, count: snapshot.fairwaysHit)
@@ -8503,9 +8498,9 @@ struct ApproachPremiumCard: View {
                     lowerIsBetter: false
                 )
 
-                HStack(spacing: 18) {
-                    PremiumDonutChart(segments: approachSegments, centerTitle: "\(snapshot.girPercent)%", centerSubtitle: "GIR")
-                        .frame(width: 166, height: 166)
+                HStack(spacing: 14) {
+                    PremiumDonutChart(segments: approachSegments, showsCenter: false)
+                        .frame(width: 128, height: 128)
 
                     VStack(spacing: 8) {
                         DistributionLegendRow(color: AppTheme.mint, title: "Hit", value: snapshot.girPercent, count: snapshot.greensHit)
@@ -8535,7 +8530,7 @@ struct ShortGamePremiumCard: View {
 
     var body: some View {
         PremiumStatsCard(title: "Short Game") {
-            VStack(spacing: 20) {
+            VStack(spacing: 14) {
                 PeerComparisonStrip(
                     title: "Scrambling",
                     playerValue: "\(snapshot.scramblePercent)%",
@@ -8544,71 +8539,89 @@ struct ShortGamePremiumCard: View {
                     lowerIsBetter: false
                 )
 
-                PremiumDonutChart(
-                    segments: [
-                        PremiumChartSegment(value: Double(snapshot.scrambles), color: AppTheme.mint, label: "SAVED"),
-                        PremiumChartSegment(value: Double(max(snapshot.scrambleOpportunities - snapshot.scrambles, 0)), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "MISSED")
-                    ],
-                    centerTitle: "\(snapshot.scramblePercent)%",
-                    centerSubtitle: "Scramble"
-                )
-                .frame(width: 190, height: 190)
+                HStack(spacing: 16) {
+                    PremiumDonutChart(segments: scrambleSegments, showsCenter: false)
+                        .frame(width: 132, height: 132)
 
-                PremiumLegend(segments: [
-                    PremiumChartSegment(value: Double(snapshot.scrambles), color: AppTheme.mint, label: "SAVED"),
-                    PremiumChartSegment(value: Double(max(snapshot.scrambleOpportunities - snapshot.scrambles, 0)), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "MISSED")
-                ])
+                    VStack(spacing: 12) {
+                        DistributionLegendRow(color: AppTheme.mint, title: "Saved", value: snapshot.scramblePercent, count: snapshot.scrambles)
+                        DistributionLegendRow(color: Color(red: 0.54, green: 0.78, blue: 0.54), title: "Missed", value: max(100 - snapshot.scramblePercent, 0), count: missedScrambles)
+                    }
+                }
 
-                Divider()
-
-                HStack(spacing: 18) {
+                HStack(spacing: 10) {
                     PremiumBottomMetric(title: "Scrambles", value: "\(snapshot.scrambles)/\(snapshot.scrambleOpportunities)", accent: AppTheme.mint)
                     PremiumBottomMetric(title: "Sand Save", value: "\(snapshot.sandSavePercent)%", accent: AppTheme.gold)
                     PremiumBottomMetric(title: "Bunkers", value: "\(snapshot.bunkerHoles)", accent: AppTheme.ink)
                 }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Around the green")
-                        .font(.system(.headline, design: .rounded).weight(.heavy))
-                        .foregroundStyle(AppTheme.ink)
-                    PremiumHorizontalBar(label: "Scramble", value: snapshot.scramblePercent, color: AppTheme.mint)
-                    PremiumHorizontalBar(label: "Sand", value: snapshot.sandSavePercent, color: AppTheme.gold)
-                }
             }
         }
+    }
+
+    private var missedScrambles: Int {
+        max(snapshot.scrambleOpportunities - snapshot.scrambles, 0)
+    }
+
+    private var scrambleSegments: [PremiumChartSegment] {
+        [
+            PremiumChartSegment(value: Double(snapshot.scrambles), color: AppTheme.mint, label: "SAVED"),
+            PremiumChartSegment(value: Double(missedScrambles), color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "MISSED")
+        ]
     }
 }
 
 struct PenaltyPremiumCard: View {
     let snapshot: InsightSnapshot
+    let rounds: [SavedRound]
     let penaltyTypes: [(String, Int, Int)]
 
     private var activePenaltyTypes: [(String, Int, Int)] {
-        penaltyTypes.filter { $0.1 > 0 }
+        penaltyTypes.filter { $0.1 > 0 }.sorted { $0.1 > $1.1 }
     }
 
     var body: some View {
         PremiumStatsCard(title: "Penalties") {
-            VStack(spacing: 20) {
-                PremiumDonutChart(
-                    segments: donutSegments,
-                    centerTitle: "\(snapshot.penalties)",
-                    centerSubtitle: snapshot.penalties == 1 ? "Penalty" : "Penalties"
-                )
-                .frame(width: 190, height: 190)
-
-                PremiumLegend(segments: donutSegments)
-
-                Divider()
-
-                HStack(spacing: 18) {
-                    PremiumBottomMetric(title: "Total", value: "\(snapshot.penalties)", accent: .red)
-                    PremiumBottomMetric(title: "Per Round", value: String(format: "%.1f", penaltiesPerRound), accent: AppTheme.gold)
-                }
-
+            VStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Penalty type")
-                        .font(.system(.headline, design: .rounded).weight(.heavy))
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Penalties per round")
+                                .font(.system(.subheadline, design: .rounded).weight(.medium))
+                                .foregroundStyle(AppTheme.softText)
+                            Text(String(format: "%.1f", penaltiesPerRound))
+                                .font(.system(size: 42, weight: .medium, design: .rounded))
+                                .foregroundStyle(AppTheme.ink)
+                                .monospacedDigit()
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("Trend")
+                                .font(.system(.caption, design: .rounded).weight(.medium))
+                                .foregroundStyle(AppTheme.softText)
+                            Text(trendText)
+                                .font(.system(.headline, design: .rounded).weight(.semibold))
+                                .foregroundStyle(trendColor)
+                                .monospacedDigit()
+                            PenaltySparkline(values: penaltyTrendValues, color: trendColor)
+                                .frame(width: 126, height: 38)
+                        }
+                    }
+
+                    Divider().overlay(AppTheme.border)
+
+                    HStack(spacing: 0) {
+                        PenaltySummaryMetric(title: "Total penalties", value: "\(snapshot.penalties)")
+                        PenaltySummaryMetric(title: "Penalty strokes", value: "\(snapshot.penalties)")
+                        PenaltySummaryMetric(title: "Rounds with penalty", value: "\(roundsWithPenalty)/\(max(snapshot.roundCount, rounds.count))")
+                    }
+                }
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated.opacity(0.72)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.72)))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Penalties by type")
+                        .font(.system(.headline, design: .rounded).weight(.semibold))
                         .foregroundStyle(AppTheme.ink)
 
                     if activePenaltyTypes.isEmpty {
@@ -8619,26 +8632,52 @@ struct PenaltyPremiumCard: View {
                             .padding(.vertical, 8)
                     } else {
                         ForEach(Array(activePenaltyTypes.enumerated()), id: \.offset) { _, item in
-                            PremiumPenaltyBar(label: item.0, count: item.1, percent: item.2, color: penaltyColor(for: item.0))
+                            PenaltyBreakdownBar(label: item.0, count: item.1, percent: item.2, maximum: maximumPenaltyCount, color: penaltyColor(for: item.0))
                         }
                     }
                 }
+                .padding(14)
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated.opacity(0.72)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.72)))
             }
-        }
-    }
-
-    private var donutSegments: [PremiumChartSegment] {
-        if activePenaltyTypes.isEmpty {
-            return [PremiumChartSegment(value: 1, color: Color(red: 0.54, green: 0.78, blue: 0.54), label: "CLEAN")]
-        }
-        return activePenaltyTypes.map { item in
-            PremiumChartSegment(value: Double(item.1), color: penaltyColor(for: item.0), label: item.0.uppercased())
         }
     }
 
     private var penaltiesPerRound: Double {
         guard snapshot.roundCount > 0 else { return 0 }
         return Double(snapshot.penalties) / Double(snapshot.roundCount)
+    }
+
+    private var roundsWithPenalty: Int {
+        rounds.filter { $0.penalties > 0 }.count
+    }
+
+    private var penaltyTrendValues: [Double] {
+        rounds.sorted { $0.date < $1.date }.suffix(8).map { Double($0.penalties) }
+    }
+
+    private var trendDelta: Double? {
+        let values = penaltyTrendValues
+        guard values.count >= 4 else { return nil }
+        let sample = min(3, values.count / 2)
+        let previous = values.dropLast(sample).suffix(sample)
+        let recent = values.suffix(sample)
+        guard !previous.isEmpty else { return nil }
+        return recent.reduce(0, +) / Double(recent.count) - previous.reduce(0, +) / Double(previous.count)
+    }
+
+    private var trendText: String {
+        guard let trendDelta else { return "Not enough data" }
+        return String(format: "%+.1f", trendDelta)
+    }
+
+    private var trendColor: Color {
+        guard let trendDelta else { return AppTheme.softText }
+        return trendDelta <= 0 ? AppTheme.mint : .red
+    }
+
+    private var maximumPenaltyCount: Int {
+        max(activePenaltyTypes.map { $0.1 }.max() ?? 1, 1)
     }
 
     private func penaltyColor(for label: String) -> Color {
@@ -8649,6 +8688,101 @@ struct PenaltyPremiumCard: View {
         case "Unplayable": return .orange
         default: return .red
         }
+    }
+}
+
+struct PenaltySummaryMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.softText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(value)
+                .font(.system(size: 19, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct PenaltySparkline: View {
+    let values: [Double]
+    let color: Color
+
+    var body: some View {
+        GeometryReader { proxy in
+            if values.count > 1 {
+                let minimum = values.min() ?? 0
+                let maximum = values.max() ?? 1
+                let range = max(maximum - minimum, 1)
+                let points = values.indices.map { index in
+                    CGPoint(
+                        x: proxy.size.width * CGFloat(index) / CGFloat(values.count - 1),
+                        y: proxy.size.height - (CGFloat((values[index] - minimum) / range) * (proxy.size.height - 8)) - 4
+                    )
+                }
+
+                Path { path in
+                    path.move(to: points[0])
+                    for point in points.dropFirst() { path.addLine(to: point) }
+                }
+                .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+
+                ForEach(points.indices, id: \.self) { index in
+                    Circle()
+                        .fill(AppTheme.elevated)
+                        .overlay(Circle().stroke(color, lineWidth: 2))
+                        .frame(width: 7, height: 7)
+                        .position(points[index])
+                }
+            } else {
+                Capsule()
+                    .fill(AppTheme.border.opacity(0.7))
+                    .frame(height: 2)
+                    .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            }
+        }
+    }
+}
+
+struct PenaltyBreakdownBar: View {
+    let label: String
+    let count: Int
+    let percent: Int
+    let maximum: Int
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Text(label)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.ink)
+                .lineLimit(1)
+                .frame(width: 76, alignment: .leading)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(AppTheme.subtleFill)
+                    Capsule()
+                        .fill(color)
+                        .frame(width: max(5, proxy.size.width * CGFloat(count) / CGFloat(maximum)))
+                }
+            }
+            .frame(height: 12)
+
+            Text("\(count) (\(percent)%)")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(AppTheme.softText)
+                .monospacedDigit()
+                .frame(width: 68, alignment: .trailing)
+        }
+        .frame(height: 20)
     }
 }
 
@@ -8782,6 +8916,14 @@ struct PremiumDonutChart: View {
     let segments: [PremiumChartSegment]
     let centerTitle: String
     let centerSubtitle: String
+    let showsCenter: Bool
+
+    init(segments: [PremiumChartSegment], centerTitle: String = "", centerSubtitle: String = "", showsCenter: Bool = true) {
+        self.segments = segments
+        self.centerTitle = centerTitle
+        self.centerSubtitle = centerSubtitle
+        self.showsCenter = showsCenter
+    }
 
     private var total: Double {
         max(segments.reduce(0) { $0 + $1.value }, 1)
@@ -8790,27 +8932,29 @@ struct PremiumDonutChart: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(AppTheme.subtleFill, lineWidth: 42)
+                .stroke(AppTheme.subtleFill, lineWidth: 28)
 
             ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
                 Circle()
                     .trim(from: start(for: index), to: end(for: index))
-                    .stroke(segment.color, style: StrokeStyle(lineWidth: 42, lineCap: .butt))
+                    .stroke(segment.color, style: StrokeStyle(lineWidth: 28, lineCap: .butt))
                     .rotationEffect(.degrees(-90))
             }
 
-            VStack(spacing: 3) {
-                Text(centerTitle)
-                    .font(.system(size: 34, weight: .heavy, design: .rounded))
-                    .foregroundStyle(AppTheme.ink)
-                    .minimumScaleFactor(0.6)
-                    .lineLimit(1)
-                Text(centerSubtitle)
-                    .font(.system(.caption, design: .rounded).weight(.heavy))
-                    .foregroundStyle(AppTheme.softText)
-                    .multilineTextAlignment(.center)
+            if showsCenter {
+                VStack(spacing: 3) {
+                    Text(centerTitle)
+                        .font(.system(size: 30, weight: .semibold, design: .rounded))
+                        .foregroundStyle(AppTheme.ink)
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                    Text(centerSubtitle)
+                        .font(.system(.caption, design: .rounded).weight(.medium))
+                        .foregroundStyle(AppTheme.softText)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(width: 86)
             }
-            .frame(width: 112)
         }
     }
 
