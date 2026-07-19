@@ -804,8 +804,8 @@ struct SignedOutAccountView: View {
 
                 LinearGradient(
                     colors: [
-                        Color(red: 0.0, green: 0.08, blue: 0.05).opacity(0.82),
-                        Color(red: 0.0, green: 0.12, blue: 0.08).opacity(0.78),
+                        Color(red: 0.02, green: 0.03, blue: 0.035).opacity(0.84),
+                        Color(red: 0.04, green: 0.055, blue: 0.06).opacity(0.8),
                         Color.black.opacity(0.9)
                     ],
                     startPoint: .top,
@@ -901,7 +901,7 @@ struct SignedOutAccountView: View {
                             Button("Create account") {
                                 showEmailForm = true
                             }
-                            .foregroundStyle(Color(red: 0.56, green: 0.84, blue: 0.18))
+                            .foregroundStyle(AppTheme.mint)
                         }
                         .font(.system(.body, design: .rounded).weight(.medium))
                         .buttonStyle(.plain)
@@ -910,11 +910,11 @@ struct SignedOutAccountView: View {
                     .padding(22)
                     .background(
                         RoundedRectangle(cornerRadius: 22)
-                            .fill(Color(red: 0.0, green: 0.08, blue: 0.05).opacity(0.72))
+                            .fill(Color(red: 0.025, green: 0.035, blue: 0.04).opacity(0.78))
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 22)
-                            .stroke(Color(red: 0.55, green: 0.82, blue: 0.19).opacity(0.24), lineWidth: 1)
+                            .stroke(AppTheme.mint.opacity(0.26), lineWidth: 1)
                     )
                     .shadow(color: .black.opacity(0.44), radius: 24, x: 0, y: 14)
                     .padding(.horizontal, 22)
@@ -923,7 +923,7 @@ struct SignedOutAccountView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(red: 0.0, green: 0.08, blue: 0.05).ignoresSafeArea())
+        .background(Color(red: 0.02, green: 0.03, blue: 0.035).ignoresSafeArea())
         .fullScreenCover(isPresented: $showEmailForm) {
             EmailAuthSheet(account: account)
         }
@@ -939,8 +939,8 @@ struct SignedOutAccountView: View {
         } else {
             LinearGradient(
                 colors: [
-                    Color(red: 0.0, green: 0.18, blue: 0.12),
-                    Color(red: 0.0, green: 0.06, blue: 0.04)
+                    Color(red: 0.06, green: 0.085, blue: 0.09),
+                    Color(red: 0.018, green: 0.025, blue: 0.03)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -998,7 +998,7 @@ private struct BrandedLoginButton: View {
 
     private var border: Color {
         switch style {
-        case .outline: return Color(red: 0.55, green: 0.82, blue: 0.19)
+        case .outline: return AppTheme.mint
         case .light: return .white.opacity(0.88)
         case .black: return .white.opacity(0.16)
         }
@@ -1016,7 +1016,7 @@ private struct BrandedLoginButton: View {
         if let systemImage {
             Image(systemName: systemImage)
                 .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(style == .outline ? Color(red: 0.55, green: 0.82, blue: 0.19) : textColor)
+                .foregroundStyle(style == .outline ? AppTheme.mint : textColor)
                 .frame(width: 30)
         } else if let customIcon {
             Text(customIcon)
@@ -1045,7 +1045,7 @@ private struct EmailAuthSheet: View {
                     loginBackground
                         .blur(radius: 8)
                         .scaleEffect(1.08)
-                        .overlay(Color(red: 0.0, green: 0.06, blue: 0.04).opacity(0.78))
+                        .overlay(Color(red: 0.018, green: 0.026, blue: 0.03).opacity(0.8))
                         .ignoresSafeArea()
 
                     VStack {
@@ -1064,10 +1064,10 @@ private struct EmailAuthSheet: View {
                         .padding(22)
                         .background(
                             RoundedRectangle(cornerRadius: 22)
-                                .fill(Color(red: 0.02, green: 0.11, blue: 0.075).opacity(0.96))
+                                .fill(Color(red: 0.035, green: 0.048, blue: 0.052).opacity(0.96))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 22)
-                                        .stroke(Color(red: 0.55, green: 0.82, blue: 0.19).opacity(0.32), lineWidth: 1)
+                                        .stroke(AppTheme.mint.opacity(0.3), lineWidth: 1)
                                 )
                                 .shadow(color: .black.opacity(0.38), radius: 26, x: 0, y: 18)
                         )
@@ -1111,10 +1111,10 @@ private struct EmailAuthSheet: View {
         HStack(alignment: .top, spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(Color(red: 0.55, green: 0.82, blue: 0.19).opacity(0.18))
+                    .fill(AppTheme.mint.opacity(0.18))
                 Image(systemName: mode.icon)
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.55, green: 0.82, blue: 0.19))
+                    .foregroundStyle(AppTheme.mint)
             }
             .frame(width: 54, height: 54)
 
@@ -1139,8 +1139,8 @@ private struct EmailAuthSheet: View {
         } else {
             LinearGradient(
                 colors: [
-                    Color(red: 0.0, green: 0.18, blue: 0.12),
-                    Color(red: 0.0, green: 0.06, blue: 0.04)
+                    Color(red: 0.06, green: 0.085, blue: 0.09),
+                    Color(red: 0.018, green: 0.025, blue: 0.03)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -1158,12 +1158,12 @@ private struct EmailAuthSheet: View {
                 } label: {
                     Text(option.pickerTitle)
                         .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                        .foregroundStyle(mode == option ? AppTheme.ink : .white.opacity(0.72))
+                        .foregroundStyle(mode == option ? .white : .white.opacity(0.72))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(
                             Capsule()
-                                .fill(mode == option ? Color(red: 0.55, green: 0.82, blue: 0.19) : .white.opacity(0.08))
+                                .fill(mode == option ? AppTheme.mint : .white.opacity(0.08))
                         )
                 }
                 .buttonStyle(.plain)
@@ -1227,7 +1227,7 @@ private struct EmailAuthSheet: View {
                 RoundedRectangle(cornerRadius: 14)
                     .fill(
                         LinearGradient(
-                            colors: [Color(red: 0.02, green: 0.46, blue: 0.18), Color(red: 0.02, green: 0.31, blue: 0.14)],
+                            colors: [AppTheme.mint, Color(red: 0.10, green: 0.38, blue: 0.44)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -1253,7 +1253,7 @@ private struct EmailAuthSheet: View {
                 }
             } label: {
                 Text(mode.footerAction)
-                    .foregroundStyle(Color(red: 0.55, green: 0.82, blue: 0.19))
+                    .foregroundStyle(AppTheme.mint)
             }
             .buttonStyle(.plain)
         }
@@ -1266,7 +1266,7 @@ private struct EmailAuthSheet: View {
         if let status = account.statusMessage {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: status.localizedCaseInsensitiveContains("error") ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
-                    .foregroundStyle(status.localizedCaseInsensitiveContains("error") ? Color(red: 1.0, green: 0.36, blue: 0.32) : Color(red: 0.55, green: 0.82, blue: 0.19))
+                    .foregroundStyle(status.localizedCaseInsensitiveContains("error") ? Color(red: 1.0, green: 0.36, blue: 0.32) : AppTheme.mint)
                 Text(status)
                     .font(.system(.caption, design: .rounded).weight(.semibold))
                     .foregroundStyle(.white.opacity(0.82))
@@ -1286,7 +1286,7 @@ private struct EmailAuthSheet: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color(red: 0.55, green: 0.82, blue: 0.19))
+                .foregroundStyle(AppTheme.mint)
                 .frame(width: 22)
 
             field()
@@ -1408,26 +1408,26 @@ struct AppTheme {
 
     static let background = LinearGradient(
         colors: [
-            adaptive(light: UIColor(red: 0.965, green: 0.978, blue: 0.968, alpha: 1), dark: UIColor(red: 0.012, green: 0.042, blue: 0.028, alpha: 1)),
-            adaptive(light: UIColor(red: 0.925, green: 0.955, blue: 0.932, alpha: 1), dark: UIColor(red: 0.018, green: 0.082, blue: 0.054, alpha: 1)),
-            adaptive(light: UIColor(red: 0.985, green: 0.988, blue: 0.985, alpha: 1), dark: UIColor(red: 0.005, green: 0.022, blue: 0.016, alpha: 1))
+            adaptive(light: UIColor(red: 0.965, green: 0.978, blue: 0.968, alpha: 1), dark: UIColor.black),
+            adaptive(light: UIColor(red: 0.925, green: 0.955, blue: 0.932, alpha: 1), dark: UIColor.black),
+            adaptive(light: UIColor(red: 0.985, green: 0.988, blue: 0.985, alpha: 1), dark: UIColor.black)
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
-    static let panel = adaptive(light: UIColor.white, dark: UIColor(red: 0.045, green: 0.105, blue: 0.076, alpha: 1))
-    static let panelStrong = adaptive(light: UIColor(red: 0.91, green: 0.95, blue: 0.92, alpha: 1), dark: UIColor(red: 0.067, green: 0.145, blue: 0.102, alpha: 1))
-    static let elevated = adaptive(light: UIColor(red: 0.975, green: 0.982, blue: 0.976, alpha: 1), dark: UIColor(red: 0.085, green: 0.145, blue: 0.112, alpha: 1))
-    static let subtleFill = adaptive(light: UIColor(red: 0.90, green: 0.93, blue: 0.91, alpha: 1), dark: UIColor(white: 1, alpha: 0.10))
+    static let panel = adaptive(light: UIColor.white, dark: UIColor(red: 0.075, green: 0.09, blue: 0.095, alpha: 1))
+    static let panelStrong = adaptive(light: UIColor(red: 0.91, green: 0.95, blue: 0.92, alpha: 1), dark: UIColor(red: 0.095, green: 0.115, blue: 0.12, alpha: 1))
+    static let elevated = adaptive(light: UIColor(red: 0.975, green: 0.982, blue: 0.976, alpha: 1), dark: UIColor(red: 0.115, green: 0.135, blue: 0.14, alpha: 1))
+    static let subtleFill = adaptive(light: UIColor(red: 0.90, green: 0.93, blue: 0.91, alpha: 1), dark: UIColor(white: 1, alpha: 0.13))
     static let ink = adaptive(light: UIColor(red: 0.025, green: 0.105, blue: 0.065, alpha: 1), dark: UIColor.white)
-    static let softText = adaptive(light: UIColor(red: 0.28, green: 0.38, blue: 0.31, alpha: 1), dark: UIColor(red: 0.74, green: 0.80, blue: 0.75, alpha: 1))
-    static let mint = adaptive(light: UIColor(red: 0.04, green: 0.46, blue: 0.19, alpha: 1), dark: UIColor(red: 0.48, green: 0.91, blue: 0.40, alpha: 1))
-    static let mintWash = adaptive(light: UIColor(red: 0.86, green: 0.94, blue: 0.88, alpha: 1), dark: UIColor(red: 0.08, green: 0.25, blue: 0.14, alpha: 1))
-    static let controlGreen = Color(red: 0.035, green: 0.40, blue: 0.16)
-    static let tabInactive = adaptive(light: UIColor(red: 0.30, green: 0.40, blue: 0.33, alpha: 1), dark: UIColor(red: 0.68, green: 0.75, blue: 0.70, alpha: 1))
-    static let tabBar = adaptive(light: UIColor(red: 0.94, green: 0.965, blue: 0.945, alpha: 0.98), dark: UIColor(red: 0.01, green: 0.04, blue: 0.03, alpha: 0.98))
-    static let performanceCard = adaptive(light: UIColor(red: 0.07, green: 0.25, blue: 0.13, alpha: 1), dark: UIColor(red: 0.025, green: 0.08, blue: 0.052, alpha: 1))
-    static let lime = Color(red: 0.64, green: 0.96, blue: 0.37)
+    static let softText = adaptive(light: UIColor(red: 0.28, green: 0.38, blue: 0.31, alpha: 1), dark: UIColor(red: 0.78, green: 0.83, blue: 0.84, alpha: 1))
+    static let mint = adaptive(light: UIColor(red: 0.04, green: 0.46, blue: 0.19, alpha: 1), dark: UIColor(red: 0.24, green: 0.70, blue: 0.78, alpha: 1))
+    static let mintWash = adaptive(light: UIColor(red: 0.86, green: 0.94, blue: 0.88, alpha: 1), dark: UIColor(red: 0.07, green: 0.20, blue: 0.23, alpha: 1))
+    static let controlGreen = adaptive(light: UIColor(red: 0.035, green: 0.40, blue: 0.16, alpha: 1), dark: UIColor(red: 0.16, green: 0.53, blue: 0.6, alpha: 1))
+    static let tabInactive = adaptive(light: UIColor(red: 0.30, green: 0.40, blue: 0.33, alpha: 1), dark: UIColor(red: 0.70, green: 0.76, blue: 0.77, alpha: 1))
+    static let tabBar = adaptive(light: UIColor(red: 0.94, green: 0.965, blue: 0.945, alpha: 0.98), dark: UIColor(red: 0.025, green: 0.034, blue: 0.038, alpha: 0.98))
+    static let performanceCard = adaptive(light: UIColor(red: 0.07, green: 0.25, blue: 0.13, alpha: 1), dark: UIColor(red: 0.045, green: 0.065, blue: 0.07, alpha: 1))
+    static let lime = adaptive(light: UIColor(red: 0.86, green: 0.58, blue: 0.18, alpha: 1), dark: UIColor(red: 0.98, green: 0.72, blue: 0.36, alpha: 1))
     static let gold = Color(red: 0.94, green: 0.66, blue: 0.28)
     static let border = adaptive(light: UIColor(red: 0.72, green: 0.79, blue: 0.74, alpha: 0.72), dark: UIColor(white: 1, alpha: 0.18))
     static let shadow = adaptive(light: UIColor(white: 0, alpha: 0.12), dark: UIColor(white: 0, alpha: 0.38))
@@ -1737,17 +1737,12 @@ struct PremiumRecentRoundRow: View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(red: 0.12, green: 0.38, blue: 0.16), AppTheme.lime.opacity(0.72)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(AppTheme.elevated)
                     .frame(width: 46, height: 46)
+                    .overlay(Circle().stroke(AppTheme.border.opacity(0.8), lineWidth: 1))
                 Image(systemName: "flag.fill")
                     .font(.system(size: 16, weight: .heavy))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(AppTheme.mint)
             }
 
             VStack(alignment: .leading, spacing: 7) {
@@ -3320,13 +3315,7 @@ struct RoundShotPatternSection: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.white, AppTheme.subtleFill, AppTheme.mintWash],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(AppTheme.panel)
         )
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
         .shadow(color: AppTheme.shadow.opacity(0.8), radius: 14, x: 0, y: 7)
@@ -3403,7 +3392,7 @@ struct RoundShotPatternCard: View {
             }
         }
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.92)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.8)))
     }
 }
@@ -3481,13 +3470,7 @@ struct RoundShortGameSection: View {
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.white, AppTheme.subtleFill.opacity(0.8), AppTheme.mintWash.opacity(0.75)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(AppTheme.panel)
         )
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
         .shadow(color: AppTheme.shadow.opacity(0.75), radius: 14, x: 0, y: 7)
@@ -3521,7 +3504,7 @@ struct RoundShortGameMetricTile: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.88)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
     }
 }
@@ -4391,7 +4374,11 @@ struct ScorecardPlainCell: View {
             .frame(width: width, height: 22)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isLabel ? Color.white : AppTheme.panel)
+                    .fill(isLabel ? AppTheme.elevated : AppTheme.panel)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isLabel ? AppTheme.border.opacity(0.65) : Color.clear, lineWidth: 1)
             )
     }
 }
@@ -4810,10 +4797,10 @@ struct NewRoundSetupView: View {
                             .minimumScaleFactor(0.75)
                     }
                     .font(.system(.subheadline, design: .rounded).weight(.bold))
-                    .foregroundStyle(entryMode == mode ? AppTheme.mint : AppTheme.ink)
+                    .foregroundStyle(entryMode == mode ? .white : AppTheme.softText)
                     .frame(maxWidth: .infinity)
                     .frame(height: 46)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(entryMode == mode ? Color.white : AppTheme.subtleFill))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(entryMode == mode ? AppTheme.mint : AppTheme.elevated))
                     .overlay(RoundedRectangle(cornerRadius: 8).stroke(entryMode == mode ? AppTheme.mint.opacity(0.5) : AppTheme.border.opacity(0.65)))
                     .shadow(color: entryMode == mode ? AppTheme.shadow.opacity(0.7) : .clear, radius: 10, x: 0, y: 5)
                 }
@@ -4821,7 +4808,7 @@ struct NewRoundSetupView: View {
             }
         }
         .padding(5)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelStrong))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.7)))
         .shadow(color: AppTheme.shadow.opacity(0.58), radius: 12, x: 0, y: 6)
     }
@@ -5916,9 +5903,9 @@ struct YardageHeroCard: View {
 
                 Spacer()
 
-                Image(systemName: "ruler.fill")
-                    .font(.system(size: 22, weight: .heavy))
-                    .foregroundStyle(AppTheme.mint)
+                Image("YardagesHeaderArtwork")
+                    .resizable()
+                    .scaledToFit()
                     .frame(width: 52, height: 52)
                     .background(Circle().fill(AppTheme.mintWash))
             }
@@ -6756,7 +6743,7 @@ struct LiveGroupScoringSummary: View {
                         .foregroundStyle(AppTheme.mint)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(Capsule().fill(Color.white))
+                        .background(Capsule().fill(AppTheme.elevated))
                 }
             }
 
@@ -6781,7 +6768,7 @@ struct LiveGroupScoringSummary: View {
                         }
                         .padding(9)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.84)))
+                        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
                     }
                 }
             }
@@ -6793,7 +6780,7 @@ struct LiveGroupScoringSummary: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(LinearGradient(colors: [AppTheme.mintWash, Color.white], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .fill(LinearGradient(colors: [AppTheme.mintWash, AppTheme.panelStrong], startPoint: .topLeading, endPoint: .bottomTrailing))
         )
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
         .shadow(color: AppTheme.shadow.opacity(0.34), radius: 7, x: 0, y: 4)
@@ -6820,7 +6807,7 @@ struct MatchplaySideCard: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(LinearGradient(colors: [Color.white, AppTheme.mintWash], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .fill(LinearGradient(colors: [AppTheme.panelStrong, AppTheme.mintWash], startPoint: .topLeading, endPoint: .bottomTrailing))
         )
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
         .shadow(color: AppTheme.shadow.opacity(0.38), radius: 7, x: 0, y: 4)
@@ -6838,7 +6825,7 @@ struct MatchplaySideCard: View {
                 .font(.system(size: 15, weight: .heavy))
                 .foregroundStyle(AppTheme.mint)
                 .frame(width: 30, height: 30)
-                .background(Circle().fill(Color.white))
+                .background(Circle().fill(AppTheme.elevated))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Side Matchplay")
@@ -6875,7 +6862,7 @@ struct MatchplaySideCard: View {
                 .font(.system(size: 14, weight: .heavy))
                 .foregroundStyle(AppTheme.mint)
                 .frame(width: 28, height: 28)
-                .background(Circle().fill(Color.white))
+                .background(Circle().fill(AppTheme.elevated))
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("vs \(match.opponentName)")
@@ -6913,7 +6900,7 @@ struct MatchplaySideCard: View {
                     .font(.system(size: 11, weight: .heavy, design: .rounded))
                     .padding(.horizontal, 8)
                     .frame(height: 30)
-                    .background(Capsule().fill(Color.white.opacity(0.92)))
+                    .background(Capsule().fill(AppTheme.elevated))
                     .lineLimit(1)
             }
 
@@ -6925,7 +6912,7 @@ struct MatchplaySideCard: View {
                     .foregroundStyle(AppTheme.mint)
                     .padding(.horizontal, 8)
                     .frame(height: 30)
-                    .background(Capsule().fill(Color.white))
+                    .background(Capsule().fill(AppTheme.elevated))
             }
             .buttonStyle(.plain)
 
@@ -6936,7 +6923,7 @@ struct MatchplaySideCard: View {
                     .font(.system(size: 11, weight: .heavy))
                     .foregroundStyle(AppTheme.softText)
                     .frame(width: 30, height: 30)
-                    .background(Circle().fill(Color.white))
+                    .background(Circle().fill(AppTheme.elevated))
             }
             .buttonStyle(.plain)
         }
@@ -6955,7 +6942,7 @@ struct MatchplaySideCard: View {
         }
         .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.9)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(accent.opacity(0.18)))
     }
 
@@ -6986,7 +6973,7 @@ struct MatchplaySideCard: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 8)
         .frame(minHeight: 48)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.9)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
     }
 
     private var userScoreText: String {
@@ -12192,6 +12179,13 @@ struct GroupDetailView: View {
             .sorted { $0.displayName < $1.displayName }
     }
 
+    private var activeLiveGame: FirebaseLiveGroupGame? {
+        liveGames
+            .filter { $0.status == "active" }
+            .sorted { $0.updatedAt > $1.updatedAt }
+            .first
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
@@ -12223,10 +12217,10 @@ struct GroupDetailView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Golf Group")
                         .font(.system(.caption, design: .rounded).weight(.heavy))
-                        .foregroundStyle(.white.opacity(0.78))
+                        .foregroundStyle(AppTheme.softText)
                     Text(group.name)
                         .font(.system(size: 34, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(AppTheme.ink)
                         .minimumScaleFactor(0.72)
                 }
 
@@ -12236,31 +12230,27 @@ struct GroupDetailView: View {
                     .font(.system(size: 28, weight: .heavy))
                     .foregroundStyle(AppTheme.mint)
                     .frame(width: 64, height: 64)
-                    .background(Circle().fill(.white))
+                    .background(Circle().fill(AppTheme.elevated))
+                    .overlay(Circle().stroke(AppTheme.border.opacity(0.8), lineWidth: 1))
             }
 
             HStack(spacing: 10) {
                 GroupDetailMetric(title: "Members", value: "\(group.memberIds.count)")
                 GroupDetailMetric(title: "Rounds", value: "\(rounds.count)")
-                GroupDetailMetric(title: "Live", value: "\(liveGames.count)")
+                GroupDetailMetric(title: "Live", value: activeLiveGame == nil ? "0" : "1")
             }
         }
         .padding(22)
-        .background(
-            LinearGradient(
-                colors: [AppTheme.mint, AppTheme.lime],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        .background(Color.black)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
         .shadow(color: AppTheme.shadow.opacity(0.62), radius: 12, x: 0, y: 6)
     }
 
     private var liveGamesCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center) {
-                SectionHeader(title: "Live Stableford", actionTitle: liveGames.isEmpty ? nil : "\(liveGames.count) active")
+                SectionHeader(title: "Live Stableford", actionTitle: activeLiveGame == nil ? nil : "Active")
 
                 Spacer(minLength: 8)
 
@@ -12273,10 +12263,16 @@ struct GroupDetailView: View {
                         .font(.system(.caption, design: .rounded).weight(.heavy))
                 }
                 .buttonStyle(FirebaseAccountButtonStyle(isPrimary: true))
-                .disabled(social.isWorking)
+                .disabled(social.isWorking || activeLiveGame != nil)
             }
 
-            if liveGames.isEmpty {
+            if let game = activeLiveGame {
+                LiveGroupGameCard(game: game) {
+                    Task {
+                        await social.completeLiveGroupGame(game)
+                    }
+                }
+            } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Create a live Stableford game before teeing off.")
                         .font(.system(.headline, design: .rounded).weight(.heavy))
@@ -12288,15 +12284,8 @@ struct GroupDetailView: View {
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.mintWash))
-            } else {
-                ForEach(liveGames) { game in
-                    LiveGroupGameCard(game: game) {
-                        Task {
-                            await social.completeLiveGroupGame(game)
-                        }
-                    }
-                }
+                .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
             }
 
             if let status = social.statusMessage {
@@ -12412,15 +12401,15 @@ struct GroupDetailMetric: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(.system(.caption2, design: .rounded).weight(.heavy))
-                .foregroundStyle(.white.opacity(0.72))
+                .foregroundStyle(AppTheme.softText)
             Text(value)
                 .font(.system(.title3, design: .rounded).weight(.heavy))
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.ink)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(.white.opacity(0.16)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.16)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.75)))
     }
 }
 
@@ -12450,11 +12439,12 @@ struct LiveGroupGameCard: View {
                 Button(action: complete) {
                     Text("Finish")
                         .font(.system(.caption, design: .rounded).weight(.heavy))
-                        .foregroundStyle(AppTheme.mint)
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 9)
-                        .background(Capsule().fill(Color.white))
+                        .background(Capsule().fill(AppTheme.mint))
                 }
+                .buttonStyle(.plain)
             }
 
             if game.players.isEmpty {
@@ -12464,7 +12454,7 @@ struct LiveGroupGameCard: View {
                     .lineSpacing(3)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(14)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.72)))
+                    .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelStrong))
             } else {
                 VStack(spacing: 8) {
                     ForEach(Array(topPlayers.enumerated()), id: \.element.id) { index, player in
@@ -12486,10 +12476,7 @@ struct LiveGroupGameCard: View {
             }
         }
         .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(LinearGradient(colors: [AppTheme.mintWash, Color.white], startPoint: .topLeading, endPoint: .bottomTrailing))
-        )
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.elevated))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.82)))
     }
 }
@@ -12504,7 +12491,8 @@ struct LiveGroupLeaderboardRow: View {
                 .font(.system(.caption, design: .rounded).weight(.heavy))
                 .foregroundStyle(position == 1 ? .white : AppTheme.mint)
                 .frame(width: 30, height: 30)
-                .background(Circle().fill(position == 1 ? AppTheme.mint : Color.white))
+                .background(Circle().fill(position == 1 ? AppTheme.mint : AppTheme.panelStrong))
+                .overlay(Circle().stroke(AppTheme.border.opacity(0.65), lineWidth: 1))
 
             FriendAvatar(name: player.displayName, photoURL: player.photoURL, size: 36)
 
@@ -12540,7 +12528,8 @@ struct LiveGroupLeaderboardRow: View {
             .frame(width: 48, alignment: .trailing)
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.86)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelStrong))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.55)))
     }
 }
 
@@ -12568,7 +12557,8 @@ struct LiveGroupEventRow: View {
             Spacer(minLength: 4)
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.78)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelStrong))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.55)))
     }
 
     private var iconName: String {
@@ -14530,9 +14520,17 @@ struct HeaderBlock: View {
                     .minimumScaleFactor(0.78)
             }
             Spacer()
-            Image(systemName: iconName)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(AppTheme.mint)
+            Group {
+                if let artworkAssetName {
+                    Image(artworkAssetName)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Image(systemName: iconName)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(AppTheme.mint)
+                }
+            }
                 .frame(width: 52, height: 52)
                 .background(Circle().fill(AppTheme.mintWash))
         }
@@ -14541,6 +14539,15 @@ struct HeaderBlock: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panelStrong))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border))
         .shadow(color: AppTheme.shadow, radius: 16, x: 0, y: 8)
+    }
+
+    private var artworkAssetName: String? {
+        switch title {
+        case "Goals": return "GoalsHeaderArtwork"
+        case "Settings": return "SettingsHeaderArtwork"
+        case "Rounds": return "RoundsHeaderArtwork"
+        default: return nil
+        }
     }
 
     private var iconName: String {
@@ -15655,16 +15662,10 @@ struct LiveRoundHeaderCard: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(
-                    LinearGradient(
-                        colors: [AppTheme.mint, AppTheme.lime],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(Color.black)
         )
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.62)))
-        .shadow(color: AppTheme.shadow.opacity(1.05), radius: 16, x: 0, y: 8)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.9)))
+        .shadow(color: AppTheme.shadow.opacity(0.9), radius: 16, x: 0, y: 8)
     }
 
     private var scoreToParLabel: String {
@@ -16483,7 +16484,7 @@ struct CounterButtonStyle: ButtonStyle {
             .font(.system(size: 15, weight: .heavy))
             .foregroundStyle(AppTheme.mint)
             .frame(width: 42, height: 42)
-            .background(Circle().fill(configuration.isPressed ? AppTheme.mintWash : Color.white))
+            .background(Circle().fill(configuration.isPressed ? AppTheme.mintWash : AppTheme.elevated))
             .overlay(Circle().stroke(AppTheme.border.opacity(0.82)))
             .shadow(color: AppTheme.shadow.opacity(0.42), radius: 8, x: 0, y: 4)
     }
@@ -16495,9 +16496,9 @@ struct RoundActionStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(.headline, design: .rounded).weight(.bold))
-            .foregroundStyle(isPrimary ? Color.white : AppTheme.ink)
+            .foregroundStyle(isPrimary ? Color.white : AppTheme.mint)
             .frame(height: 52)
-            .background(RoundedRectangle(cornerRadius: 8).fill(isPrimary ? AppTheme.mint : Color.white))
+            .background(RoundedRectangle(cornerRadius: 8).fill(isPrimary ? AppTheme.mint : AppTheme.elevated))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(isPrimary ? AppTheme.mint.opacity(0.18) : AppTheme.border.opacity(0.9)))
             .shadow(color: AppTheme.shadow.opacity(isPrimary ? 0.92 : 0.42), radius: 12, x: 0, y: 6)
             .opacity(configuration.isPressed ? 0.82 : 1)

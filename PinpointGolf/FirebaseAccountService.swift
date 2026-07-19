@@ -1350,6 +1350,11 @@ final class FirebaseSocialService: ObservableObject {
             return
         }
 
+        if liveGroupGames.contains(where: { $0.groupId == group.id && $0.status == "active" }) {
+            statusMessage = "Live Stableford already active"
+            return
+        }
+
         isWorking = true
         defer { isWorking = false }
 
@@ -1378,13 +1383,29 @@ final class FirebaseSocialService: ObservableObject {
     func completeLiveGroupGame(_ game: FirebaseLiveGroupGame) async {
         guard let uid = Auth.auth().currentUser?.uid, game.memberIds.contains(uid) else { return }
 
+        isWorking = true
+        defer { isWorking = false }
+
         do {
-            try await database.collection("liveGroupGames").document(game.id).setData([
-                "status": "completed",
-                "completedAt": Timestamp(date: Date()),
-                "updatedAt": Timestamp(date: Date())
-            ], merge: true)
-            statusMessage = "Group game completed"
+            let matchingActiveGames = liveGroupGames.filter { $0.groupId == game.groupId && $0.status == "active" }
+            let gamesToComplete = matchingActiveGames.isEmpty ? [game] : matchingActiveGames
+            let batch = database.batch()
+            let completedAt = Timestamp(date: Date())
+
+            for liveGame in gamesToComplete {
+                let document = database.collection("liveGroupGames").document(liveGame.id)
+                batch.setData([
+                    "status": "completed",
+                    "completedAt": completedAt,
+                    "updatedAt": completedAt
+                ], forDocument: document, merge: true)
+            }
+
+            try await batch.commit()
+            let completedIds = Set(gamesToComplete.map(\.id))
+            liveGroupGames.removeAll { completedIds.contains($0.id) }
+            statusMessage = gamesToComplete.count > 1 ? "Group games completed" : "Group game completed"
+            await refresh()
         } catch {
             statusMessage = error.localizedDescription
         }
