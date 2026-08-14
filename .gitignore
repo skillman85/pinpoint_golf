@@ -10,3 +10,6 @@ PinpointGolf.xcodeproj/
 build/
 node_modules/
 functions/node_modules/
+.vercel/
+*firebase-adminsdk*.json
+.env*
