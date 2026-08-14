@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 import UIKit
 import ContactsUI
 import MessageUI
+import FirebaseAuth
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -18,6 +19,7 @@ struct ContentView: View {
     @StateObject private var firebaseSocial = FirebaseSocialService()
     @StateObject private var firebaseRoundSync = FirebaseRoundSyncService()
     @StateObject private var websiteSeasonSync = WebsiteSeasonSyncService()
+    private let bogeys2BirdiesSync = Bogeys2BirdiesSyncService()
     @AppStorage("pinpoint.profileImageData") private var profileImageData: Data = Data()
     @AppStorage("precision.profileName") private var profileName = ""
     @AppStorage("precision.profileHomeClub") private var profileHomeClub = ""
@@ -463,10 +465,15 @@ struct ContentView: View {
         Task {
             await firebaseRoundSync.sync(round: savedRound)
             await syncCloudAppData()
-            await firebaseSocial.clearCurrentLiveFriendRound()
-            await firebaseSocial.publishCompletedRound(savedRound, ownerProfile: firebaseAccount.profile, groupIds: sharedGroupIds)
+            let sharedPublished = await firebaseSocial.publishCompletedRound(savedRound, ownerProfile: firebaseAccount.profile, groupIds: sharedGroupIds)
+            if !sharedPublished {
+                try? await Task.sleep(for: .seconds(2))
+                await firebaseSocial.publishCompletedRound(savedRound, ownerProfile: firebaseAccount.profile, groupIds: sharedGroupIds)
+            }
             await firebaseSocial.finishMatchplayRound(course: selectedCourse, tee: selectedTee, entries: entries)
+            await firebaseSocial.completeCurrentLiveFriendRound()
             await websiteSeasonSync.sync(backup: websiteBackup)
+            await syncBogeys2BirdiesRounds()
         }
         isRoundActive = false
         isRoundFlowPresented = false
@@ -488,6 +495,7 @@ struct ContentView: View {
             await syncCloudAppData()
             await firebaseSocial.publishCompletedRound(round, ownerProfile: firebaseAccount.profile, notifyFriends: false)
             await firebaseSocial.syncMatchplayRoundAmendment(round)
+            await syncBogeys2BirdiesRounds()
         }
     }
 
@@ -510,7 +518,17 @@ struct ContentView: View {
         Task {
             await firebaseRoundSync.delete(roundID: round.id)
             await syncCloudAppData()
+            await syncBogeys2BirdiesRounds()
         }
+    }
+
+    private func syncBogeys2BirdiesRounds() async {
+        await bogeys2BirdiesSync.sync(
+            rounds: roundArchive.rounds,
+            user: firebaseAccount.user,
+            displayName: profileName,
+            handicap: playerSettings.handicap
+        )
     }
 
     private func openRoundFlow() {
@@ -823,6 +841,185 @@ private struct ActiveRoundHoleDraft: Codable {
             recovery: recovery,
             note: note
         )
+    }
+}
+
+private struct Bogeys2BirdiesSyncService {
+    private let endpoint = URL(string: "https://www.bogeys2birdies.co.uk/api/precision-golf/sync")!
+
+    func sync(rounds: [SavedRound], user: FirebaseAuth.User?, displayName: String, handicap: Double) async {
+        guard let user,
+              let syncSecret = configuredSyncSecret(),
+              isAllowedSyncUser(user.uid)
+        else { return }
+
+        do {
+            let payload = Bogeys2BirdiesSyncPayload(
+                userId: user.uid,
+                displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Precision Golfer" : displayName,
+                handicap: handicap,
+                syncedAt: Date(),
+                rounds: rounds.map(Bogeys2BirdiesRoundPayload.init(round:))
+            )
+
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 30
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("PrecisionGolf-iOS", forHTTPHeaderField: "X-Precision-Golf-Client")
+            request.setValue("Bearer \(syncSecret)", forHTTPHeaderField: "Authorization")
+            request.httpBody = try encoder.encode(payload)
+
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200..<300).contains(httpResponse.statusCode)
+            else {
+                return
+            }
+        } catch {
+            return
+        }
+    }
+
+    private func configuredSyncSecret() -> String? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "Bogeys2BirdiesSyncSecret") as? String else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("$(") else { return nil }
+        return trimmed
+    }
+
+    private func isAllowedSyncUser(_ uid: String) -> Bool {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "Bogeys2BirdiesSyncUserID") as? String else { return false }
+        let configuredUID = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !configuredUID.isEmpty, !configuredUID.contains("$(") else { return false }
+        return configuredUID == uid
+    }
+}
+
+private struct Bogeys2BirdiesSyncPayload: Encodable {
+    let source = "precision-golf-ios"
+    let schemaVersion = 1
+    let userId: String
+    let displayName: String
+    let handicap: Double
+    let syncedAt: Date
+    let rounds: [Bogeys2BirdiesRoundPayload]
+}
+
+private struct Bogeys2BirdiesRoundPayload: Encodable {
+    let id: String
+    let date: Date
+    let courseName: String
+    let location: String
+    let teeName: String
+    let teeMarkerColor: String?
+    let teeYards: Int
+    let teeRating: Double
+    let teeSlope: Int
+    let handicap: Double?
+    let totalScore: Int
+    let totalPar: Int
+    let scoreToPar: Int
+    let totalPutts: Int
+    let stablefordPoints: Int?
+    let fairwaysHit: Int
+    let fairwaysTotal: Int
+    let greensInRegulation: Int
+    let greensTracked: Int
+    let scramblingOpportunities: Int
+    let scrambles: Int
+    let bunkerHoles: Int
+    let sandSaves: Int
+    let penalties: Int
+    let birdies: Int
+    let pars: Int
+    let bogeys: Int
+    let doublesOrWorse: Int
+    let holes: [Bogeys2BirdiesHolePayload]
+
+    init(round: SavedRound) {
+        id = round.id.uuidString
+        date = round.date
+        courseName = round.courseName
+        location = round.location
+        teeName = round.teeName
+        teeMarkerColor = round.teeMarkerColor?.rawValue
+        teeYards = round.teeYards
+        teeRating = round.teeRating
+        teeSlope = round.teeSlope
+        handicap = round.handicap
+        totalScore = round.totalScore
+        totalPar = round.totalPar
+        scoreToPar = round.totalScore - round.totalPar
+        totalPutts = round.totalPutts
+        stablefordPoints = round.stablefordPoints
+        fairwaysHit = round.fairwaysHit
+        fairwaysTotal = round.fairwaysTotal
+        greensInRegulation = round.greensInRegulation
+        greensTracked = round.greensTracked
+        scramblingOpportunities = round.scramblingOpportunities
+        scrambles = round.scrambles
+        bunkerHoles = round.bunkerHoles
+        sandSaves = round.sandSaves
+        penalties = round.penalties
+        birdies = round.birdies
+        pars = round.pars
+        bogeys = round.bogeys
+        doublesOrWorse = round.doublesOrWorse
+        holes = round.holes.map(Bogeys2BirdiesHolePayload.init(hole:))
+    }
+}
+
+private struct Bogeys2BirdiesHolePayload: Encodable {
+    let id: String
+    let holeNumber: Int
+    let par: Int
+    let yards: Int
+    let strokeIndex: Int
+    let score: Int
+    let scoreToPar: Int
+    let putts: Int
+    let pickedUp: Bool
+    let fairway: String
+    let green: String
+    let teeClub: String?
+    let approachRange: String?
+    let approachProximity: String?
+    let firstPuttDistance: String?
+    let penalties: Int
+    let penaltyType: String?
+    let bunker: Bool?
+    let upAndDown: Bool?
+    let sandSave: Bool?
+    let recovery: Bool?
+    let note: String
+
+    init(hole: SavedHoleEntry) {
+        id = hole.id.uuidString
+        holeNumber = hole.holeNumber
+        par = hole.par
+        yards = hole.yards
+        strokeIndex = hole.strokeIndex
+        score = hole.score
+        scoreToPar = hole.score - hole.par
+        putts = hole.putts
+        pickedUp = hole.pickedUp
+        fairway = hole.fairway.rawValue
+        green = hole.green.rawValue
+        teeClub = hole.teeClub?.rawValue
+        approachRange = hole.approachRange?.rawValue
+        approachProximity = hole.approachProximity?.rawValue
+        firstPuttDistance = hole.firstPuttDistance?.rawValue
+        penalties = hole.penalties
+        penaltyType = hole.penaltyType?.rawValue
+        bunker = hole.bunker
+        upAndDown = hole.upAndDown
+        sandSave = hole.sandSave
+        recovery = hole.recovery
+        note = hole.note
     }
 }
 

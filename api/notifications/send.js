@@ -141,6 +141,16 @@ async function removeInvalidTokens(records, response) {
   await Promise.allSettled(operations);
 }
 
+function summarizeDeliveryFailures(response) {
+  return response.responses
+    .filter((result) => !result.success && result.error?.code)
+    .reduce((summary, result) => {
+      const code = result.error.code;
+      summary[code] = (summary[code] || 0) + 1;
+      return summary;
+    }, {});
+}
+
 export default async function handler(req, res) {
   if (!requireMethod(req, res, "POST")) return;
   const token = bearerToken(req);
@@ -185,13 +195,15 @@ export default async function handler(req, res) {
       apns: { payload: { aps } }
     });
     await removeInvalidTokens(records, response);
+    const failureCodes = summarizeDeliveryFailures(response);
     await dispatchReference.set({
       status: "complete",
       sent: response.successCount,
       failed: response.failureCount,
+      failureCodes,
       updatedAt: Timestamp.now()
     }, { merge: true });
-    return sendJson(res, 200, { ok: true, sent: response.successCount, failed: response.failureCount });
+    return sendJson(res, 200, { ok: true, sent: response.successCount, failed: response.failureCount, failureCodes });
   } catch (error) {
     await dispatchReference.delete().catch(() => {});
     console.error("Push dispatch failed", { type, resourceId, error });

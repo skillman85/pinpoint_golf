@@ -1093,8 +1093,9 @@ final class FirebaseSocialService: ObservableObject {
         }
     }
 
-    func publishCompletedRound(_ round: SavedRound, ownerProfile: FirebaseUserProfile?, groupIds: [String]? = nil, notifyFriends: Bool = true, refreshAfterPublish: Bool = true) async {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
+    @discardableResult
+    func publishCompletedRound(_ round: SavedRound, ownerProfile: FirebaseUserProfile?, groupIds: [String]? = nil, notifyFriends: Bool = true, refreshAfterPublish: Bool = true) async -> Bool {
+        guard let uid = Auth.auth().currentUser?.uid else { return false }
 
         do {
             let ownerName = displayName(from: ownerProfile)
@@ -1197,8 +1198,10 @@ final class FirebaseSocialService: ObservableObject {
             if refreshAfterPublish {
                 await refresh()
             }
+            return true
         } catch {
             statusMessage = "Round saved locally, but friend sharing failed: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -1904,15 +1907,16 @@ final class FirebaseSocialService: ObservableObject {
         let through = scoredEntries.count
         let completed = through >= entries.count
         let now = Timestamp(date: Date())
+        let status = completed ? "completed" : "active"
 
         do {
-            try await database.collection("liveFriendRounds").document(uid).setData([
+            var payload: [String: Any] = [
                 "ownerId": uid,
                 "ownerName": displayName(from: playerProfile),
                 "ownerHomeClub": playerProfile?.homeClub ?? "",
                 "ownerPhotoURL": playerProfile?.photoURL ?? "",
                 "visibleToIds": friendIds,
-                "status": "active",
+                "status": status,
                 "courseName": course.name,
                 "teeName": tee.name,
                 "holeCount": tee.holes.count,
@@ -1927,7 +1931,11 @@ final class FirebaseSocialService: ObservableObject {
                 "pars": entries.map(\.hole.par),
                 "updatedAt": now,
                 "createdAt": FieldValue.serverTimestamp()
-            ], merge: true)
+            ]
+            if completed {
+                payload["completedAt"] = now
+            }
+            try await database.collection("liveFriendRounds").document(uid).setData(payload, merge: true)
             liveFriendSharingStatus = friendIds.isEmpty
                 ? "Live round saved. Add friends so they can watch."
                 : "Live to \(friendIds.count) \(friendIds.count == 1 ? "friend" : "friends")."
@@ -1961,6 +1969,23 @@ final class FirebaseSocialService: ObservableObject {
         } catch {
             liveFriendSharingStatus = "Live sharing could not be cleared."
             statusMessage = "Live friends could not be cleared: \(error.localizedDescription)"
+        }
+    }
+
+    func completeCurrentLiveFriendRound() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        do {
+            let now = Timestamp(date: Date())
+            try await database.collection("liveFriendRounds").document(uid).setData([
+                "status": "completed",
+                "completed": true,
+                "completedAt": now,
+                "updatedAt": now
+            ], merge: true)
+            liveFriendSharingStatus = nil
+        } catch {
+            liveFriendSharingStatus = "Live sharing could not be completed."
+            statusMessage = "Live friends could not be completed: \(error.localizedDescription)"
         }
     }
 
@@ -2212,7 +2237,7 @@ final class FirebaseSocialService: ObservableObject {
         }
 
         return rounds
-            .filter { $0.status == "active" }
+            .filter { $0.status == "active" && !$0.completed }
             .sorted { $0.updatedAt > $1.updatedAt }
     }
 
@@ -2693,7 +2718,8 @@ final class FirebaseSocialService: ObservableObject {
                            snapshot.exists,
                            let data = snapshot.data(),
                            var round = FirebaseLiveFriendRound(id: snapshot.documentID, data: data),
-                           round.status == "active" {
+                           round.status == "active",
+                           !round.completed {
                             if let profile = profilesByID[round.ownerId] {
                                 round.ownerName = profile.displayName
                                 round.ownerHomeClub = profile.homeClub

@@ -33,6 +33,10 @@
 	<string>Precision Golf lets you choose a contact to invite as a golfing friend. Contacts are only accessed when you open the invite flow.</string>
 	<key>PrecisionCourseAPIBaseURL</key>
 	<string>$(PINPOINT_COURSE_API_BASE_URL)</string>
+	<key>Bogeys2BirdiesSyncSecret</key>
+	<string>$(BOGEYS2BIRDIES_SYNC_SECRET)</string>
+	<key>Bogeys2BirdiesSyncUserID</key>
+	<string>$(BOGEYS2BIRDIES_SYNC_USER_ID)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
