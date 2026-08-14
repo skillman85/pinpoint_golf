@@ -1,20 +1,24 @@
-const memoryCache = new Map();
+import { firebaseAdmin } from "./firebaseAdmin.js";
 
-function supabaseConfig() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
-  return {
-    url: url.replace(/\/$/, ""),
-    key
-  };
-}
+const memoryCache = new Map();
 
 export function normalizeCacheKey(parts) {
   return parts
     .filter((part) => part !== undefined && part !== null && `${part}`.trim() !== "")
     .map((part) => `${part}`.trim().toLowerCase().replace(/\s+/g, " "))
     .join(":");
+}
+
+function firestore() {
+  try {
+    return firebaseAdmin().firestore;
+  } catch {
+    return null;
+  }
+}
+
+function cacheDocId(cacheKey) {
+  return Buffer.from(cacheKey).toString("base64url");
 }
 
 export async function getCached(cacheKey) {
@@ -24,62 +28,46 @@ export async function getCached(cacheKey) {
     return memoryHit.payload;
   }
 
-  const config = supabaseConfig();
-  if (!config) return null;
+  const database = firestore();
+  if (!database) return null;
 
-  const response = await fetch(
-    `${config.url}/rest/v1/course_api_cache?cache_key=eq.${encodeURIComponent(cacheKey)}&select=payload,expires_at`,
-    {
-      headers: {
-        apikey: config.key,
-        Authorization: `Bearer ${config.key}`
-      }
+  try {
+    const snapshot = await database.collection("courseApiCache").doc(cacheDocId(cacheKey)).get();
+    const row = snapshot.data();
+    const expiresAt = row?.expiresAt?.toMillis?.() ?? 0;
+    if (!row || expiresAt <= now) {
+      return null;
     }
-  );
 
-  if (!response.ok) return null;
-  const rows = await response.json();
-  const row = rows[0];
-  if (!row || new Date(row.expires_at).getTime() <= now) {
+    memoryCache.set(cacheKey, {
+      payload: row.payload,
+      expiresAt
+    });
+    return row.payload;
+  } catch {
     return null;
   }
-
-  memoryCache.set(cacheKey, {
-    payload: row.payload,
-    expiresAt: new Date(row.expires_at).getTime()
-  });
-  return row.payload;
 }
 
 export async function setCached(cacheKey, payload, ttlSeconds) {
-  const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
   memoryCache.set(cacheKey, {
     payload,
-    expiresAt: new Date(expiresAt).getTime()
+    expiresAt: expiresAt.getTime()
   });
 
-  const config = supabaseConfig();
-  if (!config) return;
+  const database = firestore();
+  if (!database) return;
 
-  const response = await fetch(`${config.url}/rest/v1/course_api_cache?on_conflict=cache_key`, {
-    method: "POST",
-    headers: {
-      apikey: config.key,
-      Authorization: `Bearer ${config.key}`,
-      "Content-Type": "application/json",
-      Prefer: "resolution=merge-duplicates,return=minimal"
-    },
-    body: JSON.stringify({
-      cache_key: cacheKey,
+  try {
+    await database.collection("courseApiCache").doc(cacheDocId(cacheKey)).set({
+      cacheKey,
       payload,
-      expires_at: expiresAt,
-      updated_at: new Date().toISOString()
-    })
-  });
-
-  if (!response.ok) {
-    const message = await response.text().catch(() => "");
-    throw new Error(`Supabase cache write failed: ${response.status} ${message}`);
+      expiresAt,
+      updatedAt: new Date()
+    }, { merge: true });
+  } catch (error) {
+    throw new Error(`Firestore cache write failed: ${error?.message || "unknown error"}`);
   }
 }
 
@@ -99,7 +87,7 @@ export async function cached(cacheKey, ttlSeconds, loader) {
   let cacheWrite = "skipped";
   try {
     await setCached(cacheKey, payload, ttlSeconds);
-    cacheWrite = supabaseConfig() ? "supabase" : "memory";
+    cacheWrite = firestore() ? "firestore" : "memory";
   } catch {
     cacheWrite = "failed";
     // Cache writes are best-effort. The API should still return live results.

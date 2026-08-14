@@ -1,6 +1,5 @@
 import Foundation
 import CoreLocation
-import MapKit
 
 enum CourseSearchSource {
     case none
@@ -32,7 +31,7 @@ final class CourseSearchViewModel: ObservableObject {
     private let locationProvider = CourseLocationProvider()
     private var cachedLocationSearch: (label: String, date: Date, courses: [GolfCourse])?
     private let locationSearchCacheLifetime: TimeInterval = 10 * 60
-    private let nearbySearchRadiusMeters = 45_000
+    private let nearbySearchRadiusMeters = 8_047
 
     func search(query: String, localCourses: [GolfCourse] = CourseDatabase.courses) async {
         guard !isSearching else { return }
@@ -48,14 +47,7 @@ final class CourseSearchViewModel: ObservableObject {
         errorMessage = nil
         defer { isSearching = false }
 
-        let localMatches = searchLocalCourses(query: trimmedQuery, in: localCourses)
-        if !localMatches.isEmpty {
-            results = localMatches
-            resultSource = .onDevice
-            diagnostics = makeDiagnostics(source: .onDevice, label: trimmedQuery, queryCount: 1, radiusMeters: nil, courses: localMatches)
-            return
-        }
-
+        var failedErrorMessage: String?
         do {
             let courses = try await courseAPI.searchCourses(query: trimmedQuery)
             if !courses.isEmpty {
@@ -65,15 +57,26 @@ final class CourseSearchViewModel: ObservableObject {
                 return
             }
         } catch PrecisionCourseAPIError.missingBaseURL {
-            errorMessage = "Course API backend is not configured. Falling back to saved courses."
+            failedErrorMessage = "Course API backend is not configured."
+        } catch PrecisionCourseAPIError.rateLimited {
+            failedErrorMessage = "Course search is busy. Wait a moment and try again."
         } catch {
-            errorMessage = "Course API search failed. Falling back to saved courses."
+            failedErrorMessage = "Course API search failed."
+        }
+
+        let localMatches = searchLocalCourses(query: trimmedQuery, in: localCourses)
+        if !localMatches.isEmpty {
+            results = localMatches
+            resultSource = .onDevice
+            diagnostics = makeDiagnostics(source: .onDevice, label: trimmedQuery, queryCount: 1, radiusMeters: nil, courses: localMatches)
+            errorMessage = failedErrorMessage.map { "\($0) Showing saved scorecards." }
+            return
         }
 
         results = []
         resultSource = .none
         diagnostics = makeDiagnostics(source: .none, label: trimmedQuery, queryCount: 1, radiusMeters: nil, courses: [])
-        errorMessage = "No verified scorecards found. Try course name, town, city or county."
+        errorMessage = failedErrorMessage ?? "No verified scorecards found. Try course name, town, city or county."
     }
 
     func searchNearCurrentLocation(localCourses: [GolfCourse] = CourseDatabase.courses) async {
@@ -95,27 +98,15 @@ final class CourseSearchViewModel: ObservableObject {
                 return
             }
 
-            let localMatches = localLocationMatches(for: context, in: localCourses)
-            if !localMatches.isEmpty {
-                results = localMatches
-                resultSource = .onDevice
-                diagnostics = makeDiagnostics(source: .onDevice, label: context.label, queryCount: context.searchTerms.count, radiusMeters: nearbySearchRadiusMeters, courses: localMatches)
-                cachedLocationSearch = (context.label, Date(), localMatches)
-                return
-            }
-
-            let nearbyNames = (try? await locationProvider.nearbyGolfCourseNames(near: context.location)) ?? []
             let nearbyQueries = Self.uniqueTerms(
-                CourseLocationProvider.regionalCourseSearchHints(near: context.location, label: context.label)
-                    + nearbyNames
-                    + context.searchTerms
+                context.searchTerms
             )
-            let apiQueries = Array(nearbyQueries.prefix(25))
-            let courses = (try? await courseAPI.searchNearbyCourses(
+            let apiQueries = Array(nearbyQueries.prefix(2))
+            let courses = try await courseAPI.searchNearbyCourses(
                 coordinate: context.location.coordinate,
                 queries: apiQueries,
-                limit: 8
-            )) ?? []
+                limit: 3
+            )
             let verifiedCourses = Self.verifiedCourses(courses)
             if !verifiedCourses.isEmpty {
                 let mergedCourses = Self.mergedCourses(verifiedCourses)
@@ -126,14 +117,10 @@ final class CourseSearchViewModel: ObservableObject {
                 return
             }
 
-            results = Self.mergedCourses(
-                Self.verifiedCourses(context.searchTerms.flatMap { searchLocalCourses(query: $0, in: localCourses) })
-            )
-            resultSource = results.isEmpty ? .none : .onDevice
-            diagnostics = makeDiagnostics(source: resultSource, label: context.label, queryCount: context.searchTerms.count, radiusMeters: nearbySearchRadiusMeters, courses: results)
-            if results.isEmpty {
-                errorMessage = "No verified scorecards found nearby. Try searching by course name."
-            }
+            results = []
+            resultSource = .none
+            diagnostics = makeDiagnostics(source: .none, label: context.label, queryCount: context.searchTerms.count, radiusMeters: nearbySearchRadiusMeters, courses: [])
+            errorMessage = "No verified scorecards found nearby. Try searching by course name."
         } catch CourseLocationError.permissionDenied {
             resultSource = .none
             diagnostics = nil
@@ -141,7 +128,20 @@ final class CourseSearchViewModel: ObservableObject {
         } catch PrecisionCourseAPIError.missingBaseURL {
             resultSource = .none
             diagnostics = nil
-            errorMessage = "Course API backend is not configured. Search by course name or use favourites."
+            errorMessage = "Course API backend is not configured."
+        } catch PrecisionCourseAPIError.rateLimited {
+            resultSource = .none
+            diagnostics = nil
+            let localMatches = localLocationMatches(label: locationSearchLabel, in: localCourses)
+            if !localMatches.isEmpty {
+                results = localMatches
+                resultSource = .onDevice
+                diagnostics = makeDiagnostics(source: .onDevice, label: locationSearchLabel ?? "current location", queryCount: 1, radiusMeters: nearbySearchRadiusMeters, courses: localMatches)
+                cachedLocationSearch = (locationSearchLabel ?? "current location", Date(), localMatches)
+                errorMessage = "Course search is busy. Showing saved scorecards."
+            } else {
+                errorMessage = "Course search is busy. Wait a moment and try again."
+            }
         } catch {
             resultSource = .none
             diagnostics = nil
@@ -151,18 +151,22 @@ final class CourseSearchViewModel: ObservableObject {
 
     private func searchLocalCourses(query: String, in courses: [GolfCourse]) -> [GolfCourse] {
         let normalizedQuery = query.lowercased()
-        return Self.mergedCourses(courses.filter { course in
+        return Self.mergedCourses(Self.verifiedCourses(courses.filter { course in
             course.name.lowercased().contains(normalizedQuery)
                 || course.location.lowercased().contains(normalizedQuery)
-        })
+                || course.distance.lowercased().contains(normalizedQuery)
+        }))
     }
 
-    private func localLocationMatches(for context: CourseSearchContext, in courses: [GolfCourse]) -> [GolfCourse] {
-        let searchTerms = Self.uniqueTerms(
-            CourseLocationProvider.regionalCourseSearchHints(near: context.location, label: context.label)
-                + context.searchTerms
-        )
-        let matches = searchTerms.flatMap { searchLocalCourses(query: $0, in: courses) }
+    private func localLocationMatches(label: String?, in courses: [GolfCourse]) -> [GolfCourse] {
+        let terms = Self.uniqueTerms([
+            label ?? "",
+            "dudley",
+            "staffordshire",
+            "wolverhampton",
+            "tettenhall"
+        ])
+        let matches = terms.flatMap { searchLocalCourses(query: $0, in: courses) }
         return Self.mergedCourses(Self.verifiedCourses(matches))
     }
 
@@ -209,6 +213,7 @@ final class CourseSearchViewModel: ObservableObject {
 enum PrecisionCourseAPIError: LocalizedError {
     case missingBaseURL
     case invalidResponse
+    case rateLimited
 
     var errorDescription: String? {
         switch self {
@@ -216,6 +221,8 @@ enum PrecisionCourseAPIError: LocalizedError {
             "Precision course API base URL is missing."
         case .invalidResponse:
             "Precision course API returned an unexpected response."
+        case .rateLimited:
+            "Precision course API is rate limited."
         }
     }
 }
@@ -250,7 +257,7 @@ struct PrecisionCourseAPIClient {
                 URLQueryItem(name: "lat", value: String(format: "%.5f", coordinate.latitude)),
                 URLQueryItem(name: "lng", value: String(format: "%.5f", coordinate.longitude)),
                 URLQueryItem(name: "queries", value: queries.joined(separator: "|")),
-                URLQueryItem(name: "radiusMeters", value: "45000"),
+                URLQueryItem(name: "radiusMeters", value: "8047"),
                 URLQueryItem(name: "limit", value: "\(limit)")
             ]
         )
@@ -273,8 +280,13 @@ struct PrecisionCourseAPIClient {
         }
 
         let (data, response) = try await session.data(from: url)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw PrecisionCourseAPIError.invalidResponse
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            if httpResponse.statusCode == 429 {
+                throw PrecisionCourseAPIError.rateLimited
+            }
             throw PrecisionCourseAPIError.invalidResponse
         }
 
@@ -288,14 +300,24 @@ private struct PrecisionCourseSearchResponse: Decodable {
 
 private struct PrecisionCourse: Decodable {
     let name: String
+    let clubName: String?
     let distance: String?
     let location: String
     let tees: [PrecisionTee]
     let hasVerifiedScorecard: Bool?
 
+    private var displayName: String {
+        guard let clubName,
+              !clubName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              clubName.caseInsensitiveCompare(name) != .orderedSame else {
+            return name
+        }
+        return "\(clubName) - \(name)"
+    }
+
     var golfCourse: GolfCourse {
         GolfCourse(
-            name: name,
+            name: displayName,
             distance: distance ?? "Precision API",
             location: location,
             tees: tees.map(\.teeBox),
@@ -380,93 +402,6 @@ final class CourseLocationProvider: NSObject, CLLocationManagerDelegate {
             throw CourseLocationError.noPlacemark
         }
         return CourseSearchContext(location: location, label: place, searchTerms: parts)
-    }
-
-    func nearbyGolfCourseNames(near location: CLLocation) async throws -> [String] {
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = "golf course"
-        request.resultTypes = .pointOfInterest
-        request.region = MKCoordinateRegion(
-            center: location.coordinate,
-            latitudinalMeters: 45_000,
-            longitudinalMeters: 45_000
-        )
-
-        let response = try await MKLocalSearch(request: request).start()
-        let names = response.mapItems
-            .sorted { lhs, rhs in
-                let lhsDistance = lhs.placemark.location?.distance(from: location) ?? .greatestFiniteMagnitude
-                let rhsDistance = rhs.placemark.location?.distance(from: location) ?? .greatestFiniteMagnitude
-                return lhsDistance < rhsDistance
-            }
-            .compactMap { item -> String? in
-                let name = item.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                guard !name.isEmpty else { return nil }
-                return name
-            }
-
-        var seenNames = Set<String>()
-        let uniqueNames = names.filter { name in
-            let key = name.lowercased()
-            guard !seenNames.contains(key) else { return false }
-            seenNames.insert(key)
-            return true
-        }
-        .prefix(25)
-
-        guard !uniqueNames.isEmpty else {
-            throw CourseLocationError.noNearbyCourses
-        }
-        return Array(uniqueNames)
-    }
-
-    static func regionalCourseSearchHints(near location: CLLocation, label: String) -> [String] {
-        var hints: [String] = []
-        let isDudleyLabeled = hasDudleyAreaLabel(label)
-        if isDudleyLabeled || isNearDudleyGolfArea(location, label: label) {
-            hints += [
-                "Penn Golf",
-                "Penn Golf Club",
-                "Sedgley Golf Centre",
-                "Sedgley golf",
-                "Dudley Golf Club",
-                "Dudley golf course",
-                "Sedgley golf course"
-            ]
-        }
-        if !isDudleyLabeled && isNearWolverhamptonGolfArea(location, label: label) {
-            hints += [
-                "Wergs Golf Club",
-                "Perton Park Golf Club",
-                "South Staffordshire Golf Club",
-                "Wolverhampton golf club"
-            ]
-        }
-        return hints
-    }
-
-    private static func isNearWolverhamptonGolfArea(_ location: CLLocation, label: String) -> Bool {
-        let normalizedLabel = label.lowercased()
-        if ["tettenhall", "wolverhampton", "perton"].contains(where: normalizedLabel.contains) {
-            return true
-        }
-
-        let wergsArea = CLLocation(latitude: 52.6108, longitude: -2.1905)
-        return location.distance(from: wergsArea) <= 12_000
-    }
-
-    private static func isNearDudleyGolfArea(_ location: CLLocation, label: String) -> Bool {
-        if hasDudleyAreaLabel(label) {
-            return true
-        }
-
-        let dudleyArea = CLLocation(latitude: 52.5123, longitude: -2.0811)
-        return location.distance(from: dudleyArea) <= 18_000
-    }
-
-    private static func hasDudleyAreaLabel(_ label: String) -> Bool {
-        let normalizedLabel = label.lowercased()
-        return ["dudley", "sedgley", "penn", "west midlands"].contains(where: normalizedLabel.contains)
     }
 
     private func currentLocation() async throws -> CLLocation {

@@ -11,7 +11,6 @@
 		1A2B3C4D5E6F700000000102 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000002 /* ContentView.swift */; };
 		1A2B3C4D5E6F700000000103 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000003 /* Models.swift */; };
 		1A2B3C4D5E6F700000000104 /* CourseSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000007 /* CourseSearchService.swift */; };
-		1A2B3C4D5E6F700000000106 /* UKGolfAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */; };
 		1A2B3C4D5E6F700000000107 /* CourseDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */; };
 		1A2B3C4D5E6F700000000109 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000012 /* LaunchScreen.storyboard */; };
 		1A2B3C4D5E6F70000000010A /* LaunchScreenImage.png in Resources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000013 /* LaunchScreenImage.png */; };
@@ -37,7 +36,6 @@
 		1A2B3C4D5E6F700000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000006 /* Precision Golf.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Precision Golf.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A2B3C4D5E6F700000000007 /* CourseSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseSearchService.swift; sourceTree = "<group>"; };
-		1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UKGolfAPIClient.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseDatabase.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000012 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000013 /* LaunchScreenImage.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = LaunchScreenImage.png; sourceTree = "<group>"; };
@@ -87,7 +85,6 @@
 				1A2B3C4D5E6F700000000014 /* PinpointDatabase.swift */,
 				1A2B3C4D5E6F700000000010 /* CourseDatabase.swift */,
 				1A2B3C4D5E6F700000000007 /* CourseSearchService.swift */,
-				1A2B3C4D5E6F700000000009 /* UKGolfAPIClient.swift */,
 				1A2B3C4D5E6F700000000004 /* Assets.xcassets */,
 				1A2B3C4D5E6F700000000012 /* LaunchScreen.storyboard */,
 				1A2B3C4D5E6F700000000018 /* PrecisionLaunchScreen.storyboard */,
@@ -199,7 +196,6 @@
 				1A2B3C4D5E6F70000000010C /* PinpointDatabase.swift in Sources */,
 				1A2B3C4D5E6F700000000107 /* CourseDatabase.swift in Sources */,
 				1A2B3C4D5E6F700000000104 /* CourseSearchService.swift in Sources */,
-				1A2B3C4D5E6F700000000106 /* UKGolfAPIClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -332,7 +328,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PinpointGolf/PrecisionGolf.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -346,7 +342,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = "-lsqlite3";
-				PINPOINT_COURSE_API_BASE_URL = "https://pinpoint-golf-b3ko-git-main-marvs-projects-ad587ff6.vercel.app";
+				PINPOINT_COURSE_API_BASE_URL = "https://pinpoint-golf-pi.vercel.app";
 				PRODUCT_BUNDLE_IDENTIFIER = com.pinpoint.golf;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -361,7 +357,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = PinpointGolf/PrecisionGolf.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_ASSET_PATHS = "";
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -374,7 +370,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = "-lsqlite3";
-				PINPOINT_COURSE_API_BASE_URL = "https://pinpoint-golf-b3ko-git-main-marvs-projects-ad587ff6.vercel.app";
+				PINPOINT_COURSE_API_BASE_URL = "https://pinpoint-golf-pi.vercel.app";
 				PRODUCT_BUNDLE_IDENTIFIER = com.pinpoint.golf;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
