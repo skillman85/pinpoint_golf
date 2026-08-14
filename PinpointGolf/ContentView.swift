@@ -17,6 +17,7 @@ struct ContentView: View {
     @StateObject private var firebaseAccount = FirebaseAccountService()
     @StateObject private var firebaseSocial = FirebaseSocialService()
     @StateObject private var firebaseRoundSync = FirebaseRoundSyncService()
+    @StateObject private var websiteSeasonSync = WebsiteSeasonSyncService()
     @AppStorage("pinpoint.profileImageData") private var profileImageData: Data = Data()
     @AppStorage("precision.profileName") private var profileName = ""
     @AppStorage("precision.profileHomeClub") private var profileHomeClub = ""
@@ -73,6 +74,7 @@ struct ContentView: View {
                 await PushNotificationService.shared.requestPermissionAndRegister()
                 await firebaseRoundSync.refreshCloudCount()
                 await firebaseSocial.refresh()
+                await websiteSeasonSync.retryPendingSync()
             }
         }
         .onChange(of: firebaseAccount.user?.uid) { _, uid in
@@ -84,6 +86,7 @@ struct ContentView: View {
                     await firebaseRoundSync.refreshCloudCount()
                     await firebaseSocial.refresh()
                     await firebaseRoundSync.sync(rounds: roundArchive.rounds)
+                    await websiteSeasonSync.sync(backup: makePrecisionBackup())
                 }
             }
         }
@@ -213,10 +216,12 @@ struct ContentView: View {
         let savedRound = roundArchive.save(course: selectedCourse, tee: selectedTee, handicap: roundHandicap, entries: entries)
         let sharedGroupIds = pendingRoundType == .groupStableford ? [pendingStablefordGroup?.id].compactMap { $0 } : []
         handicapHistory.record(roundHandicap)
+        let websiteBackup = makePrecisionBackup()
         Task {
             await firebaseRoundSync.sync(round: savedRound)
             await firebaseSocial.publishCompletedRound(savedRound, ownerProfile: firebaseAccount.profile, groupIds: sharedGroupIds)
             await firebaseSocial.finishMatchplayRound(course: selectedCourse, tee: selectedTee, entries: entries)
+            await websiteSeasonSync.sync(backup: websiteBackup)
         }
         isRoundActive = false
         isRoundFlowPresented = false
@@ -230,9 +235,25 @@ struct ContentView: View {
 
     private func updateSavedRound(_ round: SavedRound) {
         roundArchive.update(round)
+        let websiteBackup = makePrecisionBackup()
         Task {
             await firebaseRoundSync.sync(round: round)
+            await websiteSeasonSync.sync(backup: websiteBackup)
         }
+    }
+
+    private func makePrecisionBackup() -> PrecisionBackup {
+        PrecisionBackup(
+            version: 1,
+            exportedAt: Date(),
+            handicap: playerSettings.handicap,
+            rounds: roundArchive.rounds,
+            favoriteCourseKeys: Array(courseFavorites.favoriteKeys).sorted(),
+            customGoals: goalArchive.customGoals,
+            clubYardages: clubYardages.clubs,
+            handicapHistory: handicapHistory.records,
+            courseScorecards: scorecardStore.overrides
+        )
     }
 
     private func deleteSavedRound(_ round: SavedRound) {

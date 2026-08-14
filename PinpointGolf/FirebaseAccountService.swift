@@ -574,6 +574,89 @@ final class FirebaseRoundSyncService: ObservableObject {
 }
 
 @MainActor
+final class WebsiteSeasonSyncService: ObservableObject {
+    @Published private(set) var lastSyncDate: Date?
+    @Published private(set) var statusMessage: String?
+
+    private let endpoint = URL(string: "https://www.bogeys2birdies.co.uk/api/precision-golf/sync")!
+    private let pendingBackupKey = "precision.websiteSeasonPendingBackup"
+    private let lastSyncKey = "precision.websiteSeasonLastSync"
+
+    init() {
+        lastSyncDate = UserDefaults.standard.object(forKey: lastSyncKey) as? Date
+    }
+
+    func sync(backup: PrecisionBackup) async {
+        do {
+            let data = try Self.encoder.encode(backup)
+            UserDefaults.standard.set(data, forKey: pendingBackupKey)
+            try await upload(data)
+            markSynced()
+        } catch {
+            statusMessage = "Website update pending: \(error.localizedDescription)"
+        }
+    }
+
+    func retryPendingSync() async {
+        guard let data = UserDefaults.standard.data(forKey: pendingBackupKey) else { return }
+        do {
+            try await upload(data)
+            markSynced()
+        } catch {
+            statusMessage = "Website update pending: \(error.localizedDescription)"
+        }
+    }
+
+    private func upload(_ data: Data) async throws {
+        guard data.count <= 2 * 1024 * 1024 else {
+            throw NSError(domain: "PrecisionGolf.WebsiteSync", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "The season backup is larger than the website upload limit."
+            ])
+        }
+        guard let user = Auth.auth().currentUser else {
+            throw NSError(domain: "PrecisionGolf.WebsiteSync", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Sign in to sync the season with Bogeys2Birdies."
+            ])
+        }
+
+        let token = try await user.getIDToken()
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.httpBody = data
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "PrecisionGolf.WebsiteSync", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: "The website returned an invalid response."
+            ])
+        }
+        guard httpResponse.statusCode == 200 else {
+            let serverMessage = (try? JSONSerialization.jsonObject(with: responseData) as? [String: Any])?["error"] as? String
+            throw NSError(domain: "PrecisionGolf.WebsiteSync", code: httpResponse.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: serverMessage ?? "Website sync failed with status \(httpResponse.statusCode)."
+            ])
+        }
+    }
+
+    private func markSynced() {
+        let now = Date()
+        lastSyncDate = now
+        UserDefaults.standard.set(now, forKey: lastSyncKey)
+        UserDefaults.standard.removeObject(forKey: pendingBackupKey)
+        statusMessage = "Bogeys2Birdies updated"
+    }
+
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+}
+
+@MainActor
 final class FirebaseSocialService: ObservableObject {
     @Published var friendCodeInput = ""
     @Published private(set) var friends: [FirebaseFriendProfile] = []
