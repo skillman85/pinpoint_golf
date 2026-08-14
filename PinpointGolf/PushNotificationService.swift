@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import FirebaseAuth
 import FirebaseFirestore
 import FirebaseMessaging
@@ -40,6 +41,11 @@ final class PushNotificationService: NSObject, ObservableObject {
         Messaging.messaging().delegate = self
         Task {
             await refreshAuthorizationStatus()
+            if authorizationStatus == .authorized || authorizationStatus == .provisional || authorizationStatus == .ephemeral {
+                await MainActor.run {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            }
             await syncCurrentToken()
         }
     }
@@ -62,6 +68,7 @@ final class PushNotificationService: NSObject, ObservableObject {
             let token = try await Messaging.messaging().token()
             currentToken = token
             try await saveToken(token)
+            lastTokenSyncMessage = "Notifications ready"
         } catch {
             lastTokenSyncMessage = error.localizedDescription
         }
@@ -83,7 +90,9 @@ final class PushNotificationService: NSObject, ObservableObject {
 
     private func removeToken(_ token: String, from uid: String) async {
         do {
-            try await database.collection("users").document(uid).setData([
+            let userReference = database.collection("users").document(uid)
+            try await userReference.collection("pushDevices").document(deviceDocumentId(for: token)).delete()
+            try await userReference.setData([
                 "pushTokens": FieldValue.arrayRemove([token]),
                 "pushTokenUpdatedAt": Timestamp(date: Date())
             ], merge: true)
@@ -99,11 +108,67 @@ final class PushNotificationService: NSObject, ObservableObject {
 
     private func saveToken(_ token: String) async throws {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        try await database.collection("users").document(uid).setData([
+        let userReference = database.collection("users").document(uid)
+        try await userReference.collection("pushDevices").document(deviceDocumentId(for: token)).setData([
+            "token": token,
+            "platform": "ios",
+            "pushTokenUpdatedAt": Timestamp(date: Date())
+        ], merge: true)
+        try await userReference.setData([
             "pushTokens": FieldValue.arrayUnion([token]),
             "pushTokenUpdatedAt": Timestamp(date: Date())
         ], merge: true)
-        lastTokenSyncMessage = "Notifications ready"
+    }
+
+    func sendNotificationEvent(type: String, resourceId: String) async {
+        guard let user = Auth.auth().currentUser,
+              let baseURLString = Bundle.main.object(forInfoDictionaryKey: "PrecisionCourseAPIBaseURL") as? String,
+              let baseURL = URL(string: baseURLString),
+              let url = URL(string: "/api/notifications/send", relativeTo: baseURL)?.absoluteURL
+        else { return }
+
+        for attempt in 1...3 {
+            do {
+                let idToken = try await user.getIDToken()
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.timeoutInterval = 15
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+                request.httpBody = try JSONSerialization.data(withJSONObject: [
+                    "type": type,
+                    "resourceId": resourceId
+                ])
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse,
+                      (200..<300).contains(httpResponse.statusCode)
+                else {
+                    throw PushNotificationError.senderRejectedRequest
+                }
+                if let result = try? JSONDecoder().decode(PushDispatchResponse.self, from: data) {
+                    if result.sent == 0 {
+                        lastTokenSyncMessage = result.reason == "no_tokens"
+                            ? "Notification saved, but no recipient device token was registered."
+                            : "Notification saved, but no push was delivered."
+                    } else if result.failed > 0 {
+                        lastTokenSyncMessage = "Notification sent to \(result.sent) device\(result.sent == 1 ? "" : "s"); \(result.failed) failed."
+                    } else {
+                        lastTokenSyncMessage = "Notification sent"
+                    }
+                }
+                return
+            } catch {
+                guard attempt < 3 else {
+                    lastTokenSyncMessage = "The event was saved, but its push notification could not be delivered."
+                    return
+                }
+                try? await Task.sleep(for: .seconds(Double(attempt)))
+            }
+        }
+    }
+
+    private func deviceDocumentId(for token: String) -> String {
+        SHA256.hash(data: Data(token.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     private func openSharedRound(id roundId: String) {
@@ -239,6 +304,29 @@ final class PushNotificationService: NSObject, ObservableObject {
         } else if type == "friendRequest" || type == "groupInvite" {
             openFriends()
         }
+    }
+}
+
+private enum PushNotificationError: Error {
+    case senderRejectedRequest
+}
+
+private struct PushDispatchResponse: Decodable {
+    let sent: Int
+    let failed: Int
+    let reason: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case sent
+        case failed
+        case reason
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sent = try container.decodeIfPresent(Int.self, forKey: .sent) ?? 0
+        failed = try container.decodeIfPresent(Int.self, forKey: .failed) ?? 0
+        reason = try container.decodeIfPresent(String.self, forKey: .reason)
     }
 }
 

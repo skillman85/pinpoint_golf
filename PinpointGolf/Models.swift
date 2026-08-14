@@ -446,6 +446,7 @@ enum MissDirection: String, CaseIterable, Identifiable, Codable {
     case right = "Right"
     case short = "Short"
     case long = "Long"
+    case recovery = "Recovery"
 
     var id: String { rawValue }
 }
@@ -514,7 +515,7 @@ enum PenaltyType: String, CaseIterable, Identifiable, Codable {
 
 struct RoundHoleEntry: Identifiable, Equatable {
     let id = UUID()
-    let hole: Hole
+    var hole: Hole
     var score: Int
     var putts: Int
     var pickedUp: Bool
@@ -594,7 +595,7 @@ struct SavedRound: Identifiable, Codable {
         return Int((Double(scrambles) / Double(scramblingOpportunities) * 100).rounded())
     }
     var bunkerHoles: Int { holes.filter { $0.bunker == true }.count }
-    var sandSaves: Int { holes.filter { $0.bunker == true && $0.score <= $0.par }.count }
+    var sandSaves: Int { holes.filter { $0.bunker == true && $0.sandSave == true }.count }
     var sandSavePercent: Int {
         guard bunkerHoles > 0 else { return 0 }
         return Int((Double(sandSaves) / Double(bunkerHoles) * 100).rounded())
@@ -883,13 +884,15 @@ final class HandicapHistoryStore: ObservableObject {
         records = database.loadHandicapHistory()
     }
 
-    func record(_ handicap: Double) {
+    @discardableResult
+    func record(_ handicap: Double) -> Bool {
         let rounded = (min(54, max(0, handicap)) * 10).rounded() / 10
         if let latest = records.first, latest.handicap == rounded {
-            return
+            return false
         }
         records.insert(HandicapRecord(id: UUID(), date: Date(), handicap: rounded), at: 0)
         database.saveHandicapHistory(records)
+        return true
     }
 
     func replace(with restored: [HandicapRecord]) {
@@ -903,9 +906,23 @@ struct ClubYardage: Identifiable, Codable, Equatable {
     var name: String
     var isInBag: Bool
     var yards: Int?
+    var threeQuarterYards: Int? = nil
+    var halfYards: Int? = nil
 
     var yardageText: String {
         yards.map(String.init) ?? ""
+    }
+
+    var threeQuarterYardageText: String {
+        threeQuarterYards.map(String.init) ?? ""
+    }
+
+    var halfYardageText: String {
+        halfYards.map(String.init) ?? ""
+    }
+
+    var hasAnyCarry: Bool {
+        yards != nil || threeQuarterYards != nil || halfYards != nil
     }
 }
 
@@ -1054,7 +1071,7 @@ final class RoundArchive: ObservableObject {
                     penaltyType: entry.penaltyType,
                     bunker: entry.bunker,
                     upAndDown: entry.upAndDown,
-                    sandSave: entry.bunker && entry.score <= entry.hole.par,
+                    sandSave: entry.bunker && entry.sandSave,
                     recovery: entry.recovery,
                     note: entry.note
                 )

@@ -72,14 +72,14 @@ final class FirebaseAccountService: NSObject, ObservableObject {
         isWorking = false
     }
 
-    func createAccount(displayName: String, handicap: Double, homeClub: String) async {
+    func createAccount(displayName: String, handicap: Double, homeClub: String, photoURL: String? = nil) async {
         guard validateCredentials() else { return }
         isWorking = true
         statusMessage = nil
         do {
             let result = try await Auth.auth().createUser(withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
             user = result.user
-            try await saveProfile(uid: result.user.uid, displayName: displayName, handicap: handicap, homeClub: homeClub)
+            try await saveProfile(uid: result.user.uid, displayName: displayName, handicap: handicap, homeClub: homeClub, photoURL: photoURL)
             statusMessage = "Account created"
         } catch {
             statusMessage = error.localizedDescription
@@ -166,7 +166,7 @@ final class FirebaseAccountService: NSObject, ObservableObject {
         isWorking = false
     }
 
-    func saveProfile(displayName: String, handicap: Double, homeClub: String) async {
+    func saveProfile(displayName: String, handicap: Double, homeClub: String, photoURL: String? = nil) async {
         guard let uid = user?.uid else {
             statusMessage = "Sign in before saving your Firebase profile."
             return
@@ -174,7 +174,7 @@ final class FirebaseAccountService: NSObject, ObservableObject {
         isWorking = true
         statusMessage = nil
         do {
-            try await saveProfile(uid: uid, displayName: displayName, handicap: handicap, homeClub: homeClub)
+            try await saveProfile(uid: uid, displayName: displayName, handicap: handicap, homeClub: homeClub, photoURL: photoURL)
             statusMessage = "Profile synced"
         } catch {
             statusMessage = error.localizedDescription
@@ -251,7 +251,7 @@ final class FirebaseAccountService: NSObject, ObservableObject {
         }
     }
 
-    private func saveProfile(uid: String, displayName: String, handicap: Double, homeClub: String) async throws {
+    private func saveProfile(uid: String, displayName: String, handicap: Double, homeClub: String, photoURL: String? = nil) async throws {
         let document = database.collection("users").document(uid)
         let now = Timestamp(date: Date())
         let trimmedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -273,11 +273,16 @@ final class FirebaseAccountService: NSObject, ObservableObject {
             payload["createdAt"] = now
         }
 
+        if let photoURL {
+            payload["photoURL"] = photoURL
+        }
+
         try await document.setData(payload, merge: true)
         try await database.collection("friendCodes").document(friendCode).setData([
             "uid": uid,
             "displayName": trimmedDisplayName,
             "displayNameLower": Self.searchKey(trimmedDisplayName),
+            "photoURL": photoURL ?? profile?.photoURL ?? "",
             "updatedAt": now
         ], merge: true)
         await loadProfile(for: uid)
@@ -757,19 +762,43 @@ final class FirebaseSocialService: ObservableObject {
     @Published private(set) var notifications: [FirebaseRoundNotification] = []
     @Published private(set) var liveMatchplayMatches: [FirebaseMatchplayMatch] = []
     @Published private(set) var matchplayHistory: [FirebaseMatchplayMatch] = []
+    @Published private(set) var liveFriendRounds: [FirebaseLiveFriendRound] = []
+    @Published private(set) var liveFriendSharingStatus: String?
     @Published private(set) var liveGroupGames: [FirebaseLiveGroupGame] = []
+    @Published private(set) var groupGameHistory: [FirebaseLiveGroupGame] = []
     @Published var golferSearchQuery = ""
     @Published private(set) var golferSearchResults: [FirebaseFriendProfile] = []
     @Published private(set) var isSearchingGolfers = false
     @Published var statusMessage: String?
     @Published var isWorking = false
 
+    var currentUserID: String? {
+        Auth.auth().currentUser?.uid
+    }
+
     private let database = Firestore.firestore()
+    private var friendshipsListener: ListenerRegistration?
+    private var incomingRequestsListener: ListenerRegistration?
+    private var groupsListener: ListenerRegistration?
+    private var groupInvitesListener: ListenerRegistration?
+    private var roundNotificationsListener: ListenerRegistration?
+    private var sharedRoundListeners: [ListenerRegistration] = []
+    private var liveFriendRoundListeners: [ListenerRegistration] = []
     private var matchplayListener: ListenerRegistration?
+    private var liveFriendRoundsListener: ListenerRegistration?
     private var liveGroupGamesListener: ListenerRegistration?
+    private var stablefordCreationGroupIds: Set<String> = []
 
     deinit {
+        friendshipsListener?.remove()
+        incomingRequestsListener?.remove()
+        groupsListener?.remove()
+        groupInvitesListener?.remove()
+        roundNotificationsListener?.remove()
+        sharedRoundListeners.forEach { $0.remove() }
+        liveFriendRoundListeners.forEach { $0.remove() }
         matchplayListener?.remove()
+        liveFriendRoundsListener?.remove()
         liveGroupGamesListener?.remove()
     }
 
@@ -783,12 +812,18 @@ final class FirebaseSocialService: ObservableObject {
             notifications = []
             liveMatchplayMatches = []
             matchplayHistory = []
+            liveFriendRounds = []
+            liveFriendSharingStatus = nil
             liveGroupGames = []
+            groupGameHistory = []
             golferSearchResults = []
             matchplayListener?.remove()
             matchplayListener = nil
+            liveFriendRoundsListener?.remove()
+            liveFriendRoundsListener = nil
             liveGroupGamesListener?.remove()
             liveGroupGamesListener = nil
+            stopSocialListeners()
             statusMessage = "Create an account to use friends."
             return
         }
@@ -804,16 +839,23 @@ final class FirebaseSocialService: ObservableObject {
             async let loadedSharedRounds = loadSharedRounds(for: uid)
             async let loadedNotifications = loadNotifications(for: uid)
             async let loadedMatchplayHistory = loadMatchplayHistory(for: uid)
+            async let loadedLiveFriendRounds = loadLiveFriendRounds(for: uid)
             async let loadedLiveGroupGames = loadLiveGroupGames(for: uid)
+            async let loadedGroupGameHistory = loadGroupGameHistory(for: uid)
             incomingRequests = try await requests
-            friends = try await loadedFriends
+            let friendProfiles = try await loadedFriends
+            friends = friendProfiles
             groups = try await loadedGroups
             groupInvites = try await loadedGroupInvites
-            sharedRounds = try await loadedSharedRounds
+            sharedRounds = enrichSharedRounds(try await loadedSharedRounds, with: friendProfiles)
             notifications = try await loadedNotifications
             matchplayHistory = try await loadedMatchplayHistory
-            liveGroupGames = try await loadedLiveGroupGames
+            liveFriendRounds = enrichLiveFriendRounds(try await loadedLiveFriendRounds, with: friendProfiles)
+            liveGroupGames = enrichGroupGames(try await loadedLiveGroupGames, with: friendProfiles)
+            groupGameHistory = enrichGroupGames(try await loadedGroupGameHistory, with: friendProfiles)
+            startSocialListeners(for: uid)
             startMatchplayListener(for: uid)
+            startLiveFriendRoundsListener(for: uid)
             startLiveGroupGamesListener(for: uid)
             statusMessage = nil
         } catch {
@@ -831,7 +873,16 @@ final class FirebaseSocialService: ObservableObject {
         defer { isWorking = false }
 
         do {
-            let documentId = UUID().uuidString
+            let stableDocumentId = matchplayDocumentId(uid, friend.uid, courseName: course.name, teeName: tee.name, date: Date())
+            let existingMatch = try await database.collection("matchplayMatches").document(stableDocumentId).getDocument()
+            if let data = existingMatch.data(),
+               let status = data["status"] as? String,
+               status == "active" {
+                statusMessage = "Matchplay is already active with \(friend.displayName)"
+                return
+            }
+            let documentId = existingMatch.exists ? UUID().uuidString : stableDocumentId
+
             let holeCount = tee.holes.count
             let opponentCourseHandicap = calculatedCourseHandicap(for: friend.handicap, tee: tee)
             let payload: [String: Any] = [
@@ -853,11 +904,13 @@ final class FirebaseSocialService: ObservableObject {
                 "players": [
                     uid: [
                         "displayName": displayName(from: playerProfile),
+                        "photoURL": playerProfile?.photoURL ?? "",
                         "handicap": playerProfile?.handicap ?? 0,
                         "courseHandicap": courseHandicap
                     ],
                     friend.uid: [
                         "displayName": friend.displayName,
+                        "photoURL": friend.photoURL ?? "",
                         "handicap": friend.handicap,
                         "courseHandicap": opponentCourseHandicap
                     ]
@@ -898,7 +951,9 @@ final class FirebaseSocialService: ObservableObject {
             "currentHoleByUser.\(uid)": holeIndex,
             "updatedAt": Timestamp(date: Date())
         ]
+        var completedMatch = false
         if let result = matchplayResult(match: match, scores: scores, holes: holes) {
+            completedMatch = true
             payload["status"] = "completed"
             payload["completedAt"] = Timestamp(date: Date())
             payload["resultMargin"] = result.margin
@@ -912,6 +967,9 @@ final class FirebaseSocialService: ObservableObject {
 
         do {
             try await database.collection("matchplayMatches").document(match.id).updateData(payload)
+            if completedMatch {
+                await refresh()
+            }
         } catch {
             statusMessage = "Matchplay sync failed: \(error.localizedDescription)"
         }
@@ -949,17 +1007,16 @@ final class FirebaseSocialService: ObservableObject {
         ]
 
         if Set(match.memberIds).isSubset(of: finished) {
-            let score = matchplayScore(match: match, scores: scores, holes: entries.map(\.hole))
-            payload["status"] = "completed"
-            payload["completedAt"] = Timestamp(date: Date())
-            payload["resultMargin"] = abs(score)
-            payload["resultHolesLeft"] = 0
-            if score > 0 {
-                payload["winnerId"] = uid
-            } else if score < 0, let opponentId = match.opponentId(for: uid) {
-                payload["winnerId"] = opponentId
-            } else {
-                payload["winnerId"] = FieldValue.delete()
+            if let result = matchplayResult(match: match, scores: scores, holes: entries.map(\.hole)) {
+                payload["status"] = "completed"
+                payload["completedAt"] = Timestamp(date: Date())
+                payload["resultMargin"] = result.margin
+                payload["resultHolesLeft"] = result.holesLeft
+                if let winnerId = result.winnerId {
+                    payload["winnerId"] = winnerId
+                } else {
+                    payload["winnerId"] = FieldValue.delete()
+                }
             }
         }
 
@@ -971,7 +1028,72 @@ final class FirebaseSocialService: ObservableObject {
         }
     }
 
-    func publishCompletedRound(_ round: SavedRound, ownerProfile: FirebaseUserProfile?, groupIds: [String] = []) async {
+    func syncMatchplayRoundAmendment(_ round: SavedRound, refreshAfterSync: Bool = true) async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+
+        do {
+            let snapshot = try await database.collection("matchplayMatches")
+                .whereField("memberIds", arrayContains: uid)
+                .getDocuments()
+
+            let amendedScores = round.holes.map(\.score)
+            let amendedHoles = round.holes.map {
+                Hole(number: $0.holeNumber, par: $0.par, yards: $0.yards, strokeIndex: $0.strokeIndex)
+            }
+
+            let matches = snapshot.documents
+                .compactMap(FirebaseMatchplayMatch.init(document:))
+                .filter { match in
+                    match.status != "cancelled"
+                        && match.courseName.localizedCaseInsensitiveCompare(round.courseName) == .orderedSame
+                        && match.teeName.localizedCaseInsensitiveCompare(round.teeName) == .orderedSame
+                        && sameLocalDay(match.completedAt ?? match.createdAt, round.date)
+                }
+
+            guard !matches.isEmpty else { return }
+
+            for match in matches {
+                var scores = match.scores
+                scores[uid] = amendedScores
+
+                var finished = Set(match.playerFinishedIds)
+                if match.status == "completed" || finished.contains(uid) {
+                    finished.insert(uid)
+                }
+
+                let holes = match.holes.isEmpty ? amendedHoles : match.holes.map(\.hole)
+                var payload: [String: Any] = [
+                    "scores.\(uid)": amendedScores,
+                    "updatedAt": Timestamp(date: Date())
+                ]
+
+                if !finished.isEmpty {
+                    payload["playerFinishedIds"] = Array(finished)
+                }
+
+                if match.status == "completed",
+                   let result = matchplayResult(match: match, scores: scores, holes: holes) {
+                    payload["resultMargin"] = result.margin
+                    payload["resultHolesLeft"] = result.holesLeft
+                    if let winnerId = result.winnerId {
+                        payload["winnerId"] = winnerId
+                    } else {
+                        payload["winnerId"] = FieldValue.delete()
+                    }
+                }
+
+                try await database.collection("matchplayMatches").document(match.id).updateData(payload)
+            }
+
+            if refreshAfterSync {
+                await refresh()
+            }
+        } catch {
+            statusMessage = "Matchplay amendment sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    func publishCompletedRound(_ round: SavedRound, ownerProfile: FirebaseUserProfile?, groupIds: [String]? = nil, notifyFriends: Bool = true, refreshAfterPublish: Bool = true) async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
 
         do {
@@ -994,10 +1116,15 @@ final class FirebaseSocialService: ObservableObject {
                 "pars": round.pars,
                 "putts": round.totalPutts,
                 "penalties": round.penalties,
-                "groupIds": groupIds,
                 "visibility": "friends",
-                "createdAt": Timestamp(date: Date())
+                "updatedAt": Timestamp(date: Date())
             ]
+            if notifyFriends {
+                payload["createdAt"] = Timestamp(date: Date())
+            }
+            if let groupIds {
+                payload["groupIds"] = groupIds
+            }
             if let stablefordPoints = round.stablefordPoints {
                 payload["stableford"] = stablefordPoints
             }
@@ -1039,28 +1166,37 @@ final class FirebaseSocialService: ObservableObject {
 
             try await database.collection("sharedRounds").document(documentId).setData(payload, merge: true)
 
-            let loadedFriends = try await loadFriends(for: uid)
-            for friend in loadedFriends {
-                let notificationId = "\(documentId)_\(friend.uid)"
-                var notificationPayload: [String: Any] = [
-                    "recipientId": friend.uid,
-                    "actorId": uid,
-                    "actorName": ownerName,
-                    "sharedRoundId": documentId,
-                    "courseName": round.courseName,
-                    "gross": round.totalScore,
-                    "message": "\(ownerName) completed a round at \(round.courseName)",
-                    "read": false,
-                    "roundDate": Timestamp(date: round.date),
-                    "createdAt": Timestamp(date: Date())
-                ]
-                if let stablefordPoints = round.stablefordPoints {
-                    notificationPayload["stableford"] = stablefordPoints
+            if notifyFriends {
+                let loadedFriends = try await loadFriends(for: uid)
+                for friend in loadedFriends {
+                    let notificationId = "\(documentId)_\(friend.uid)"
+                    var notificationPayload: [String: Any] = [
+                        "recipientId": friend.uid,
+                        "actorId": uid,
+                        "actorName": ownerName,
+                        "sharedRoundId": documentId,
+                        "courseName": round.courseName,
+                        "gross": round.totalScore,
+                        "message": "\(ownerName) completed a round at \(round.courseName)",
+                        "read": false,
+                        "roundDate": Timestamp(date: round.date),
+                        "createdAt": Timestamp(date: Date())
+                    ]
+                    if let stablefordPoints = round.stablefordPoints {
+                        notificationPayload["stableford"] = stablefordPoints
+                    }
+                    try await database.collection("roundNotifications").document(notificationId).setData(notificationPayload, merge: true)
                 }
-                try await database.collection("roundNotifications").document(notificationId).setData(notificationPayload, merge: true)
+
+                await PushNotificationService.shared.sendNotificationEvent(
+                    type: "sharedRound",
+                    resourceId: documentId
+                )
             }
 
-            await refresh()
+            if refreshAfterPublish {
+                await refresh()
+            }
         } catch {
             statusMessage = "Round saved locally, but friend sharing failed: \(error.localizedDescription)"
         }
@@ -1105,6 +1241,10 @@ final class FirebaseSocialService: ObservableObject {
                 "createdAt": Timestamp(date: Date()),
                 "updatedAt": Timestamp(date: Date())
             ], merge: true)
+            await PushNotificationService.shared.sendNotificationEvent(
+                type: "friendRequest",
+                resourceId: requestId
+            )
             friendCodeInput = ""
             statusMessage = "Friend request sent"
         } catch {
@@ -1193,6 +1333,10 @@ final class FirebaseSocialService: ObservableObject {
                 "createdAt": Timestamp(date: Date()),
                 "updatedAt": Timestamp(date: Date())
             ], merge: true)
+            await PushNotificationService.shared.sendNotificationEvent(
+                type: "friendRequest",
+                resourceId: requestId
+            )
             golferSearchResults.removeAll { $0.uid == golfer.uid }
             statusMessage = "Friend request sent to \(golfer.displayName)"
         } catch {
@@ -1273,6 +1417,126 @@ final class FirebaseSocialService: ObservableObject {
         }
     }
 
+    func renameGroup(_ group: FirebaseGolfGroup, to name: String) async -> Bool {
+        guard let uid = Auth.auth().currentUser?.uid, group.ownerId == uid else {
+            statusMessage = "Only the group owner can edit this group."
+            return false
+        }
+
+        let groupName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !groupName.isEmpty else {
+            statusMessage = "Enter a group name."
+            return false
+        }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let now = Timestamp(date: Date())
+            let batch = database.batch()
+            batch.setData([
+                "name": groupName,
+                "updatedAt": now
+            ], forDocument: database.collection("golfGroups").document(group.id), merge: true)
+
+            for game in liveGroupGames where game.groupId == group.id && game.status == "active" {
+                batch.setData([
+                    "groupName": groupName,
+                    "updatedAt": now
+                ], forDocument: database.collection("liveGroupGames").document(game.id), merge: true)
+            }
+
+            try await batch.commit()
+            statusMessage = "Group name updated"
+            await refresh()
+            return true
+        } catch {
+            statusMessage = "Group could not be updated: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    func removeMember(_ member: FirebaseFriendProfile, from group: FirebaseGolfGroup) async -> Bool {
+        guard let uid = Auth.auth().currentUser?.uid, group.ownerId == uid else {
+            statusMessage = "Only the group owner can remove players."
+            return false
+        }
+        guard member.uid != group.ownerId else {
+            statusMessage = "The group owner cannot be removed."
+            return false
+        }
+        return await removeUser(member.uid, displayName: member.displayName, from: group)
+    }
+
+    func leaveGroup(_ group: FirebaseGolfGroup) async -> Bool {
+        guard let uid = Auth.auth().currentUser?.uid, group.memberIds.contains(uid) else {
+            statusMessage = "You are not a member of this group."
+            return false
+        }
+        guard group.ownerId != uid else {
+            statusMessage = "The owner must delete the group instead."
+            return false
+        }
+        return await removeUser(uid, displayName: "You", from: group)
+    }
+
+    func deleteGroup(_ group: FirebaseGolfGroup) async -> Bool {
+        guard let user = Auth.auth().currentUser, group.ownerId == user.uid else {
+            statusMessage = "Only the group owner can delete this group."
+            return false
+        }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            guard
+                let baseURLString = Bundle.main.object(forInfoDictionaryKey: "PrecisionCourseAPIBaseURL") as? String,
+                let baseURL = URL(string: baseURLString),
+                let url = URL(string: "/api/groups/delete", relativeTo: baseURL)?.absoluteURL
+            else {
+                throw NSError(
+                    domain: "PrecisionGolf.GroupDeletion",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "The group service is not configured."]
+                )
+            }
+
+            let idToken = try await user.getIDToken()
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 30
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["groupId": group.id])
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200..<300).contains(httpResponse.statusCode)
+            else {
+                let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let errorPayload = payload?["error"] as? [String: Any]
+                let message = errorPayload?["message"] as? String ?? "The group could not be deleted."
+                throw NSError(
+                    domain: "PrecisionGolf.GroupDeletion",
+                    code: (response as? HTTPURLResponse)?.statusCode ?? 2,
+                    userInfo: [NSLocalizedDescriptionKey: message]
+                )
+            }
+
+            groups.removeAll { $0.id == group.id }
+            liveGroupGames.removeAll { $0.groupId == group.id }
+            groupGameHistory.removeAll { $0.groupId == group.id }
+            groupInvites.removeAll { $0.groupId == group.id }
+            statusMessage = "Group deleted"
+            return true
+        } catch {
+            statusMessage = "Group could not be deleted: \(error.localizedDescription)"
+            return false
+        }
+    }
+
     func invite(_ friend: FirebaseFriendProfile, to group: FirebaseGolfGroup) async {
         guard let uid = Auth.auth().currentUser?.uid, group.memberIds.contains(uid) else {
             statusMessage = "You need to be in this group before inviting friends."
@@ -1297,9 +1561,54 @@ final class FirebaseSocialService: ObservableObject {
                 "createdAt": Timestamp(date: Date()),
                 "updatedAt": Timestamp(date: Date())
             ], merge: true)
+            await PushNotificationService.shared.sendNotificationEvent(
+                type: "groupInvite",
+                resourceId: inviteId
+            )
             statusMessage = "Group invite sent"
         } catch {
             statusMessage = error.localizedDescription
+        }
+    }
+
+    private func removeUser(_ userId: String, displayName: String, from group: FirebaseGolfGroup) async -> Bool {
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let now = Timestamp(date: Date())
+            let activeGames = liveGroupGames.filter { $0.groupId == group.id && $0.status == "active" }
+
+            for game in activeGames {
+                try await database.collection("liveGroupGames")
+                    .document(game.id)
+                    .collection("players")
+                    .document(userId)
+                    .delete()
+            }
+
+            let batch = database.batch()
+            batch.setData([
+                "memberIds": FieldValue.arrayRemove([userId]),
+                "updatedAt": now
+            ], forDocument: database.collection("golfGroups").document(group.id), merge: true)
+
+            for game in activeGames {
+                batch.setData([
+                    "memberIds": FieldValue.arrayRemove([userId]),
+                    "updatedAt": now
+                ], forDocument: database.collection("liveGroupGames").document(game.id), merge: true)
+            }
+
+            try await batch.commit()
+            statusMessage = userId == Auth.auth().currentUser?.uid
+                ? "You left \(group.name)"
+                : "\(displayName) removed from the group"
+            await refresh()
+            return true
+        } catch {
+            statusMessage = "Membership could not be updated: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -1350,17 +1659,25 @@ final class FirebaseSocialService: ObservableObject {
             return
         }
 
-        if liveGroupGames.contains(where: { $0.groupId == group.id && $0.status == "active" }) {
+        if stablefordCreationGroupIds.contains(group.id)
+            || liveGroupGames.contains(where: { $0.groupId == group.id && $0.status == "active" }) {
             statusMessage = "Live Stableford already active"
             return
         }
 
+        stablefordCreationGroupIds.insert(group.id)
         isWorking = true
-        defer { isWorking = false }
+        defer {
+            stablefordCreationGroupIds.remove(group.id)
+            isWorking = false
+        }
 
         do {
-            let document = database.collection("liveGroupGames").document()
-            try await document.setData([
+            let groupReference = database.collection("golfGroups").document(group.id)
+            let gameReference = database.collection("liveGroupGames").document()
+            let gameId = gameReference.documentID
+            let now = Timestamp(date: Date())
+            let gamePayload: [String: Any] = [
                 "groupId": group.id,
                 "groupName": group.name,
                 "format": "stableford",
@@ -1370,10 +1687,35 @@ final class FirebaseSocialService: ObservableObject {
                 "courseName": "",
                 "teeName": "",
                 "holeCount": 18,
-                "createdAt": Timestamp(date: Date()),
-                "updatedAt": Timestamp(date: Date())
-            ])
-            statusMessage = "Stableford game started"
+                "createdAt": now,
+                "updatedAt": now
+            ]
+
+            let selectedGameId = try await database.runTransaction { transaction, errorPointer -> Any? in
+                do {
+                    let groupSnapshot = try transaction.getDocument(groupReference)
+                    if let activeGameId = groupSnapshot.data()?["activeStablefordGameId"] as? String,
+                       !activeGameId.isEmpty {
+                        let activeGameReference = self.database.collection("liveGroupGames").document(activeGameId)
+                        let activeGameSnapshot = try transaction.getDocument(activeGameReference)
+                        if activeGameSnapshot.data()?["status"] as? String == "active" {
+                            return activeGameId
+                        }
+                    }
+
+                    transaction.setData(gamePayload, forDocument: gameReference)
+                    transaction.setData([
+                        "activeStablefordGameId": gameId,
+                        "updatedAt": now
+                    ], forDocument: groupReference, merge: true)
+                    return gameId
+                } catch let error as NSError {
+                    errorPointer?.pointee = error
+                    return nil
+                }
+            } as? String
+
+            statusMessage = selectedGameId == gameId ? "Stableford game started" : "Live Stableford already active"
             await refresh()
         } catch {
             statusMessage = error.localizedDescription
@@ -1400,6 +1742,10 @@ final class FirebaseSocialService: ObservableObject {
                     "updatedAt": completedAt
                 ], forDocument: document, merge: true)
             }
+            batch.setData([
+                "activeStablefordGameId": FieldValue.delete(),
+                "updatedAt": completedAt
+            ], forDocument: database.collection("golfGroups").document(game.groupId), merge: true)
 
             try await batch.commit()
             let completedIds = Set(gamesToComplete.map(\.id))
@@ -1408,6 +1754,52 @@ final class FirebaseSocialService: ObservableObject {
             await refresh()
         } catch {
             statusMessage = error.localizedDescription
+        }
+    }
+
+    func deleteGroupGame(_ game: FirebaseLiveGroupGame) async -> Bool {
+        guard let uid = Auth.auth().currentUser?.uid, game.memberIds.contains(uid) else {
+            statusMessage = "You need to be a group member to delete this game."
+            return false
+        }
+
+        isWorking = true
+        defer { isWorking = false }
+
+        do {
+            let gameReference = database.collection("liveGroupGames").document(game.id)
+            async let playerDocuments = gameReference.collection("players").getDocuments()
+            async let eventDocuments = gameReference.collection("events").getDocuments()
+            let (players, events) = try await (playerDocuments, eventDocuments)
+            let childBatch = database.batch()
+
+            for document in players.documents {
+                childBatch.deleteDocument(document.reference)
+            }
+            for document in events.documents {
+                childBatch.deleteDocument(document.reference)
+            }
+            try await childBatch.commit()
+
+            let gameBatch = database.batch()
+            gameBatch.deleteDocument(gameReference)
+
+            if game.status == "active" {
+                gameBatch.setData([
+                    "activeStablefordGameId": FieldValue.delete(),
+                    "updatedAt": Timestamp(date: Date())
+                ], forDocument: database.collection("golfGroups").document(game.groupId), merge: true)
+            }
+
+            try await gameBatch.commit()
+            liveGroupGames.removeAll { $0.id == game.id }
+            groupGameHistory.removeAll { $0.id == game.id }
+            statusMessage = game.status == "active" ? "Live group game stopped and deleted" : "Group game deleted"
+            await refresh()
+            return true
+        } catch {
+            statusMessage = "Group game could not be deleted: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -1482,6 +1874,93 @@ final class FirebaseSocialService: ObservableObject {
             } catch {
                 statusMessage = "Group leaderboard sync failed: \(error.localizedDescription)"
             }
+        }
+    }
+
+    func syncLiveFriendRound(
+        course: GolfCourse,
+        tee: TeeBox,
+        entries: [RoundHoleEntry],
+        currentHoleIndex: Int,
+        courseHandicap: Int,
+        playerProfile: FirebaseUserProfile?
+    ) async {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            liveFriendSharingStatus = "Sign in to share this round live."
+            return
+        }
+        var friendIds: [String] = friends.map(\.uid)
+        do {
+            friendIds = try await liveFriendRecipientIds(for: uid)
+        } catch {
+            liveFriendSharingStatus = "Live sharing is using cached friends."
+        }
+
+        let scoredEntries = entries.filter { $0.score > 0 }
+        let gross = scoredEntries.reduce(0) { $0 + $1.score }
+        let pointsByHole = entries.map { stablefordPoints(for: $0, courseHandicap: courseHandicap) }
+        let totalPoints = pointsByHole.reduce(0, +)
+        let scoreToPar = scoredEntries.reduce(0) { $0 + ($1.score - $1.hole.par) }
+        let through = scoredEntries.count
+        let completed = through >= entries.count
+        let now = Timestamp(date: Date())
+
+        do {
+            try await database.collection("liveFriendRounds").document(uid).setData([
+                "ownerId": uid,
+                "ownerName": displayName(from: playerProfile),
+                "ownerHomeClub": playerProfile?.homeClub ?? "",
+                "ownerPhotoURL": playerProfile?.photoURL ?? "",
+                "visibleToIds": friendIds,
+                "status": "active",
+                "courseName": course.name,
+                "teeName": tee.name,
+                "holeCount": tee.holes.count,
+                "currentHole": min(currentHoleIndex + 1, entries.count),
+                "through": through,
+                "completed": completed,
+                "gross": gross,
+                "stableford": totalPoints,
+                "scoreToPar": scoreToPar,
+                "scores": entries.map(\.score),
+                "points": pointsByHole,
+                "pars": entries.map(\.hole.par),
+                "updatedAt": now,
+                "createdAt": FieldValue.serverTimestamp()
+            ], merge: true)
+            liveFriendSharingStatus = friendIds.isEmpty
+                ? "Live round saved. Add friends so they can watch."
+                : "Live to \(friendIds.count) \(friendIds.count == 1 ? "friend" : "friends")."
+        } catch {
+            liveFriendSharingStatus = "Live sharing failed: \(error.localizedDescription)"
+            statusMessage = "Live friends sync failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func liveFriendRecipientIds(for uid: String) async throws -> [String] {
+        let cachedFriendIds = friends.map(\.uid)
+        if !cachedFriendIds.isEmpty {
+            return cachedFriendIds
+        }
+
+        let snapshot = try await database.collection("friendships")
+            .whereField("memberIds", arrayContains: uid)
+            .getDocuments()
+
+        return snapshot.documents.compactMap { document in
+            let memberIds = document.data()["memberIds"] as? [String] ?? []
+            return memberIds.first { $0 != uid }
+        }
+    }
+
+    func clearCurrentLiveFriendRound() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        do {
+            try await database.collection("liveFriendRounds").document(uid).delete()
+            liveFriendSharingStatus = nil
+        } catch {
+            liveFriendSharingStatus = "Live sharing could not be cleared."
+            statusMessage = "Live friends could not be cleared: \(error.localizedDescription)"
         }
     }
 
@@ -1561,26 +2040,106 @@ final class FirebaseSocialService: ObservableObject {
         for ownerId in friendIds {
             let snapshot = try await database.collection("sharedRounds")
                 .whereField("ownerId", isEqualTo: ownerId)
-                .limit(to: 20)
+                .limit(to: 100)
                 .getDocuments()
             rounds.append(contentsOf: snapshot.documents.compactMap(FirebaseSharedRound.init(document:)))
         }
 
-        return Array(rounds.sorted { $0.date > $1.date }.prefix(30))
+        return consolidateSharedRounds(rounds)
     }
 
     func loadSharedRound(id: String) async -> FirebaseSharedRound? {
-        if let existingRound = sharedRounds.first(where: { $0.id == id }) {
-            return existingRound
-        }
-
         do {
             let document = try await database.collection("sharedRounds").document(id).getDocument()
             guard let data = document.data() else { return nil }
-            return FirebaseSharedRound(id: document.documentID, data: data)
+            guard let round = FirebaseSharedRound(id: document.documentID, data: data) else { return nil }
+            guard let enrichedRound = enrichSharedRounds([round], with: friends).first else { return nil }
+            sharedRounds.removeAll { $0.id == enrichedRound.id }
+            sharedRounds = consolidateSharedRounds(sharedRounds + [enrichedRound])
+            return enrichedRound
         } catch {
+            if let existingRound = sharedRounds.first(where: { $0.id == id }) {
+                return existingRound
+            }
             statusMessage = error.localizedDescription
             return nil
+        }
+    }
+
+    private func enrichSharedRounds(
+        _ rounds: [FirebaseSharedRound],
+        with profiles: [FirebaseFriendProfile]
+    ) -> [FirebaseSharedRound] {
+        let profilesByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.uid, $0) })
+        return rounds.map { round in
+            var enriched = round
+            if let profile = profilesByID[round.ownerId] {
+                enriched.ownerName = profile.displayName
+                enriched.ownerHomeClub = profile.homeClub
+                enriched.ownerPhotoURL = profile.photoURL
+            }
+            return enriched
+        }
+    }
+
+    private func consolidateSharedRounds(_ rounds: [FirebaseSharedRound]) -> [FirebaseSharedRound] {
+        var latestByRoundKey: [String: FirebaseSharedRound] = [:]
+
+        for round in rounds {
+            let key = sharedRoundIdentityKey(round)
+            guard let existing = latestByRoundKey[key] else {
+                latestByRoundKey[key] = round
+                continue
+            }
+
+            if round.updatedAt > existing.updatedAt {
+                latestByRoundKey[key] = round
+            }
+        }
+
+        return latestByRoundKey.values.sorted { $0.date > $1.date }
+    }
+
+    private func sharedRoundIdentityKey(_ round: FirebaseSharedRound) -> String {
+        let day = Calendar.current.startOfDay(for: round.date).timeIntervalSince1970
+        return [
+            round.ownerId,
+            round.courseName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            round.teeName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            String(Int(day))
+        ].joined(separator: "|")
+    }
+
+    private func enrichGroupGames(
+        _ games: [FirebaseLiveGroupGame],
+        with profiles: [FirebaseFriendProfile]
+    ) -> [FirebaseLiveGroupGame] {
+        let profilesByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.uid, $0) })
+        return games.map { game in
+            var enriched = game
+            enriched.players = game.players.map { player in
+                guard let profile = profilesByID[player.userId] else { return player }
+                var updated = player
+                updated.displayName = profile.displayName
+                updated.photoURL = profile.photoURL
+                return updated
+            }
+            return enriched
+        }
+    }
+
+    private func enrichLiveFriendRounds(
+        _ rounds: [FirebaseLiveFriendRound],
+        with profiles: [FirebaseFriendProfile]
+    ) -> [FirebaseLiveFriendRound] {
+        let profilesByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.uid, $0) })
+        return rounds.map { round in
+            guard let profile = profilesByID[round.ownerId] else { return round }
+            var enriched = round
+            enriched.ownerName = profile.displayName
+            enriched.ownerHomeClub = profile.homeClub
+            enriched.ownerPhotoURL = profile.photoURL
+            return enriched
         }
     }
 
@@ -1617,7 +2176,8 @@ final class FirebaseSocialService: ObservableObject {
         return snapshot.documents
             .compactMap(FirebaseMatchplayMatch.init(document:))
             .filter { match in
-                match.status != "cancelled" || match.completedAt != nil || match.winnerId != nil || match.resultMargin != nil
+                match.status != "cancelled"
+                    && (match.status == "completed" || match.completedAt != nil || match.winnerId != nil || match.resultMargin != nil)
             }
             .sorted { ($0.completedAt ?? $0.updatedAt) > ($1.completedAt ?? $1.updatedAt) }
     }
@@ -1639,6 +2199,119 @@ final class FirebaseSocialService: ObservableObject {
         return games.sorted { $0.updatedAt > $1.updatedAt }
     }
 
+    private func loadLiveFriendRounds(for uid: String) async throws -> [FirebaseLiveFriendRound] {
+        let friendIds = try await liveFriendRecipientIds(for: uid)
+        var rounds: [FirebaseLiveFriendRound] = []
+
+        for friendId in friendIds {
+            let document = try await database.collection("liveFriendRounds").document(friendId).getDocument()
+            guard let data = document.data(),
+                  let round = FirebaseLiveFriendRound(id: document.documentID, data: data)
+            else { continue }
+            rounds.append(round)
+        }
+
+        return rounds
+            .filter { $0.status == "active" }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func loadGroupGameHistory(for uid: String) async throws -> [FirebaseLiveGroupGame] {
+        let snapshot = try await database.collection("liveGroupGames")
+            .whereField("memberIds", arrayContains: uid)
+            .getDocuments()
+
+        var games: [FirebaseLiveGroupGame] = []
+        for document in snapshot.documents {
+            guard var game = FirebaseLiveGroupGame(document: document), game.status == "completed" else { continue }
+            game.players = try await loadLiveGroupPlayers(gameId: game.id)
+            games.append(game)
+        }
+
+        let consolidatedGames = consolidateDuplicateGroupGames(games)
+        let sortedGames = consolidatedGames.sorted { ($0.completedAt ?? $0.updatedAt) > ($1.completedAt ?? $1.updatedAt) }
+        var seenResults: Set<String> = []
+
+        return sortedGames.filter { game in
+            guard !game.players.isEmpty else { return false }
+
+            let playerResults = game.players
+                .sorted { $0.userId < $1.userId }
+                .map { player in
+                    let scores = player.scores.map(String.init).joined(separator: ",")
+                    let points = player.points.map(String.init).joined(separator: ",")
+                    return "\(player.userId):\(player.gross):\(player.stableford):\(scores):\(points)"
+                }
+                .joined(separator: "|")
+            let resultKey = [
+                game.groupId,
+                game.courseName.lowercased(),
+                game.teeName.lowercased(),
+                String(game.holeCount),
+                playerResults
+            ].joined(separator: "|")
+            return seenResults.insert(resultKey).inserted
+        }
+    }
+
+    private func consolidateDuplicateGroupGames(_ games: [FirebaseLiveGroupGame]) -> [FirebaseLiveGroupGame] {
+        let duplicateWindow: TimeInterval = 10 * 60
+        var consolidated: [FirebaseLiveGroupGame] = []
+
+        for game in games.sorted(by: { $0.createdAt < $1.createdAt }) {
+            guard !game.players.isEmpty else { continue }
+
+            if let index = consolidated.firstIndex(where: { existing in
+                existing.groupId == game.groupId
+                    && existing.courseName.caseInsensitiveCompare(game.courseName) == .orderedSame
+                    && existing.teeName.caseInsensitiveCompare(game.teeName) == .orderedSame
+                    && (
+                        abs(existing.createdAt.timeIntervalSince(game.createdAt)) <= duplicateWindow
+                        || sharesRecordedResult(existing, game)
+                    )
+            }) {
+                var mergedGame = consolidated[index]
+                var playersById = Dictionary(uniqueKeysWithValues: mergedGame.players.map { ($0.userId, $0) })
+
+                for player in game.players {
+                    guard let existingPlayer = playersById[player.userId] else {
+                        playersById[player.userId] = player
+                        continue
+                    }
+                    if player.through > existingPlayer.through
+                        || (player.through == existingPlayer.through && player.updatedAt > existingPlayer.updatedAt) {
+                        playersById[player.userId] = player
+                    }
+                }
+
+                mergedGame.players = playersById.values.sorted {
+                    if $0.stableford == $1.stableford {
+                        return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+                    }
+                    return $0.stableford > $1.stableford
+                }
+                mergedGame.createdAt = min(mergedGame.createdAt, game.createdAt)
+                mergedGame.completedAt = [mergedGame.completedAt, game.completedAt].compactMap { $0 }.max()
+                mergedGame.updatedAt = max(mergedGame.updatedAt, game.updatedAt)
+                consolidated[index] = mergedGame
+            } else {
+                consolidated.append(game)
+            }
+        }
+
+        return consolidated
+    }
+
+    private func sharesRecordedResult(_ first: FirebaseLiveGroupGame, _ second: FirebaseLiveGroupGame) -> Bool {
+        let secondPlayers = Dictionary(uniqueKeysWithValues: second.players.map { ($0.userId, $0) })
+
+        return first.players.contains { player in
+            guard let other = secondPlayers[player.userId] else { return false }
+            let hasScores = player.scores.contains(where: { $0 > 0 }) && other.scores.contains(where: { $0 > 0 })
+            return hasScores && player.scores == other.scores && player.points == other.points
+        }
+    }
+
     private func loadLiveGroupPlayers(gameId: String) async throws -> [FirebaseLiveGroupPlayer] {
         let snapshot = try await database.collection("liveGroupGames")
             .document(gameId)
@@ -1649,10 +2322,7 @@ final class FirebaseSocialService: ObservableObject {
             .compactMap(FirebaseLiveGroupPlayer.init(document:))
             .sorted {
                 if $0.stableford == $1.stableford {
-                    if $0.through == $1.through {
-                        return $0.gross < $1.gross
-                    }
-                    return $0.through > $1.through
+                    return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
                 }
                 return $0.stableford > $1.stableford
             }
@@ -1705,8 +2375,257 @@ final class FirebaseSocialService: ObservableObject {
         [firstUid, secondUid].sorted().joined(separator: "_")
     }
 
-    private func matchplayDocumentId(_ firstUid: String, _ secondUid: String) -> String {
-        [firstUid, secondUid].sorted().joined(separator: "_") + "_active"
+    private func matchplayDocumentId(_ firstUid: String, _ secondUid: String, courseName: String, teeName: String, date: Date) -> String {
+        let pairKey = [firstUid, secondUid].sorted().joined(separator: "_")
+        let dayKey = Self.matchplayDayKey(for: date)
+        let courseKey = Self.matchplayDocumentComponent(courseName)
+        let teeKey = Self.matchplayDocumentComponent(teeName)
+        return [pairKey, dayKey, courseKey, teeKey].joined(separator: "_")
+    }
+
+    private static func matchplayDayKey(for date: Date) -> String {
+        let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d%02d%02d", components.year ?? 0, components.month ?? 0, components.day ?? 0)
+    }
+
+    private static func matchplayDocumentComponent(_ value: String) -> String {
+        let folded = value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+        let sanitized = folded.map { character in
+            character.isLetter || character.isNumber ? character : "-"
+        }
+        let collapsed = String(sanitized)
+            .split(separator: "-")
+            .joined(separator: "-")
+        return collapsed.isEmpty ? "match" : String(collapsed.prefix(48))
+    }
+
+    private func startSocialListeners(for uid: String) {
+        startFriendshipsListener(for: uid)
+        startIncomingRequestsListener(for: uid)
+        startGroupsListener(for: uid)
+        startGroupInvitesListener(for: uid)
+        startRoundNotificationsListener(for: uid)
+        startSharedRoundsListeners(for: friends)
+    }
+
+    private func stopRealtimeListeners() {
+        stopSocialListeners()
+        matchplayListener?.remove()
+        matchplayListener = nil
+        liveFriendRoundsListener?.remove()
+        liveFriendRoundsListener = nil
+        liveGroupGamesListener?.remove()
+        liveGroupGamesListener = nil
+    }
+
+    private func stopSocialListeners() {
+        friendshipsListener?.remove()
+        friendshipsListener = nil
+        incomingRequestsListener?.remove()
+        incomingRequestsListener = nil
+        groupsListener?.remove()
+        groupsListener = nil
+        groupInvitesListener?.remove()
+        groupInvitesListener = nil
+        roundNotificationsListener?.remove()
+        roundNotificationsListener = nil
+        stopSharedRoundListeners()
+        stopLiveFriendRoundListeners()
+    }
+
+    private func stopSharedRoundListeners() {
+        sharedRoundListeners.forEach { $0.remove() }
+        sharedRoundListeners = []
+    }
+
+    private func stopLiveFriendRoundListeners() {
+        liveFriendRoundListeners.forEach { $0.remove() }
+        liveFriendRoundListeners = []
+    }
+
+    private func startFriendshipsListener(for uid: String) {
+        friendshipsListener?.remove()
+        friendshipsListener = database.collection("friendships")
+            .whereField("memberIds", arrayContains: uid)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        self.statusMessage = "Friends unavailable: \(error.localizedDescription)"
+                        return
+                    }
+
+                    do {
+                        var profiles: [FirebaseFriendProfile] = []
+                        for document in snapshot?.documents ?? [] {
+                            let memberIds = document.data()["memberIds"] as? [String] ?? []
+                            guard let otherUid = memberIds.first(where: { $0 != uid }) else { continue }
+                            profiles.append(try await self.loadProfile(uid: otherUid))
+                        }
+                        let sortedProfiles = profiles.sorted { $0.displayName < $1.displayName }
+                        self.friends = sortedProfiles
+                        self.sharedRounds = self.consolidateSharedRounds(
+                            self.enrichSharedRounds(self.sharedRounds, with: sortedProfiles)
+                        )
+                        self.liveFriendRounds = self.enrichLiveFriendRounds(self.liveFriendRounds, with: sortedProfiles)
+                        self.liveGroupGames = self.enrichGroupGames(self.liveGroupGames, with: sortedProfiles)
+                        self.groupGameHistory = self.enrichGroupGames(self.groupGameHistory, with: sortedProfiles)
+                        self.startSharedRoundsListeners(for: sortedProfiles)
+                        self.startLiveFriendRoundListeners(for: sortedProfiles)
+                    } catch {
+                        self.statusMessage = "Friends unavailable: \(error.localizedDescription)"
+                    }
+                }
+            }
+    }
+
+    private func startIncomingRequestsListener(for uid: String) {
+        incomingRequestsListener?.remove()
+        incomingRequestsListener = database.collection("friendRequests")
+            .whereField("toUserId", isEqualTo: uid)
+            .whereField("status", isEqualTo: "pending")
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        self.statusMessage = "Friend requests unavailable: \(error.localizedDescription)"
+                        return
+                    }
+
+                    do {
+                        var requests: [FirebaseFriendRequest] = []
+                        for document in snapshot?.documents ?? [] {
+                            let data = document.data()
+                            guard
+                                let fromUserId = data["fromUserId"] as? String,
+                                let toUserId = data["toUserId"] as? String,
+                                let status = data["status"] as? String
+                            else { continue }
+
+                            let fromProfile = try await self.loadProfile(uid: fromUserId)
+                            requests.append(FirebaseFriendRequest(
+                                id: document.documentID,
+                                fromUserId: fromUserId,
+                                toUserId: toUserId,
+                                status: status,
+                                fromProfile: fromProfile
+                            ))
+                        }
+                        self.incomingRequests = requests.sorted { $0.fromProfile.displayName < $1.fromProfile.displayName }
+                    } catch {
+                        self.statusMessage = "Friend requests unavailable: \(error.localizedDescription)"
+                    }
+                }
+            }
+    }
+
+    private func startGroupsListener(for uid: String) {
+        groupsListener?.remove()
+        groupsListener = database.collection("golfGroups")
+            .whereField("memberIds", arrayContains: uid)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    if let error {
+                        self?.statusMessage = "Groups unavailable: \(error.localizedDescription)"
+                        return
+                    }
+
+                    self?.groups = snapshot?.documents
+                        .compactMap(FirebaseGolfGroup.init(document:))
+                        .sorted { $0.updatedAt > $1.updatedAt } ?? []
+                }
+            }
+    }
+
+    private func startGroupInvitesListener(for uid: String) {
+        groupInvitesListener?.remove()
+        groupInvitesListener = database.collection("groupInvites")
+            .whereField("toUserId", isEqualTo: uid)
+            .whereField("status", isEqualTo: "pending")
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        self.statusMessage = "Group invites unavailable: \(error.localizedDescription)"
+                        return
+                    }
+
+                    do {
+                        var invites: [FirebaseGroupInvite] = []
+                        for document in snapshot?.documents ?? [] {
+                            guard var invite = FirebaseGroupInvite(document: document) else { continue }
+                            invite.fromProfile = try await self.loadProfile(uid: invite.fromUserId)
+                            invites.append(invite)
+                        }
+                        self.groupInvites = invites.sorted { $0.createdAt > $1.createdAt }
+                    } catch {
+                        self.statusMessage = "Group invites unavailable: \(error.localizedDescription)"
+                    }
+                }
+            }
+    }
+
+    private func startRoundNotificationsListener(for uid: String) {
+        roundNotificationsListener?.remove()
+        roundNotificationsListener = database.collection("roundNotifications")
+            .whereField("recipientId", isEqualTo: uid)
+            .whereField("read", isEqualTo: false)
+            .limit(to: 20)
+            .addSnapshotListener { [weak self] snapshot, error in
+                Task { @MainActor in
+                    if let error {
+                        self?.statusMessage = "Round alerts unavailable: \(error.localizedDescription)"
+                        return
+                    }
+
+                    self?.notifications = snapshot?.documents
+                        .compactMap(FirebaseRoundNotification.init(document:))
+                        .sorted { $0.createdAt > $1.createdAt } ?? []
+                }
+            }
+    }
+
+    private func startSharedRoundsListeners(for friendProfiles: [FirebaseFriendProfile]) {
+        stopSharedRoundListeners()
+        guard !friendProfiles.isEmpty else {
+            sharedRounds = []
+            return
+        }
+
+        let profilesByID = Dictionary(uniqueKeysWithValues: friendProfiles.map { ($0.uid, $0) })
+        let friendIds = Set(friendProfiles.map(\.uid))
+
+        for friend in friendProfiles {
+            let listener = database.collection("sharedRounds")
+                .whereField("ownerId", isEqualTo: friend.uid)
+                .limit(to: 100)
+                .addSnapshotListener { [weak self] snapshot, error in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        if let error {
+                            self.statusMessage = "Shared rounds unavailable: \(error.localizedDescription)"
+                            return
+                        }
+
+                        var roundsByID = Dictionary(uniqueKeysWithValues: self.sharedRounds
+                            .filter { friendIds.contains($0.ownerId) && $0.ownerId != friend.uid }
+                            .map { ($0.id, $0) })
+                        for document in snapshot?.documents ?? [] {
+                            guard var round = FirebaseSharedRound(document: document) else { continue }
+                            if let profile = profilesByID[round.ownerId] {
+                                round.ownerName = profile.displayName
+                                round.ownerHomeClub = profile.homeClub
+                                round.ownerPhotoURL = profile.photoURL
+                            }
+                            roundsByID[round.id] = round
+                        }
+                        self.sharedRounds = self.consolidateSharedRounds(Array(roundsByID.values))
+                    }
+                }
+            sharedRoundListeners.append(listener)
+        }
     }
 
     private func startMatchplayListener(for uid: String) {
@@ -1726,6 +2645,68 @@ final class FirebaseSocialService: ObservableObject {
                         .sorted { $0.updatedAt > $1.updatedAt } ?? []
                 }
             }
+    }
+
+    private func startLiveFriendRoundsListener(for uid: String) {
+        liveFriendRoundsListener?.remove()
+        liveFriendRoundsListener = database.collection("friendships")
+            .whereField("memberIds", arrayContains: uid)
+            .addSnapshotListener { [weak self] _, error in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let error {
+                        self.statusMessage = "Live friends unavailable: \(error.localizedDescription)"
+                        return
+                    }
+
+                    self.startLiveFriendRoundListeners(for: self.friends)
+                }
+            }
+    }
+
+    private func startLiveFriendRoundListeners(for friendProfiles: [FirebaseFriendProfile]) {
+        stopLiveFriendRoundListeners()
+        guard !friendProfiles.isEmpty else {
+            liveFriendRounds = []
+            return
+        }
+
+        let profilesByID = Dictionary(uniqueKeysWithValues: friendProfiles.map { ($0.uid, $0) })
+        let friendIds = Set(friendProfiles.map(\.uid))
+
+        for friend in friendProfiles {
+            let listener = database.collection("liveFriendRounds")
+                .document(friend.uid)
+                .addSnapshotListener { [weak self] snapshot, error in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        if let error {
+                            self.statusMessage = "Live friends unavailable: \(error.localizedDescription)"
+                            return
+                        }
+
+                        var roundsByID = Dictionary(uniqueKeysWithValues: self.liveFriendRounds
+                            .filter { friendIds.contains($0.ownerId) && $0.ownerId != friend.uid }
+                            .map { ($0.id, $0) })
+
+                        if let snapshot,
+                           snapshot.exists,
+                           let data = snapshot.data(),
+                           var round = FirebaseLiveFriendRound(id: snapshot.documentID, data: data),
+                           round.status == "active" {
+                            if let profile = profilesByID[round.ownerId] {
+                                round.ownerName = profile.displayName
+                                round.ownerHomeClub = profile.homeClub
+                                round.ownerPhotoURL = profile.photoURL
+                            }
+                            roundsByID[round.id] = round
+                        }
+
+                        self.liveFriendRounds = roundsByID.values.sorted { $0.updatedAt > $1.updatedAt }
+                    }
+                }
+            liveFriendRoundListeners.append(listener)
+        }
     }
 
     private func startLiveGroupGamesListener(for uid: String) {
@@ -1752,7 +2733,10 @@ final class FirebaseSocialService: ObservableObject {
                             self.statusMessage = "Live leaderboard unavailable: \(error.localizedDescription)"
                         }
                     }
-                    self.liveGroupGames = games.sorted { $0.updatedAt > $1.updatedAt }
+                    self.liveGroupGames = self.enrichGroupGames(
+                        games.sorted { $0.updatedAt > $1.updatedAt },
+                        with: self.friends
+                    )
                 }
             }
     }
@@ -1760,6 +2744,10 @@ final class FirebaseSocialService: ObservableObject {
     private func calculatedCourseHandicap(for handicap: Double, tee: TeeBox) -> Int {
         let adjusted = (handicap * Double(tee.slope) / 113.0) + (tee.rating - Double(tee.par))
         return max(0, Int(adjusted.rounded(.toNearestOrAwayFromZero)))
+    }
+
+    private func sameLocalDay(_ first: Date, _ second: Date) -> Bool {
+        Calendar.current.isDate(first, inSameDayAs: second)
     }
 
     private func matchplayScore(match: FirebaseMatchplayMatch, scores: [String: [Int]], holes: [Hole]) -> Int {
@@ -1787,17 +2775,33 @@ final class FirebaseSocialService: ObservableObject {
               let opponentId = match.opponentId(for: uid)
         else { return nil }
 
-        let completed = holes.indices.filter { index in
+        var score = 0
+        var completed = 0
+
+        for index in holes.indices {
             let userValues = scores[uid] ?? []
             let opponentValues = scores[opponentId] ?? []
             let userScore = index < userValues.count ? userValues[index] : 0
             let opponentScore = index < opponentValues.count ? opponentValues[index] : 0
-            return userScore > 0 && opponentScore > 0
-        }.count
-        let score = matchplayScore(match: match, scores: scores, holes: holes)
-        let holesLeft = max(0, holes.count - completed)
+            guard userScore > 0, opponentScore > 0 else { continue }
 
-        guard abs(score) > holesLeft || completed == holes.count else { return nil }
+            completed += 1
+            let hole = holes[index]
+            let userNet = userScore - match.strokes(for: uid, hole: hole)
+            let opponentNet = opponentScore - match.strokes(for: opponentId, hole: hole)
+            if userNet < opponentNet {
+                score += 1
+            } else if opponentNet < userNet {
+                score -= 1
+            }
+
+            let holesLeft = max(0, holes.count - completed)
+            if abs(score) > holesLeft {
+                return MatchplayResult(winnerId: score > 0 ? uid : opponentId, margin: abs(score), holesLeft: holesLeft)
+            }
+        }
+
+        guard completed == holes.count else { return nil }
 
         let winnerId: String?
         if score > 0 {
@@ -1808,7 +2812,7 @@ final class FirebaseSocialService: ObservableObject {
             winnerId = nil
         }
 
-        return MatchplayResult(winnerId: winnerId, margin: abs(score), holesLeft: holesLeft)
+        return MatchplayResult(winnerId: winnerId, margin: abs(score), holesLeft: 0)
     }
 
     private func createLiveGroupMoments(
@@ -2019,11 +3023,13 @@ struct FirebaseGroupInvite: Identifiable {
 
 struct FirebaseMatchplayPlayer {
     var displayName: String
+    var photoURL: String?
     var handicap: Double
     var courseHandicap: Int
 
     init(data: [String: Any]) {
         displayName = data["displayName"] as? String ?? "Golfer"
+        photoURL = data["photoURL"] as? String
         handicap = data["handicap"] as? Double ?? 0
         courseHandicap = data["courseHandicap"] as? Int ?? 0
     }
@@ -2070,6 +3076,7 @@ struct FirebaseMatchplayMatch: Identifiable {
     var winnerId: String?
     var resultMargin: Int?
     var resultHolesLeft: Int?
+    var createdAt: Date
     var completedAt: Date?
     var updatedAt: Date
 
@@ -2105,6 +3112,10 @@ struct FirebaseMatchplayMatch: Identifiable {
         self.winnerId = data["winnerId"] as? String
         self.resultMargin = data["resultMargin"] as? Int
         self.resultHolesLeft = data["resultHolesLeft"] as? Int
+        self.createdAt = (data["createdAt"] as? Timestamp)?.dateValue()
+            ?? (data["completedAt"] as? Timestamp)?.dateValue()
+            ?? (data["updatedAt"] as? Timestamp)?.dateValue()
+            ?? Date()
         self.completedAt = (data["completedAt"] as? Timestamp)?.dateValue()
         self.updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? Date()
     }
@@ -2127,6 +3138,78 @@ struct FirebaseMatchplayMatch: Identifiable {
     }
 }
 
+struct FirebaseLiveFriendRound: Identifiable {
+    let id: String
+    var ownerId: String
+    var ownerName: String
+    var ownerHomeClub: String
+    var ownerPhotoURL: String?
+    var visibleToIds: [String]
+    var status: String
+    var courseName: String
+    var teeName: String
+    var holeCount: Int
+    var currentHole: Int
+    var through: Int
+    var completed: Bool
+    var gross: Int
+    var stableford: Int
+    var scoreToPar: Int
+    var scores: [Int]
+    var points: [Int]
+    var pars: [Int]
+    var createdAt: Date
+    var updatedAt: Date
+
+    init?(document: QueryDocumentSnapshot) {
+        let data = document.data()
+        self.init(id: document.documentID, data: data)
+    }
+
+    init?(id: String, data: [String: Any]) {
+        guard
+            let ownerId = data["ownerId"] as? String,
+            let status = data["status"] as? String,
+            let courseName = data["courseName"] as? String,
+            let teeName = data["teeName"] as? String
+        else { return nil }
+
+        self.id = id
+        self.ownerId = ownerId
+        self.ownerName = data["ownerName"] as? String ?? "A friend"
+        self.ownerHomeClub = data["ownerHomeClub"] as? String ?? ""
+        self.ownerPhotoURL = data["ownerPhotoURL"] as? String
+        self.visibleToIds = data["visibleToIds"] as? [String] ?? []
+        self.status = status
+        self.courseName = courseName
+        self.teeName = teeName
+        self.holeCount = data["holeCount"] as? Int ?? 18
+        self.currentHole = data["currentHole"] as? Int ?? 1
+        self.through = data["through"] as? Int ?? 0
+        self.completed = data["completed"] as? Bool ?? false
+        self.gross = data["gross"] as? Int ?? 0
+        self.stableford = data["stableford"] as? Int ?? 0
+        self.scoreToPar = data["scoreToPar"] as? Int ?? 0
+        self.scores = data["scores"] as? [Int] ?? []
+        self.points = data["points"] as? [Int] ?? []
+        self.pars = data["pars"] as? [Int] ?? []
+        self.createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+        self.updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? createdAt
+    }
+
+    var throughText: String {
+        completed ? "F" : through == 0 ? "-" : "\(through)"
+    }
+
+    var scoreToParLabel: String {
+        scoreToPar == 0 ? "E" : scoreToPar > 0 ? "+\(scoreToPar)" : "\(scoreToPar)"
+    }
+
+    var displayCourse: String {
+        teeName.isEmpty ? courseName : "\(courseName) • \(teeName)"
+    }
+}
+
 struct FirebaseLiveGroupGame: Identifiable {
     let id: String
     var groupId: String
@@ -2141,6 +3224,7 @@ struct FirebaseLiveGroupGame: Identifiable {
     var players: [FirebaseLiveGroupPlayer]
     var events: [FirebaseLiveGroupEvent]
     var createdAt: Date
+    var completedAt: Date?
     var updatedAt: Date
 
     init?(document: QueryDocumentSnapshot) {
@@ -2167,6 +3251,7 @@ struct FirebaseLiveGroupGame: Identifiable {
         self.players = []
         self.events = []
         self.createdAt = (data["createdAt"] as? Timestamp)?.dateValue() ?? Date()
+        self.completedAt = (data["completedAt"] as? Timestamp)?.dateValue()
         self.updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue() ?? createdAt
     }
 
@@ -2268,6 +3353,7 @@ struct FirebaseSharedRound: Identifiable {
     var penalties: Int
     var groupIds: [String]
     var holes: [FirebaseSharedHoleEntry]
+    var updatedAt: Date
 
     init?(document: QueryDocumentSnapshot) {
         self.init(id: document.documentID, data: document.data())
@@ -2307,6 +3393,9 @@ struct FirebaseSharedRound: Identifiable {
         self.holes = (data["holes"] as? [[String: Any]] ?? [])
             .compactMap(FirebaseSharedHoleEntry.init(data:))
             .sorted { $0.holeNumber < $1.holeNumber }
+        self.updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue()
+            ?? (data["createdAt"] as? Timestamp)?.dateValue()
+            ?? self.date
     }
 
     var scoreToParLabel: String {
