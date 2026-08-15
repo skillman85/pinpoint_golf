@@ -17902,7 +17902,7 @@ private struct FriendMatchplayHistoryPage: View {
                 } else {
                     SectionHeader(title: "Matchplay Rounds", actionTitle: "\(matches.count)")
                     VStack(spacing: 10) {
-                        ForEach(matches) { match in
+                        ForEach(matches.sorted { MatchplayHistoryRow.playedDate(for: $0) > MatchplayHistoryRow.playedDate(for: $1) }) { match in
                             if let currentUserID {
                                 NavigationLink {
                                     LiveMatchplayView(
@@ -17937,7 +17937,11 @@ private struct MatchplayHistoryRow: View {
     let friend: FirebaseFriendProfile
 
     private var displayDate: String {
-        Self.dateFormatter.string(from: match.completedAt ?? match.updatedAt)
+        Self.dateFormatter.string(from: Self.playedDate(for: match))
+    }
+
+    fileprivate static func playedDate(for match: FirebaseMatchplayMatch) -> Date {
+        match.completedAt ?? match.createdAt
     }
 
     private var opponentID: String? {
@@ -19363,7 +19367,11 @@ struct MatchplayFriendRecord {
             }
         }
 
-        return latestByMatchKey.values.sorted { $0.updatedAt > $1.updatedAt }
+        return latestByMatchKey.values.sorted { matchPlayedDate($0) > matchPlayedDate($1) }
+    }
+
+    private static func matchPlayedDate(_ match: FirebaseMatchplayMatch) -> Date {
+        match.completedAt ?? match.createdAt
     }
 
     private static func matchIdentityKey(_ match: FirebaseMatchplayMatch) -> String {

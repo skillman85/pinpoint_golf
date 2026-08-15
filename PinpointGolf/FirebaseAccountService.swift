@@ -2193,6 +2193,10 @@ final class FirebaseSocialService: ObservableObject {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
+    private func matchPlayedDate(_ match: FirebaseMatchplayMatch) -> Date {
+        match.completedAt ?? match.createdAt
+    }
+
     private func loadMatchplayHistory(for uid: String) async throws -> [FirebaseMatchplayMatch] {
         let snapshot = try await database.collection("matchplayMatches")
             .whereField("memberIds", arrayContains: uid)
@@ -2204,7 +2208,7 @@ final class FirebaseSocialService: ObservableObject {
                 match.status != "cancelled"
                     && (match.status == "completed" || match.completedAt != nil || match.winnerId != nil || match.resultMargin != nil)
             }
-            .sorted { ($0.completedAt ?? $0.updatedAt) > ($1.completedAt ?? $1.updatedAt) }
+            .sorted { matchPlayedDate($0) > matchPlayedDate($1) }
     }
 
     private func loadLiveGroupGames(for uid: String) async throws -> [FirebaseLiveGroupGame] {
