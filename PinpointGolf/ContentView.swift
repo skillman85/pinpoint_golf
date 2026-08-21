@@ -140,6 +140,7 @@ struct ContentView: View {
             if newPhase == .active {
                 Task {
                     if firebaseAccount.user != nil {
+                        await PushNotificationService.shared.syncCurrentToken()
                         await firebaseSocial.refresh()
                     }
                     if isRoundActive {
@@ -272,9 +273,11 @@ struct ContentView: View {
             return
         }
 
+        await PushNotificationService.shared.syncCurrentToken()
         await firebaseSocial.refresh()
         try? await Task.sleep(for: .milliseconds(900))
         guard firebaseAccount.user != nil else { return }
+        await PushNotificationService.shared.syncCurrentToken()
         await firebaseSocial.refresh()
     }
 
