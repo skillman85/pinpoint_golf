@@ -97,7 +97,7 @@ struct ContentView: View {
                     prepareLocalDataForSignedInUser(uid)
                 }
                 await restoreAndSyncCloudDataIfNeeded(force: false)
-                await firebaseSocial.refresh()
+                await refreshSocialAfterAuthSettles()
                 await websiteSeasonSync.retryPendingSync()
             }
         }
@@ -113,7 +113,7 @@ struct ContentView: View {
                         prepareLocalDataForSignedInUser(uid)
                     }
                     await restoreAndSyncCloudDataIfNeeded(force: true)
-                    await firebaseSocial.refresh()
+                    await refreshSocialAfterAuthSettles()
                     await firebaseRoundSync.sync(rounds: roundArchive.rounds)
                     await websiteSeasonSync.sync(backup: makePrecisionBackup())
                 }
@@ -137,16 +137,21 @@ struct ContentView: View {
             saveActiveRoundDraft()
         }
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active, isRoundActive {
+            if newPhase == .active {
                 Task {
-                    await firebaseSocial.syncLiveFriendRound(
-                        course: selectedCourse,
-                        tee: selectedTee,
-                        entries: entries,
-                        currentHoleIndex: currentHoleIndex,
-                        courseHandicap: currentCourseHandicap,
-                        playerProfile: firebaseAccount.profile
-                    )
+                    if firebaseAccount.user != nil {
+                        await firebaseSocial.refresh()
+                    }
+                    if isRoundActive {
+                        await firebaseSocial.syncLiveFriendRound(
+                            course: selectedCourse,
+                            tee: selectedTee,
+                            entries: entries,
+                            currentHoleIndex: currentHoleIndex,
+                            courseHandicap: currentCourseHandicap,
+                            playerProfile: firebaseAccount.profile
+                        )
+                    }
                 }
             } else if newPhase != .active {
                 saveActiveRoundDraft()
@@ -259,6 +264,18 @@ struct ContentView: View {
         }
 
         lastSignedInUID = uid
+    }
+
+    private func refreshSocialAfterAuthSettles() async {
+        guard firebaseAccount.user != nil else {
+            await firebaseSocial.refresh()
+            return
+        }
+
+        await firebaseSocial.refresh()
+        try? await Task.sleep(for: .milliseconds(900))
+        guard firebaseAccount.user != nil else { return }
+        await firebaseSocial.refresh()
     }
 
     @MainActor
