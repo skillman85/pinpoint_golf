@@ -9250,9 +9250,6 @@ struct LiveRoundView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
 
-                LiveFriendSharingStatusPill(text: liveFriendSharingText)
-                    .padding(.horizontal, 16)
-
                 LiveHoleNavigator(
                     currentHole: currentHoleIndex + 1,
                     totalHoles: entries.count,
@@ -9470,16 +9467,6 @@ struct LiveRoundView: View {
             && (game.courseName.isEmpty || game.courseName == selectedCourse.name)
             && (game.teeName.isEmpty || game.teeName == selectedTee.name)
         }
-    }
-
-    private var liveFriendSharingText: String {
-        if let status = firebaseSocial.liveFriendSharingStatus {
-            return status
-        }
-        guard currentUserId != nil else {
-            return "Sign in to share this round live."
-        }
-        return friends.isEmpty ? "No friends to share this live round with yet." : "Preparing live sharing..."
     }
 
     private var primaryActionTitle: String {
@@ -22483,33 +22470,6 @@ struct LiveRoundHeaderMetric: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(fill ?? Color.white.opacity(0.14)))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(fill == nil ? Color.white.opacity(0.18) : Color.white.opacity(0.34)))
-    }
-}
-
-private struct LiveFriendSharingStatusPill: View {
-    let text: String
-
-    private var isProblem: Bool {
-        text.localizedCaseInsensitiveContains("failed")
-            || text.localizedCaseInsensitiveContains("sign in")
-            || text.localizedCaseInsensitiveContains("no friends")
-    }
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: isProblem ? "exclamationmark.triangle.fill" : "dot.radiowaves.left.and.right")
-                .font(.system(size: 12, weight: .heavy))
-            Text(text)
-                .font(.system(size: 12, weight: .heavy, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(isProblem ? AppTheme.gold : AppTheme.mint)
-        .padding(.horizontal, 12)
-        .frame(height: 32)
-        .background(RoundedRectangle(cornerRadius: 8).fill(AppTheme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.72)))
     }
 }
 
