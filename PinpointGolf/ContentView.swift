@@ -8935,8 +8935,8 @@ struct LiveMatchplayView: View {
             let userGross = match.score(for: currentUserID, holeIndex: index)
             let opponentGross = match.score(for: opponentID, holeIndex: index)
             let isComplete = userGross > 0 && opponentGross > 0
-            let userNet = isComplete ? userGross - match.strokes(for: currentUserID, hole: hole) : 0
-            let opponentNet = isComplete ? opponentGross - match.strokes(for: opponentID, hole: hole) : 0
+            let userNet = userGross > 0 ? userGross - match.strokes(for: currentUserID, hole: hole) : 0
+            let opponentNet = opponentGross > 0 ? opponentGross - match.strokes(for: opponentID, hole: hole) : 0
             let winner: Int
 
             if !isComplete || userNet == opponentNet {
@@ -9068,7 +9068,7 @@ struct LiveMatchplayView: View {
                     .font(.system(size: 30, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
                 Spacer()
-                Text(completedResults.isEmpty ? "Waiting for scores" : "Thru \(completedResults.count)")
+                Text(matchProgressLabel)
                     .font(.system(.subheadline, design: .rounded).weight(.heavy))
                     .foregroundStyle(Color.white.opacity(0.72))
             }
@@ -9150,7 +9150,6 @@ struct LiveMatchplayView: View {
                     scoreCell(
                         gross: result.userGross,
                         net: result.userNet,
-                        isComplete: result.isComplete,
                         tint: Self.teamBlue,
                         isWinner: result.winner > 0
                     )
@@ -9166,7 +9165,6 @@ struct LiveMatchplayView: View {
                     scoreCell(
                         gross: result.opponentGross,
                         net: result.opponentNet,
-                        isComplete: result.isComplete,
                         tint: Self.teamRed,
                         isWinner: result.winner < 0
                     )
@@ -9201,12 +9199,13 @@ struct LiveMatchplayView: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppTheme.border.opacity(0.85)))
     }
 
-    private func scoreCell(gross: Int, net: Int, isComplete: Bool, tint: Color, isWinner: Bool) -> some View {
-        VStack(spacing: 1) {
-            Text(isComplete ? "\(gross)" : "-")
+    private func scoreCell(gross: Int, net: Int, tint: Color, isWinner: Bool) -> some View {
+        let hasScore = gross > 0
+        return VStack(spacing: 1) {
+            Text(hasScore ? "\(gross)" : "-")
                 .font(.system(.body, design: .rounded).weight(.black))
                 .foregroundStyle(isWinner ? .white : AppTheme.ink)
-            Text(isComplete ? "net \(net)" : "gross/net")
+            Text(hasScore ? "net \(net)" : "pending")
                 .font(.system(size: 8, weight: .bold, design: .rounded))
                 .foregroundStyle(isWinner ? Color.white.opacity(0.82) : AppTheme.softText)
         }
@@ -9214,12 +9213,20 @@ struct LiveMatchplayView: View {
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 7)
-                .fill(isWinner ? tint : AppTheme.panel.opacity(isComplete ? 0.92 : 0.58))
+                .fill(isWinner ? tint : AppTheme.panel.opacity(hasScore ? 0.92 : 0.58))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 7)
-                .stroke(isWinner ? Color.white.opacity(0.22) : tint.opacity(isComplete ? 0.28 : 0.0), lineWidth: 1)
+                .stroke(isWinner ? Color.white.opacity(0.22) : tint.opacity(hasScore ? 0.28 : 0.0), lineWidth: 1)
         )
+    }
+
+    private var matchProgressLabel: String {
+        let completed = completedResults.count
+        if completed > 0 { return "Thru \(completed)" }
+        let posted = holeResults.filter { $0.userGross > 0 || $0.opponentGross > 0 }.count
+        if posted > 0 { return "\(posted) score\(posted == 1 ? "" : "s") posted" }
+        return "Waiting for scores"
     }
 
     private var overallStatus: String {
@@ -9240,7 +9247,15 @@ struct LiveMatchplayView: View {
     }
 
     private func holeResultLabel(_ result: HoleResult) -> String {
-        guard result.isComplete else { return "Awaiting scores" }
+        if !result.isComplete {
+            if result.userGross > 0 && result.opponentGross == 0 {
+                return "Waiting for \(shortName(opponentName))"
+            }
+            if result.opponentGross > 0 && result.userGross == 0 {
+                return "Your score needed"
+            }
+            return "Awaiting scores"
+        }
         if result.winner > 0 { return "\(shortName(userName)) won" }
         if result.winner < 0 { return "\(shortName(opponentName)) won" }
         return "Halved"
