@@ -39,6 +39,7 @@ struct ContentView: View {
     @State private var pendingSharedRoundId: String?
     @State private var pendingRoundType: NewRoundGameType = .individual
     @State private var pendingMatchplayFriend: FirebaseFriendProfile?
+    @State private var activeStartedMatchplay: FirebaseMatchplayMatch?
     @State private var pendingStablefordGroup: FirebaseGolfGroup?
     @State private var sideMatch = MatchplaySideGame()
     @State private var didRestoreCloudDataForCurrentUser = false
@@ -277,6 +278,7 @@ struct ContentView: View {
         isRoundReviewPresented = false
         currentHoleIndex = 0
         sideMatch = MatchplaySideGame()
+        activeStartedMatchplay = nil
         entries = selectedTee.holes.map { Self.defaultEntry(for: $0) }
         UserDefaults.standard.removeObject(forKey: activeRoundDraftKey)
     }
@@ -444,6 +446,7 @@ struct ContentView: View {
         }
         sideMatch = MatchplaySideGame()
         isRoundActive = true
+        activeStartedMatchplay = nil
         isRoundFlowPresented = true
         saveActiveRoundDraft()
         startSelectedRoundGame()
@@ -480,6 +483,7 @@ struct ContentView: View {
         isRoundReviewPresented = false
         currentHoleIndex = 0
         sideMatch = MatchplaySideGame()
+        activeStartedMatchplay = nil
         resetPendingRoundGame()
         selectedTab = .home
         clearActiveRoundDraft()
@@ -549,6 +553,7 @@ struct ContentView: View {
             Self.defaultEntry(for: $0)
         }
         sideMatch = MatchplaySideGame()
+        activeStartedMatchplay = nil
         resetPendingRoundGame()
         selectedTab = .home
         clearActiveRoundDraft()
@@ -561,13 +566,16 @@ struct ContentView: View {
         case .matchplay:
             guard let friend = pendingMatchplayFriend else { return }
             Task {
-                await firebaseSocial.startMatchplay(
+                let match = await firebaseSocial.startMatchplay(
                     with: friend,
                     course: selectedCourse,
                     tee: selectedTee,
                     playerProfile: firebaseAccount.profile,
                     courseHandicap: currentCourseHandicap
                 )
+                if let match {
+                    activeStartedMatchplay = match
+                }
             }
         case .groupStableford:
             guard let group = pendingStablefordGroup else { return }
@@ -580,6 +588,7 @@ struct ContentView: View {
     private func resetPendingRoundGame() {
         pendingRoundType = .individual
         pendingMatchplayFriend = nil
+        activeStartedMatchplay = nil
         pendingStablefordGroup = nil
     }
 
@@ -1146,6 +1155,12 @@ extension ContentView {
 
     private var activeRoundMatchplay: FirebaseMatchplayMatch? {
         guard pendingRoundType == .matchplay else { return nil }
+        if let activeStartedMatchplay,
+           activeStartedMatchplay.status == "active",
+           activeStartedMatchplay.courseName == selectedCourse.name,
+           activeStartedMatchplay.teeName == selectedTee.name {
+            return firebaseSocial.liveMatchplayMatches.first { $0.id == activeStartedMatchplay.id } ?? activeStartedMatchplay
+        }
         return firebaseSocial.liveMatchplayMatches.first {
             $0.courseName == selectedCourse.name && $0.teeName == selectedTee.name
         } ?? firebaseSocial.liveMatchplayMatches.first

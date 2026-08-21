@@ -863,10 +863,11 @@ final class FirebaseSocialService: ObservableObject {
         }
     }
 
-    func startMatchplay(with friend: FirebaseFriendProfile, course: GolfCourse, tee: TeeBox, playerProfile: FirebaseUserProfile?, courseHandicap: Int) async {
+    @discardableResult
+    func startMatchplay(with friend: FirebaseFriendProfile, course: GolfCourse, tee: TeeBox, playerProfile: FirebaseUserProfile?, courseHandicap: Int) async -> FirebaseMatchplayMatch? {
         guard let uid = Auth.auth().currentUser?.uid else {
             statusMessage = "Create an account before starting matchplay."
-            return
+            return nil
         }
 
         isWorking = true
@@ -879,7 +880,11 @@ final class FirebaseSocialService: ObservableObject {
                let status = data["status"] as? String,
                status == "active" {
                 statusMessage = "Matchplay is already active with \(friend.displayName)"
-                return
+                if let match = FirebaseMatchplayMatch(id: existingMatch.documentID, data: data) {
+                    upsertLiveMatchplay(match)
+                    return match
+                }
+                return nil
             }
             let documentId = existingMatch.exists ? UUID().uuidString : stableDocumentId
 
@@ -929,8 +934,14 @@ final class FirebaseSocialService: ObservableObject {
 
             try await database.collection("matchplayMatches").document(documentId).setData(payload, merge: true)
             statusMessage = "Matchplay started with \(friend.displayName)"
+            if let match = FirebaseMatchplayMatch(id: documentId, data: payload) {
+                upsertLiveMatchplay(match)
+                return match
+            }
+            return nil
         } catch {
             statusMessage = error.localizedDescription
+            return nil
         }
     }
 
@@ -990,7 +1001,7 @@ final class FirebaseSocialService: ObservableObject {
 
     func finishMatchplayRound(course: GolfCourse, tee: TeeBox, entries: [RoundHoleEntry]) async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
-        guard let match = liveMatchplayMatches.first(where: { $0.courseName == course.name && $0.teeName == tee.name }) ?? liveMatchplayMatches.first else {
+        guard let match = await activeMatchplayMatch(for: uid, course: course, tee: tee) else {
             return
         }
 
@@ -1026,6 +1037,38 @@ final class FirebaseSocialService: ObservableObject {
         } catch {
             statusMessage = "Matchplay result sync failed: \(error.localizedDescription)"
         }
+    }
+
+    private func upsertLiveMatchplay(_ match: FirebaseMatchplayMatch) {
+        liveMatchplayMatches.removeAll { $0.id == match.id }
+        if match.status == "active" {
+            liveMatchplayMatches.insert(match, at: 0)
+        }
+        liveMatchplayMatches.sort { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func activeMatchplayMatch(for uid: String, course: GolfCourse, tee: TeeBox) async -> FirebaseMatchplayMatch? {
+        if let match = liveMatchplayMatches.first(where: { $0.courseName == course.name && $0.teeName == tee.name }) ?? liveMatchplayMatches.first {
+            return match
+        }
+
+        do {
+            let snapshot = try await database.collection("matchplayMatches")
+                .whereField("memberIds", arrayContains: uid)
+                .whereField("status", isEqualTo: "active")
+                .getDocuments()
+            let matches = snapshot.documents
+                .compactMap(FirebaseMatchplayMatch.init(document:))
+                .sorted { $0.updatedAt > $1.updatedAt }
+            if let match = matches.first(where: { $0.courseName == course.name && $0.teeName == tee.name }) ?? matches.first {
+                upsertLiveMatchplay(match)
+                return match
+            }
+        } catch {
+            statusMessage = "Matchplay lookup failed: \(error.localizedDescription)"
+        }
+
+        return nil
     }
 
     func syncMatchplayRoundAmendment(_ round: SavedRound, refreshAfterSync: Bool = true) async {
@@ -3111,7 +3154,10 @@ struct FirebaseMatchplayMatch: Identifiable {
     var updatedAt: Date
 
     init?(document: QueryDocumentSnapshot) {
-        let data = document.data()
+        self.init(id: document.documentID, data: document.data())
+    }
+
+    init?(id: String, data: [String: Any]) {
         guard
             let memberIds = data["memberIds"] as? [String],
             let createdBy = data["createdBy"] as? String,
@@ -3126,7 +3172,7 @@ struct FirebaseMatchplayMatch: Identifiable {
         let holePayload = data["currentHoleByUser"] as? [String: Int] ?? [:]
         let holesPayload = data["holes"] as? [[String: Any]] ?? []
 
-        self.id = document.documentID
+        self.id = id
         self.memberIds = memberIds
         self.createdBy = createdBy
         self.status = status
