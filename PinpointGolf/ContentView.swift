@@ -575,16 +575,31 @@ struct ContentView: View {
             break
         case .matchplay:
             guard let friend = pendingMatchplayFriend else { return }
+            let course = selectedCourse
+            let tee = selectedTee
+            let profile = firebaseAccount.profile
+            let handicap = currentCourseHandicap
+            if let match = firebaseSocial.provisionalMatchplay(
+                with: friend,
+                course: course,
+                tee: tee,
+                playerProfile: profile,
+                courseHandicap: handicap
+            ) {
+                activeStartedMatchplay = match
+            }
             Task {
                 let match = await firebaseSocial.startMatchplay(
                     with: friend,
-                    course: selectedCourse,
-                    tee: selectedTee,
-                    playerProfile: firebaseAccount.profile,
-                    courseHandicap: currentCourseHandicap
+                    course: course,
+                    tee: tee,
+                    playerProfile: profile,
+                    courseHandicap: handicap
                 )
-                if let match {
-                    activeStartedMatchplay = match
+                await MainActor.run {
+                    if let match {
+                        activeStartedMatchplay = match
+                    }
                 }
             }
         case .groupStableford:
@@ -1183,6 +1198,33 @@ extension ContentView {
         let friend = pendingMatchplayFriend
         let profile = firebaseAccount.profile
         let handicap = currentCourseHandicap
+
+        if let friend,
+           let match = firebaseSocial.provisionalMatchplay(
+                with: friend,
+                course: course,
+                tee: tee,
+                playerProfile: profile,
+                courseHandicap: handicap
+           ) {
+            activeStartedMatchplay = match
+            presentedLiveMatchplay = match
+            Task {
+                let confirmedMatch = await firebaseSocial.startMatchplay(
+                    with: friend,
+                    course: course,
+                    tee: tee,
+                    playerProfile: profile,
+                    courseHandicap: handicap
+                )
+                await MainActor.run {
+                    if let confirmedMatch {
+                        activeStartedMatchplay = confirmedMatch
+                    }
+                }
+            }
+            return
+        }
 
         isOpeningLiveMatchplay = true
         Task {

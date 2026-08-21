@@ -945,6 +945,58 @@ final class FirebaseSocialService: ObservableObject {
         }
     }
 
+    func provisionalMatchplay(with friend: FirebaseFriendProfile, course: GolfCourse, tee: TeeBox, playerProfile: FirebaseUserProfile?, courseHandicap: Int) -> FirebaseMatchplayMatch? {
+        guard let uid = Auth.auth().currentUser?.uid else { return nil }
+        let documentId = matchplayDocumentId(uid, friend.uid, courseName: course.name, teeName: tee.name, date: Date())
+        let holeCount = tee.holes.count
+        let opponentCourseHandicap = calculatedCourseHandicap(for: friend.handicap, tee: tee)
+        let now = Timestamp(date: Date())
+        let payload: [String: Any] = [
+            "memberIds": [uid, friend.uid].sorted(),
+            "createdBy": uid,
+            "status": "active",
+            "courseName": course.name,
+            "teeName": tee.name,
+            "holeCount": holeCount,
+            "holes": tee.holes.map { hole in
+                [
+                    "number": hole.number,
+                    "par": hole.par,
+                    "yards": hole.yards,
+                    "strokeIndex": hole.strokeIndex
+                ]
+            },
+            "useHandicap": true,
+            "players": [
+                uid: [
+                    "displayName": displayName(from: playerProfile),
+                    "photoURL": playerProfile?.photoURL ?? "",
+                    "handicap": playerProfile?.handicap ?? 0,
+                    "courseHandicap": courseHandicap
+                ],
+                friend.uid: [
+                    "displayName": friend.displayName,
+                    "photoURL": friend.photoURL ?? "",
+                    "handicap": friend.handicap,
+                    "courseHandicap": opponentCourseHandicap
+                ]
+            ],
+            "scores": [
+                uid: Array(repeating: 0, count: holeCount),
+                friend.uid: Array(repeating: 0, count: holeCount)
+            ],
+            "currentHoleByUser": [
+                uid: 0,
+                friend.uid: 0
+            ],
+            "createdAt": now,
+            "updatedAt": now
+        ]
+        guard let match = FirebaseMatchplayMatch(id: documentId, data: payload) else { return nil }
+        upsertLiveMatchplay(match)
+        return match
+    }
+
     func syncMatchplayScore(_ match: FirebaseMatchplayMatch, holeIndex: Int, score: Int, holes: [Hole]) async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         var userScores = match.scores[uid] ?? Array(repeating: 0, count: match.holeCount)
