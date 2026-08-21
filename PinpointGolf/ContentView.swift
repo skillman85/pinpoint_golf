@@ -41,6 +41,7 @@ struct ContentView: View {
     @State private var pendingMatchplayFriend: FirebaseFriendProfile?
     @State private var activeStartedMatchplay: FirebaseMatchplayMatch?
     @State private var presentedLiveMatchplay: FirebaseMatchplayMatch?
+    @State private var isOpeningLiveMatchplay = false
     @State private var pendingStablefordGroup: FirebaseGolfGroup?
     @State private var sideMatch = MatchplaySideGame()
     @State private var didRestoreCloudDataForCurrentUser = false
@@ -281,6 +282,7 @@ struct ContentView: View {
         sideMatch = MatchplaySideGame()
         activeStartedMatchplay = nil
         presentedLiveMatchplay = nil
+        isOpeningLiveMatchplay = false
         entries = selectedTee.holes.map { Self.defaultEntry(for: $0) }
         UserDefaults.standard.removeObject(forKey: activeRoundDraftKey)
     }
@@ -450,6 +452,7 @@ struct ContentView: View {
         isRoundActive = true
         activeStartedMatchplay = nil
         presentedLiveMatchplay = nil
+        isOpeningLiveMatchplay = false
         isRoundFlowPresented = true
         saveActiveRoundDraft()
         startSelectedRoundGame()
@@ -488,6 +491,7 @@ struct ContentView: View {
         sideMatch = MatchplaySideGame()
         activeStartedMatchplay = nil
         presentedLiveMatchplay = nil
+        isOpeningLiveMatchplay = false
         resetPendingRoundGame()
         selectedTab = .home
         clearActiveRoundDraft()
@@ -559,6 +563,7 @@ struct ContentView: View {
         sideMatch = MatchplaySideGame()
         activeStartedMatchplay = nil
         presentedLiveMatchplay = nil
+        isOpeningLiveMatchplay = false
         resetPendingRoundGame()
         selectedTab = .home
         clearActiveRoundDraft()
@@ -595,6 +600,7 @@ struct ContentView: View {
         pendingMatchplayFriend = nil
         activeStartedMatchplay = nil
         presentedLiveMatchplay = nil
+        isOpeningLiveMatchplay = false
         pendingStablefordGroup = nil
     }
 
@@ -1098,20 +1104,29 @@ extension ContentView {
                         .buttonStyle(.plain)
                         .accessibilityLabel("View Stableford leaderboard")
                     } else if isRoundActive, pendingRoundType == .matchplay {
-                        if let match = activeRoundMatchplay, firebaseAccount.user?.uid != nil {
+                        if firebaseAccount.user?.uid != nil {
                             Button {
-                                presentedLiveMatchplay = match
+                                openLiveMatchplayScoring()
                             } label: {
-                                Label("Matchplay", systemImage: "flag.2.crossed.fill")
-                                    .font(.system(.subheadline, design: .rounded).weight(.heavy))
-                                    .foregroundStyle(AppTheme.mint)
-                                    .padding(.horizontal, 12)
-                                    .frame(height: 40)
-                                    .background(Capsule().fill(AppTheme.elevated))
-                                    .overlay(Capsule().stroke(AppTheme.border.opacity(0.9)))
+                                HStack(spacing: 8) {
+                                    if isOpeningLiveMatchplay {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    } else {
+                                        Image(systemName: "flag.2.crossed.fill")
+                                    }
+                                    Text("Matchplay")
+                                }
+                                .font(.system(.subheadline, design: .rounded).weight(.heavy))
+                                .foregroundStyle(AppTheme.mint)
+                                .padding(.horizontal, 12)
+                                .frame(height: 40)
+                                .background(Capsule().fill(AppTheme.elevated))
+                                .overlay(Capsule().stroke(AppTheme.border.opacity(0.9)))
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("View live matchplay scoring")
+                            .disabled(isOpeningLiveMatchplay)
                         } else {
                             Label("Matchplay", systemImage: "flag.2.crossed.fill")
                                 .font(.system(.subheadline, design: .rounded).weight(.heavy))
@@ -1151,6 +1166,43 @@ extension ContentView {
                         )
                     }
                 }
+            }
+        }
+    }
+
+    private func openLiveMatchplayScoring() {
+        guard pendingRoundType == .matchplay, firebaseAccount.user?.uid != nil else { return }
+        if let match = activeRoundMatchplay {
+            presentedLiveMatchplay = match
+            return
+        }
+        guard !isOpeningLiveMatchplay else { return }
+
+        let course = selectedCourse
+        let tee = selectedTee
+        let friend = pendingMatchplayFriend
+        let profile = firebaseAccount.profile
+        let handicap = currentCourseHandicap
+
+        isOpeningLiveMatchplay = true
+        Task {
+            var match = await firebaseSocial.recoverActiveMatchplay(course: course, tee: tee)
+            if match == nil, let friend {
+                match = await firebaseSocial.startMatchplay(
+                    with: friend,
+                    course: course,
+                    tee: tee,
+                    playerProfile: profile,
+                    courseHandicap: handicap
+                )
+            }
+
+            await MainActor.run {
+                if let match {
+                    activeStartedMatchplay = match
+                    presentedLiveMatchplay = match
+                }
+                isOpeningLiveMatchplay = false
             }
         }
     }

@@ -999,6 +999,11 @@ final class FirebaseSocialService: ObservableObject {
         }
     }
 
+    func recoverActiveMatchplay(course: GolfCourse, tee: TeeBox) async -> FirebaseMatchplayMatch? {
+        guard let uid = Auth.auth().currentUser?.uid else { return nil }
+        return await activeMatchplayMatch(for: uid, course: course, tee: tee)
+    }
+
     func cancelMatchplay(_ match: FirebaseMatchplayMatch) async {
         guard let uid = Auth.auth().currentUser?.uid, match.memberIds.contains(uid) else { return }
 
