@@ -946,20 +946,33 @@ final class FirebaseSocialService: ObservableObject {
     }
 
     func syncMatchplayScore(_ match: FirebaseMatchplayMatch, holeIndex: Int, score: Int, holes: [Hole]) async {
-        guard let uid = Auth.auth().currentUser?.uid, match.memberIds.contains(uid) else { return }
-        guard holeIndex >= 0, holeIndex < match.holeCount else { return }
-
+        guard let uid = Auth.auth().currentUser?.uid else { return }
         var userScores = match.scores[uid] ?? Array(repeating: 0, count: match.holeCount)
         if userScores.count < match.holeCount {
             userScores += Array(repeating: 0, count: match.holeCount - userScores.count)
         }
-        userScores[holeIndex] = max(0, min(20, score))
+        if holeIndex >= 0, holeIndex < match.holeCount {
+            userScores[holeIndex] = max(0, min(20, score))
+        }
+        await syncMatchplayScores(match, currentHoleIndex: holeIndex, playerScores: userScores, holes: holes)
+    }
+
+    func syncMatchplayScores(_ match: FirebaseMatchplayMatch, currentHoleIndex: Int, playerScores: [Int], holes: [Hole]) async {
+        guard let uid = Auth.auth().currentUser?.uid, match.memberIds.contains(uid) else { return }
+        guard currentHoleIndex >= 0, currentHoleIndex < match.holeCount else { return }
+
+        var userScores = playerScores.map { max(0, min(20, $0)) }
+        if userScores.count < match.holeCount {
+            userScores += Array(repeating: 0, count: match.holeCount - userScores.count)
+        } else if userScores.count > match.holeCount {
+            userScores = Array(userScores.prefix(match.holeCount))
+        }
 
         var scores = match.scores
         scores[uid] = userScores
         var payload: [String: Any] = [
             "scores.\(uid)": userScores,
-            "currentHoleByUser.\(uid)": holeIndex,
+            "currentHoleByUser.\(uid)": currentHoleIndex,
             "updatedAt": Timestamp(date: Date())
         ]
         var completedMatch = false

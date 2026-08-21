@@ -1046,6 +1046,7 @@ extension ContentView {
                         handicap: roundHandicap,
                         friends: firebaseSocial.friends,
                         firebaseSocial: firebaseSocial,
+                        initialMatchplayMatch: activeRoundMatchplay,
                         currentUserId: firebaseAccount.user?.uid,
                         playerProfile: firebaseAccount.profile,
                         roundGameType: pendingRoundType,
@@ -9166,6 +9167,7 @@ struct LiveRoundView: View {
     let handicap: Double
     let friends: [FirebaseFriendProfile]
     @ObservedObject var firebaseSocial: FirebaseSocialService
+    let initialMatchplayMatch: FirebaseMatchplayMatch?
     let currentUserId: String?
     let playerProfile: FirebaseUserProfile?
     let roundGameType: NewRoundGameType
@@ -9400,17 +9402,27 @@ struct LiveRoundView: View {
             syncCurrentLiveFriendRound()
             syncCurrentLiveGroupGames()
         }
+        .onChange(of: initialMatchplayMatch?.id) { _, _ in
+            syncCurrentCloudMatchScore()
+        }
         .onChange(of: friends.map(\.uid)) { _, _ in
             syncCurrentLiveFriendRound()
         }
         .onAppear {
             yardageTargetDistance = entries[currentHoleIndex].hole.yards
+            syncCurrentCloudMatchScore()
             syncCurrentLiveFriendRound()
         }
     }
 
     private var activeCloudMatch: FirebaseMatchplayMatch? {
-        firebaseSocial.liveMatchplayMatches.first {
+        if let initialMatchplayMatch,
+           initialMatchplayMatch.status == "active",
+           initialMatchplayMatch.courseName == selectedCourse.name,
+           initialMatchplayMatch.teeName == selectedTee.name {
+            return firebaseSocial.liveMatchplayMatches.first { $0.id == initialMatchplayMatch.id } ?? initialMatchplayMatch
+        }
+        return firebaseSocial.liveMatchplayMatches.first {
             $0.courseName == selectedCourse.name && $0.teeName == selectedTee.name
         } ?? firebaseSocial.liveMatchplayMatches.first
     }
@@ -9508,9 +9520,9 @@ struct LiveRoundView: View {
 
     private func syncCurrentCloudMatchScore() {
         guard let match = activeCloudMatch else { return }
-        let score = entries[currentHoleIndex].score
+        let scores = entries.map(\.score)
         Task {
-            await firebaseSocial.syncMatchplayScore(match, holeIndex: currentHoleIndex, score: score, holes: selectedTee.holes)
+            await firebaseSocial.syncMatchplayScores(match, currentHoleIndex: currentHoleIndex, playerScores: scores, holes: selectedTee.holes)
         }
     }
 
