@@ -1141,7 +1141,7 @@ extension ContentView {
                                     } else {
                                         Image(systemName: "flag.2.crossed.fill")
                                     }
-                                    Text("Matchplay")
+                                    Text("View Live Matchplay")
                                 }
                                 .font(.system(.subheadline, design: .rounded).weight(.heavy))
                                 .foregroundStyle(AppTheme.mint)
@@ -1154,7 +1154,7 @@ extension ContentView {
                             .accessibilityLabel("View live matchplay scoring")
                             .disabled(isOpeningLiveMatchplay)
                         } else {
-                            Label("Matchplay", systemImage: "flag.2.crossed.fill")
+                            Label("View Live Matchplay", systemImage: "flag.2.crossed.fill")
                                 .font(.system(.subheadline, design: .rounded).weight(.heavy))
                                 .foregroundStyle(AppTheme.softText)
                                 .padding(.horizontal, 12)
