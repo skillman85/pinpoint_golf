@@ -601,6 +601,17 @@ struct ContentView: View {
                         activeStartedMatchplay = match
                     }
                 }
+                if let match {
+                    let snapshot = await MainActor.run {
+                        (currentHoleIndex, entries.map(\.score))
+                    }
+                    await firebaseSocial.syncMatchplayScores(
+                        match,
+                        currentHoleIndex: snapshot.0,
+                        playerScores: snapshot.1,
+                        holes: tee.holes
+                    )
+                }
             }
         case .groupStableford:
             guard let group = pendingStablefordGroup else { return }
@@ -1221,6 +1232,17 @@ extension ContentView {
                     if let confirmedMatch {
                         activeStartedMatchplay = confirmedMatch
                     }
+                }
+                if let confirmedMatch {
+                    let snapshot = await MainActor.run {
+                        (currentHoleIndex, entries.map(\.score))
+                    }
+                    await firebaseSocial.syncMatchplayScores(
+                        confirmedMatch,
+                        currentHoleIndex: snapshot.0,
+                        playerScores: snapshot.1,
+                        holes: tee.holes
+                    )
                 }
             }
             return

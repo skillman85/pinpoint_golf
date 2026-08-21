@@ -1022,14 +1022,25 @@ final class FirebaseSocialService: ObservableObject {
 
         var scores = match.scores
         scores[uid] = userScores
+        var currentHoleByUser = match.currentHoleByUser
+        currentHoleByUser[uid] = currentHoleIndex
         var payload: [String: Any] = [
             "scores.\(uid)": userScores,
             "currentHoleByUser.\(uid)": currentHoleIndex,
             "updatedAt": Timestamp(date: Date())
         ]
+        var updatedMatch = match
+        updatedMatch.scores = scores
+        updatedMatch.currentHoleByUser = currentHoleByUser
+        updatedMatch.updatedAt = Date()
         var completedMatch = false
         if let result = matchplayResult(match: match, scores: scores, holes: holes) {
             completedMatch = true
+            updatedMatch.status = "completed"
+            updatedMatch.completedAt = Date()
+            updatedMatch.resultMargin = result.margin
+            updatedMatch.resultHolesLeft = result.holesLeft
+            updatedMatch.winnerId = result.winnerId
             payload["status"] = "completed"
             payload["completedAt"] = Timestamp(date: Date())
             payload["resultMargin"] = result.margin
@@ -1040,6 +1051,7 @@ final class FirebaseSocialService: ObservableObject {
                 payload["winnerId"] = FieldValue.delete()
             }
         }
+        upsertLiveMatchplay(updatedMatch)
 
         do {
             try await database.collection("matchplayMatches").document(match.id).updateData(payload)
@@ -1047,7 +1059,14 @@ final class FirebaseSocialService: ObservableObject {
                 await refresh()
             }
         } catch {
-            statusMessage = "Matchplay sync failed: \(error.localizedDescription)"
+            do {
+                try await database.collection("matchplayMatches").document(match.id).setData(matchplayPayload(from: updatedMatch), merge: true)
+                if completedMatch {
+                    await refresh()
+                }
+            } catch {
+                statusMessage = "Matchplay sync failed: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -1115,6 +1134,52 @@ final class FirebaseSocialService: ObservableObject {
             liveMatchplayMatches.insert(match, at: 0)
         }
         liveMatchplayMatches.sort { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func matchplayPayload(from match: FirebaseMatchplayMatch) -> [String: Any] {
+        var payload: [String: Any] = [
+            "memberIds": match.memberIds,
+            "createdBy": match.createdBy,
+            "status": match.status,
+            "courseName": match.courseName,
+            "teeName": match.teeName,
+            "holeCount": match.holeCount,
+            "holes": match.holes.map { hole in
+                [
+                    "number": hole.number,
+                    "par": hole.par,
+                    "yards": hole.yards,
+                    "strokeIndex": hole.strokeIndex
+                ]
+            },
+            "useHandicap": match.useHandicap,
+            "players": match.players.mapValues { player in
+                [
+                    "displayName": player.displayName,
+                    "photoURL": player.photoURL ?? "",
+                    "handicap": player.handicap,
+                    "courseHandicap": player.courseHandicap
+                ]
+            },
+            "scores": match.scores,
+            "currentHoleByUser": match.currentHoleByUser,
+            "playerFinishedIds": match.playerFinishedIds,
+            "createdAt": Timestamp(date: match.createdAt),
+            "updatedAt": Timestamp(date: match.updatedAt)
+        ]
+        if let completedAt = match.completedAt {
+            payload["completedAt"] = Timestamp(date: completedAt)
+        }
+        if let winnerId = match.winnerId {
+            payload["winnerId"] = winnerId
+        }
+        if let resultMargin = match.resultMargin {
+            payload["resultMargin"] = resultMargin
+        }
+        if let resultHolesLeft = match.resultHolesLeft {
+            payload["resultHolesLeft"] = resultHolesLeft
+        }
+        return payload
     }
 
     private func activeMatchplayMatch(for uid: String, course: GolfCourse, tee: TeeBox) async -> FirebaseMatchplayMatch? {
