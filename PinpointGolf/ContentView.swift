@@ -1113,6 +1113,18 @@ extension ContentView {
                     }
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if isRoundActive, pendingRoundType == .matchplay {
+                    HStack {
+                        liveMatchplayButton
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+                    .background(AppTheme.background)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if isRoundActive, let game = activeRoundStablefordGame {
@@ -1129,39 +1141,6 @@ extension ContentView {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("View Stableford leaderboard")
-                    } else if isRoundActive, pendingRoundType == .matchplay {
-                        if firebaseAccount.user?.uid != nil {
-                            Button {
-                                openLiveMatchplayScoring()
-                            } label: {
-                                HStack(spacing: 8) {
-                                    if isOpeningLiveMatchplay {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    } else {
-                                        Image(systemName: "flag.2.crossed.fill")
-                                    }
-                                    Text("View Live Matchplay")
-                                }
-                                .font(.system(.subheadline, design: .rounded).weight(.heavy))
-                                .foregroundStyle(AppTheme.mint)
-                                .padding(.horizontal, 12)
-                                .frame(height: 40)
-                                .background(Capsule().fill(AppTheme.elevated))
-                                .overlay(Capsule().stroke(AppTheme.border.opacity(0.9)))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("View live matchplay scoring")
-                            .disabled(isOpeningLiveMatchplay)
-                        } else {
-                            Label("View Live Matchplay", systemImage: "flag.2.crossed.fill")
-                                .font(.system(.subheadline, design: .rounded).weight(.heavy))
-                                .foregroundStyle(AppTheme.softText)
-                                .padding(.horizontal, 12)
-                                .frame(height: 40)
-                                .background(Capsule().fill(AppTheme.elevated))
-                                .overlay(Capsule().stroke(AppTheme.border.opacity(0.9)))
-                        }
                     }
                 }
 
@@ -1194,6 +1173,32 @@ extension ContentView {
                 }
             }
         }
+    }
+
+    private var liveMatchplayButton: some View {
+        Button {
+            openLiveMatchplayScoring()
+        } label: {
+            HStack(spacing: 8) {
+                if isOpeningLiveMatchplay {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "flag.2.crossed.fill")
+                }
+                Text("View Live Matchplay")
+            }
+            .font(.system(.subheadline, design: .rounded).weight(.heavy))
+            .foregroundStyle(firebaseAccount.user?.uid == nil ? AppTheme.softText : AppTheme.mint)
+            .padding(.horizontal, 14)
+            .frame(height: 42)
+            .background(Capsule().fill(AppTheme.elevated))
+            .overlay(Capsule().stroke(AppTheme.border.opacity(0.9)))
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("View live matchplay scoring")
+        .disabled(isOpeningLiveMatchplay || firebaseAccount.user?.uid == nil)
     }
 
     private func openLiveMatchplayScoring() {
