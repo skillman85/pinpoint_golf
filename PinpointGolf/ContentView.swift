@@ -9184,7 +9184,9 @@ struct LiveRoundView: View {
     @State private var confirmedPuttsHoleIndexes: Set<Int> = []
     @State private var editingHole: Hole?
     @State private var celebration: ScoringCelebration?
+    @State private var matchplayCelebration: MatchplayCelebration?
     @State private var celebratedHoleScores: Set<String> = []
+    @State private var celebratedMatchplayResultId: String?
 
     var body: some View {
         let currentGross = grossScoreThroughCurrentHole
@@ -9355,6 +9357,14 @@ struct LiveRoundView: View {
                 .transition(.opacity)
                 .zIndex(3)
             }
+
+            if let matchplayCelebration {
+                MatchplayCelebrationOverlay(celebration: matchplayCelebration) {
+                    self.matchplayCelebration = nil
+                }
+                .transition(.opacity)
+                .zIndex(4)
+            }
         }
         .background(AppTheme.background.ignoresSafeArea())
         .alert("Scores missing", isPresented: $showIncompleteScoreAlert) {
@@ -9404,6 +9414,16 @@ struct LiveRoundView: View {
         }
         .onChange(of: initialMatchplayMatch?.id) { _, _ in
             syncCurrentCloudMatchScore()
+            triggerMatchplayCelebrationIfNeeded()
+        }
+        .onChange(of: activeCloudMatch?.status) { _, _ in
+            triggerMatchplayCelebrationIfNeeded()
+        }
+        .onChange(of: activeCloudMatch?.winnerId) { _, _ in
+            triggerMatchplayCelebrationIfNeeded()
+        }
+        .onChange(of: activeCloudMatch?.resultMargin) { _, _ in
+            triggerMatchplayCelebrationIfNeeded()
         }
         .onChange(of: friends.map(\.uid)) { _, _ in
             syncCurrentLiveFriendRound()
@@ -9411,6 +9431,7 @@ struct LiveRoundView: View {
         .onAppear {
             yardageTargetDistance = entries[currentHoleIndex].hole.yards
             syncCurrentCloudMatchScore()
+            triggerMatchplayCelebrationIfNeeded()
             syncCurrentLiveFriendRound()
         }
     }
@@ -9474,6 +9495,29 @@ struct LiveRoundView: View {
         celebratedHoleScores.insert(key)
         withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) {
             self.celebration = celebration
+        }
+    }
+
+    private func triggerMatchplayCelebrationIfNeeded() {
+        guard let match = activeCloudMatch,
+              let currentUserId,
+              match.status == "completed",
+              let margin = match.resultMargin,
+              let holesLeft = match.resultHolesLeft
+        else { return }
+
+        let resultKey = "\(match.id)-\(match.winnerId ?? "half")-\(margin)-\(holesLeft)"
+        guard celebratedMatchplayResultId != resultKey else { return }
+        celebratedMatchplayResultId = resultKey
+
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.78)) {
+            matchplayCelebration = MatchplayCelebration(
+                matchId: match.id,
+                winnerId: match.winnerId,
+                currentUserId: currentUserId,
+                margin: margin,
+                holesLeft: holesLeft
+            )
         }
     }
 
@@ -21054,6 +21098,189 @@ struct ScoringCelebrationOverlay: View {
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 1.08 : 1.48)) {
+            dismiss()
+        }
+    }
+}
+
+struct MatchplayCelebration: Identifiable, Equatable {
+    enum Outcome {
+        case won
+        case lost
+        case halved
+    }
+
+    let id = UUID()
+    let matchId: String
+    let outcome: Outcome
+    let margin: Int
+    let holesLeft: Int
+
+    init(matchId: String, winnerId: String?, currentUserId: String, margin: Int, holesLeft: Int) {
+        self.matchId = matchId
+        self.margin = margin
+        self.holesLeft = holesLeft
+        if winnerId == nil || margin == 0 {
+            outcome = .halved
+        } else if winnerId == currentUserId {
+            outcome = .won
+        } else {
+            outcome = .lost
+        }
+    }
+
+    var title: String {
+        switch outcome {
+        case .won: return "Match Won"
+        case .lost: return "Match Lost"
+        case .halved: return "Match Halved"
+        }
+    }
+
+    var scoreLine: String {
+        guard outcome != .halved else { return "All square" }
+        if holesLeft > 0 {
+            return "\(margin)&\(holesLeft)"
+        }
+        return "\(margin) hole\(margin == 1 ? "" : "s")"
+    }
+
+    var icon: String {
+        switch outcome {
+        case .won: return "trophy.fill"
+        case .lost: return "flag.slash.fill"
+        case .halved: return "equal.circle.fill"
+        }
+    }
+
+    var palette: Creative3DIconPalette {
+        switch outcome {
+        case .won: return .sunrise
+        case .lost: return .fairway
+        case .halved: return .sky
+        }
+    }
+
+    var accent: Color {
+        switch outcome {
+        case .won: return AppTheme.gold
+        case .lost: return AppTheme.danger
+        case .halved: return AppTheme.mint
+        }
+    }
+}
+
+struct MatchplayCelebrationOverlay: View {
+    let celebration: MatchplayCelebration
+    let dismiss: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isBursting = false
+    @State private var isVisible = false
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Color.black
+                    .opacity(isVisible ? 0.22 : 0)
+                    .ignoresSafeArea()
+
+                matchplayBurst(in: proxy.size)
+
+                VStack(spacing: 10) {
+                    Creative3DIcon(
+                        systemName: celebration.icon,
+                        size: celebration.outcome == .won ? 84 : 76,
+                        palette: celebration.palette
+                    )
+
+                    VStack(spacing: 4) {
+                        Text(celebration.title)
+                            .font(.system(size: celebration.outcome == .won ? 40 : 36, weight: .heavy, design: .rounded))
+                            .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.38), radius: 8, x: 0, y: 5)
+                        Text(celebration.scoreLine)
+                            .font(.system(.title3, design: .rounded).weight(.black))
+                            .foregroundStyle(.white.opacity(0.94))
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 14)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.48)))
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(celebration.accent.opacity(0.55), lineWidth: 1.5))
+                }
+                .scaleEffect(isVisible ? 1 : 0.72)
+                .opacity(isVisible ? 1 : 0)
+                .offset(y: isVisible ? 0 : 26)
+            }
+            .allowsHitTesting(false)
+        }
+        .onAppear {
+            runAnimation()
+        }
+    }
+
+    private func matchplayBurst(in size: CGSize) -> some View {
+        let center = CGPoint(x: size.width / 2, y: size.height * 0.42)
+        let particleCount = celebration.outcome == .won ? 30 : 22
+
+        return ZStack {
+            ForEach(0..<particleCount, id: \.self) { index in
+                Image(systemName: particleSymbol(index))
+                    .font(.system(size: CGFloat(12 + (index % 4) * 5), weight: .heavy))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(particleColor(index))
+                    .rotationEffect(.degrees(Double(index * 19)))
+                    .position(center)
+                    .offset(particleOffset(index: index, count: particleCount))
+                    .scaleEffect(isBursting ? 1 : 0.25)
+                    .opacity(isVisible ? (isBursting ? 0 : 1) : 0)
+            }
+        }
+    }
+
+    private func particleSymbol(_ index: Int) -> String {
+        switch index % 5 {
+        case 0: return "flag.fill"
+        case 1: return "circle.fill"
+        case 2: return "sparkle"
+        case 3: return celebration.outcome == .won ? "trophy.fill" : "smallcircle.filled.circle.fill"
+        default: return "flag.2.crossed.fill"
+        }
+    }
+
+    private func particleColor(_ index: Int) -> Color {
+        switch celebration.outcome {
+        case .won:
+            return index.isMultiple(of: 2) ? AppTheme.gold : AppTheme.lime
+        case .lost:
+            return index.isMultiple(of: 2) ? AppTheme.danger : AppTheme.gold
+        case .halved:
+            return index.isMultiple(of: 2) ? AppTheme.mint : AppTheme.softText
+        }
+    }
+
+    private func particleOffset(index: Int, count: Int) -> CGSize {
+        guard !reduceMotion else { return .zero }
+        let angle = Double(index) / Double(max(count, 1)) * Double.pi * 2
+        let radius = CGFloat(celebration.outcome == .won ? 150 : 120) + CGFloat((index % 4) * 14)
+        return CGSize(width: cos(angle) * radius, height: sin(angle) * radius * 0.72)
+    }
+
+    private func runAnimation() {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+            isVisible = true
+        }
+
+        withAnimation(reduceMotion ? .easeOut(duration: 0.01) : .easeOut(duration: 0.86)) {
+            isBursting = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 1.05 : 1.45)) {
+            withAnimation(.easeInOut(duration: 0.22)) {
+                isVisible = false
+            }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 1.25 : 1.72)) {
             dismiss()
         }
     }
