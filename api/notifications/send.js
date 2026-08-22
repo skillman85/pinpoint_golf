@@ -20,7 +20,7 @@ async function loadTokenRecords(firestore, uid) {
     userReference.get()
   ]);
   const records = devicesSnapshot.docs
-    .map((document) => ({ token: document.get("token"), reference: document.ref }))
+    .map((document) => ({ token: document.get("token"), reference: document.ref, userReference }))
     .filter((record) => typeof record.token === "string" && record.token.length > 0);
   const knownTokens = new Set(records.map((record) => record.token));
   for (const token of userSnapshot.get("pushTokens") || []) {
@@ -134,7 +134,8 @@ async function removeInvalidTokens(records, response) {
     const record = records[index];
     if (record.reference) {
       operations.push(record.reference.delete());
-    } else if (record.userReference) {
+    }
+    if (record.userReference) {
       operations.push(record.userReference.set({ pushTokens: FieldValue.arrayRemove(record.token) }, { merge: true }));
     }
   });
